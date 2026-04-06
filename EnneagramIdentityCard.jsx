@@ -1,13 +1,17 @@
-export default function EnneagramIdentityCard() {
-  const steps = [1, 2, 3, 4, 5];
-  const activeStep = 2;
+/**
+ * @param {{ profileData: import('./EnneagramProfile').EnneagramProfile }} props
+ */
+export default function EnneagramIdentityCard({ profileData }) {
+  const totalSteps = profileData.integration.totalSteps;
+  const activeStep = profileData.integration.currentStep;
+  const steps = Array.from({ length: totalSteps }, (_, index) => index + 1);
 
   return (
     <section className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)] sm:p-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-3">
           <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-            SX Subtype
+            {profileData.subtype}
           </span>
 
           <div className="space-y-1">
@@ -15,7 +19,7 @@ export default function EnneagramIdentityCard() {
               Enneagram Identity
             </p>
             <h2 className="text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-4xl">
-              Type 8: Active Controller
+              Type {profileData.typeNumber}: {profileData.typeLabel}
             </h2>
           </div>
         </div>
@@ -39,7 +43,9 @@ export default function EnneagramIdentityCard() {
               );
             })}
           </div>
-          <p className="mt-3 text-sm font-semibold text-slate-900">Low</p>
+          <p className="mt-3 text-sm font-semibold text-slate-900">
+            {profileData.integration.levelLabel}
+          </p>
         </div>
       </div>
 
@@ -48,7 +54,7 @@ export default function EnneagramIdentityCard() {
           Meta-Message
         </p>
         <blockquote className="mt-3 border-l-4 border-sky-600 pl-4 text-base italic leading-7 text-slate-700 sm:text-lg">
-          Be honest and forthright, but don&apos;t waste my time.
+          {profileData.metaMessage}
         </blockquote>
       </div>
     </section>

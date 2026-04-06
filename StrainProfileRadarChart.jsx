@@ -7,16 +7,12 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
-const strainData = [
-  { subject: 'Vocational', value: 2 },
-  { subject: 'Interpersonal', value: 2 },
-  { subject: 'Environmental', value: 1 },
-  { subject: 'Physical', value: 2 },
-  { subject: 'Psychological', value: 1 },
-  { subject: 'Happiness', value: 1 },
-];
+/**
+ * @param {{ profileData: import('./EnneagramProfile').EnneagramProfile }} props
+ */
+export default function StrainProfileRadarChart({ profileData }) {
+  const strainData = profileData.strain.points;
 
-export default function StrainProfileRadarChart() {
   return (
     <section className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.08)] sm:p-8">
       <div className="flex items-start justify-between gap-4">
@@ -25,7 +21,7 @@ export default function StrainProfileRadarChart() {
             Strain Profile
           </p>
           <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-slate-950 sm:text-3xl">
-            Overall Strain: Medium
+            Overall Strain: {profileData.strain.overallLabel}
           </h2>
         </div>
 
@@ -33,7 +29,9 @@ export default function StrainProfileRadarChart() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
             Max Axis
           </p>
-          <p className="text-lg font-extrabold text-amber-900">3</p>
+          <p className="text-lg font-extrabold text-amber-900">
+            {profileData.strain.maxAxis}
+          </p>
         </div>
       </div>
 
@@ -47,8 +45,8 @@ export default function StrainProfileRadarChart() {
             />
             <PolarRadiusAxis
               angle={90}
-              domain={[0, 3]}
-              tickCount={4}
+              domain={[0, profileData.strain.maxAxis]}
+              tickCount={profileData.strain.maxAxis + 1}
               tick={{ fill: '#94a3b8', fontSize: 11 }}
               stroke="#dbe4ee"
             />
