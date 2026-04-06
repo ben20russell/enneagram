@@ -25,9 +25,9 @@ body{background:radial-gradient(circle at 5% 0%,#f7fbff 0,#eef4fb 44%,#e9f1fb 10
 h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-height:1.03;margin-bottom:10px}
 .header-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace}
 .hdot{color:var(--surface3)}
-.body-grid{display:grid;grid-template-columns:1fr var(--sidebar);gap:24px;align-items:start}
-.sidebar-col{position:sticky;top:24px}
-@media(max-width:900px){.body-grid{grid-template-columns:1fr}.sidebar-col{position:static}}
+.body-grid{display:block}
+.sidebar-col{position:fixed;right:22px;bottom:22px;z-index:50;width:min(360px,calc(100vw - 24px))}
+@media(max-width:900px){.sidebar-col{right:12px;bottom:12px;width:min(360px,calc(100vw - 16px))}}
 .nav-wrap{border:1px solid var(--border);border-radius:14px;padding:6px;background:rgba(255,255,255,.86);overflow-x:auto;scrollbar-width:none;margin-bottom:22px;box-shadow:0 6px 20px rgba(17,42,75,.06)}
 .nav-wrap::-webkit-scrollbar{display:none}
 .nav{display:flex;gap:6px;padding:0}
@@ -60,7 +60,24 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
 .rdrow{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}.rdrow:last-child{border-bottom:none}.rdname{font-size:13px;color:var(--text2);min-width:100px}.rdbar{flex:1;height:4px;background:var(--surface3);border-radius:100px;overflow:hidden;margin:0 12px}.rdfil{height:100%;border-radius:100px;background:var(--gold)}.rdscore{font-size:13px;font-weight:600;color:var(--text)}
 .stage{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:8px}.stage-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.sdot{width:8px;height:8px;border-radius:50%}
 .wing-item{background:var(--surface2);border-radius:var(--r-sm);padding:10px 12px;font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:6px}
-.sidebar-box{overflow:hidden;margin-bottom:16px;background:linear-gradient(180deg,#ffffff,#f8fbff)}.sb-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}.sb-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)}.sb-refresh{background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center}.sb-refresh:hover{color:var(--blue)}.sb-cats{display:flex;flex-wrap:wrap;gap:6px;padding:12px 16px;border-bottom:1px solid var(--border)}.sb-cat{background:#fff;border:1px solid var(--border2);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--text3);cursor:pointer;font-family:'Manrope',sans-serif}.sb-cat.active{background:var(--blue);border-color:var(--blue);color:#fff}.sb-body{padding:16px}.sb-tip{font-size:13px;line-height:1.7;color:var(--text)}.sb-meta{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}.sb-tag{font-size:10px;color:var(--text3);background:var(--surface2);padding:2px 8px;border-radius:999px}
+.sidebar-box{overflow:hidden;margin-bottom:0;background:linear-gradient(180deg,#ffffff,#f8fbff);border:1px solid var(--border);border-radius:16px;box-shadow:0 16px 40px rgba(16,34,61,.18)}
+.sb-header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sb-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)}
+.sb-tools{display:flex;align-items:center;gap:4px}
+.sb-refresh,.sb-min{background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center}
+.sb-refresh:hover,.sb-min:hover{color:var(--blue)}
+.sb-cats{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border)}
+.sb-cat{background:#fff;border:1px solid var(--border2);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--text3);cursor:pointer;font-family:'Manrope',sans-serif}
+.sb-cat.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.sb-body{padding:14px}
+.sb-tip{font-size:13px;line-height:1.7;color:var(--text)}
+.sb-meta{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}
+.sb-tag{font-size:10px;color:var(--text3);background:var(--surface2);padding:2px 8px;border-radius:999px}
+.reflection-launcher{position:fixed;right:22px;bottom:22px;z-index:51;border:none;border-radius:999px;background:linear-gradient(135deg,#0a66d8,#0f9e83);color:#fff;padding:10px 14px;font:600 12px 'Manrope',sans-serif;display:none;align-items:center;gap:8px;box-shadow:0 12px 30px rgba(10,102,216,.35);cursor:pointer}
+.reflection-launcher:hover{filter:brightness(1.04)}
+.sidebar-col.minimized{display:none}
+.sidebar-col.minimized+.reflection-launcher{display:inline-flex}
+@media(max-width:900px){.reflection-launcher{right:12px;bottom:12px}}
 .people-card{padding:0;overflow:hidden}.people-head{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#f6fbff,#eef6ff)}.people-icon{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#0a66d8,#0f9e83);display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;box-shadow:0 5px 14px rgba(10,102,216,.3)}.people-title{font-size:14px;font-weight:700;color:var(--text)}.people-subtitle{font-size:12px;color:var(--text3)}.people-grid{display:grid;grid-template-columns:minmax(280px,360px) 1fr}.people-controls{padding:20px 22px;border-right:1px solid var(--border);background:linear-gradient(180deg,#f8fbff,rgba(255,255,255,0))}.people-result{padding:20px 22px}.field{margin-bottom:14px}.field-label{display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:7px}.field-input,.field-select{width:100%;border:1px solid var(--border2);border-radius:10px;padding:10px 12px;font:500 13px 'Manrope',sans-serif;background:#fff;color:var(--text);outline:none}.field-input{resize:vertical;min-height:88px}.field-input.prompt-source{min-height:130px}.field-input:focus,.field-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,102,216,.14)}.field-help{font-size:12px;color:var(--text3);margin-top:6px;line-height:1.5}.advisor-btn{width:100%;border:none;border-radius:10px;background:linear-gradient(135deg,#0a66d8,#0f9e83);color:#fff;padding:11px 14px;font:600 13px 'Manrope',sans-serif;cursor:pointer}.advisor-btn:disabled{opacity:.5;cursor:not-allowed}.advisor-empty{padding:8px 0;color:var(--text3);font-size:13px;line-height:1.7}.advisor-empty strong{display:block;color:var(--text);font-size:15px;margin-bottom:6px}.quick-grid{display:grid;gap:7px;margin-top:14px}.quick-btn{background:#fff;border:1px solid var(--border);border-radius:10px;padding:9px 11px;font-size:12px;color:var(--text2);cursor:pointer;text-align:left;font-family:'Manrope',sans-serif;line-height:1.45}.quick-btn:hover{background:var(--surface2);border-color:var(--blue)}.prompt-card{background:var(--surface2);border-radius:var(--r-sm);padding:14px 15px;border:1px solid var(--border)}.prompt-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px}.prompt-body{font-size:13px;line-height:1.7;color:var(--text2)}.prompt-output{width:100%;min-height:420px;border:1px solid var(--border);border-radius:10px;background:#fff;padding:14px 15px;font:400 12px/1.7 'IBM Plex Mono',monospace;color:var(--text);resize:vertical;outline:none;white-space:pre-wrap}.prompt-output:focus{border-color:var(--blue)}.prompt-actions{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.secondary-btn{border:1px solid var(--border2);border-radius:10px;background:#fff;color:var(--text2);padding:9px 12px;font:600 12px 'Manrope',sans-serif;cursor:pointer}.secondary-btn:hover{border-color:var(--blue);color:var(--blue)}.prompt-meta{font-size:11px;color:var(--text3)}@media(max-width:860px){.people-grid{grid-template-columns:1fr}.people-controls{border-right:none;border-bottom:1px solid var(--border)}}
 .chart-wrap{position:relative;width:100%}
 .footer-note{font-size:11px;color:var(--text3);margin-top:10px}
@@ -467,13 +484,18 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
       </div>
     </div>
 
-    <div class="sidebar-col">
+    <div class="sidebar-col minimized" id="reflectionWidget">
       <div class="sidebar-box">
         <div class="sb-header">
           <span class="sb-title">Reflections</span>
-          <button class="sb-refresh" onclick="genReflection()" title="New reflection">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1 6.5a5.5 5.5 0 1 0 5.5-5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M1 1v5.5h5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
+          <div class="sb-tools">
+            <button class="sb-refresh" onclick="genReflection()" title="New reflection">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1 6.5a5.5 5.5 0 1 0 5.5-5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M1 1v5.5h5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="sb-min" onclick="toggleReflections(true)" title="Minimize reflections">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
+          </div>
         </div>
         <div class="sb-cats">
           <button class="sb-cat active" onclick="setRef('leadership',this)">Leadership</button>
@@ -491,6 +513,10 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
         </div>
       </div>
     </div>
+    <button class="reflection-launcher" id="reflectionLauncher" onclick="toggleReflections(false)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M10 21h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.7.6 1.2 1.3 1.5 2.1h4.6c.3-.8.8-1.5 1.5-2.1A6 6 0 0 0 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Reflections
+    </button>
   </div>
 
   <footer class="site-footer">© 2026 The Kapalaran Group LLC | All rights reserved</footer>
@@ -531,7 +557,8 @@ function iconSvg(name, size = 14, color = 'currentColor') {
     pulse: `<svg ${common}><path d="M3 12h4l2-4 3 8 2-4h7"/></svg>`,
     shield: `<svg ${common}><path d="M12 3l7 3v6c0 4.4-2.9 7.6-7 9-4.1-1.4-7-4.6-7-9V6l7-3z"/></svg>`,
     users: `<svg ${common}><circle cx="9" cy="9" r="3"/><circle cx="17" cy="11" r="2.2"/><path d="M3.5 19c.9-2.7 3-4 5.5-4s4.6 1.3 5.5 4"/><path d="M14.5 19c.5-1.8 1.8-2.9 3.5-3.2"/></svg>`,
-    spark: `<svg ${common}><path d="M12 3l1.8 4.4L18 9l-4.2 1.6L12 15l-1.8-4.4L6 9l4.2-1.6L12 3z"/></svg>`
+    spark: `<svg ${common}><path d="M12 3l1.8 4.4L18 9l-4.2 1.6L12 15l-1.8-4.4L6 9l4.2-1.6L12 3z"/></svg>`,
+    reflection: `<svg ${common}><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.7.6 1.2 1.3 1.5 2.1h4.6c.3-.8.8-1.5 1.5-2.1A6 6 0 0 0 12 3Z"/></svg>`
   };
 
   return icons[name] || icons.card;
@@ -606,7 +633,7 @@ function decorateInterfaceIcons() {
   const sidebarTitle = document.querySelector('.sb-title');
   if (sidebarTitle && sidebarTitle.dataset.iconized !== 'true') {
     const label = sidebarTitle.textContent.trim();
-    sidebarTitle.innerHTML = `<span class="title-icon" style="margin-right:6px">${iconSvg('spark', 12, 'var(--blue)')}</span>${label}`;
+    sidebarTitle.innerHTML = `<span class="title-icon" style="margin-right:6px">${iconSvg('reflection', 12, 'var(--blue)')}</span>${label}`;
     sidebarTitle.dataset.iconized = 'true';
   }
 }
@@ -655,6 +682,12 @@ function setRef(cat, btn) {
   document.querySelectorAll('.sb-cat').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   genReflection();
+}
+
+function toggleReflections(minimize) {
+  const widget = document.getElementById('reflectionWidget');
+  if (!widget) return;
+  widget.classList.toggle('minimized', minimize);
 }
 
 let enneagramChat = [];
