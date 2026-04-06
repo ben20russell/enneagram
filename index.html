@@ -79,6 +79,9 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
 .sidebar-col.minimized+.reflection-launcher{display:inline-flex}
 @media(max-width:900px){.reflection-launcher{right:12px;bottom:12px}}
 .people-card{padding:0;overflow:hidden}.people-head{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#f6fbff,#eef6ff)}.people-icon{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#0a66d8,#0f9e83);display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;box-shadow:0 5px 14px rgba(10,102,216,.3)}.people-title{font-size:14px;font-weight:700;color:var(--text)}.people-subtitle{font-size:12px;color:var(--text3)}.people-grid{display:grid;grid-template-columns:minmax(280px,360px) 1fr}.people-controls{padding:20px 22px;border-right:1px solid var(--border);background:linear-gradient(180deg,#f8fbff,rgba(255,255,255,0))}.people-result{padding:20px 22px}.field{margin-bottom:14px}.field-label{display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:7px}.field-input,.field-select{width:100%;border:1px solid var(--border2);border-radius:10px;padding:10px 12px;font:500 13px 'Manrope',sans-serif;background:#fff;color:var(--text);outline:none}.field-input{resize:vertical;min-height:88px}.field-input.prompt-source{min-height:130px}.field-input:focus,.field-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,102,216,.14)}.field-help{font-size:12px;color:var(--text3);margin-top:6px;line-height:1.5}.advisor-btn{width:100%;border:none;border-radius:10px;background:linear-gradient(135deg,#0a66d8,#0f9e83);color:#fff;padding:11px 14px;font:600 13px 'Manrope',sans-serif;cursor:pointer}.advisor-btn:disabled{opacity:.5;cursor:not-allowed}.advisor-empty{padding:8px 0;color:var(--text3);font-size:13px;line-height:1.7}.advisor-empty strong{display:block;color:var(--text);font-size:15px;margin-bottom:6px}.quick-grid{display:grid;gap:7px;margin-top:14px}.quick-btn{background:#fff;border:1px solid var(--border);border-radius:10px;padding:9px 11px;font-size:12px;color:var(--text2);cursor:pointer;text-align:left;font-family:'Manrope',sans-serif;line-height:1.45}.quick-btn:hover{background:var(--surface2);border-color:var(--blue)}.prompt-card{background:var(--surface2);border-radius:var(--r-sm);padding:14px 15px;border:1px solid var(--border)}.prompt-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px}.prompt-body{font-size:13px;line-height:1.7;color:var(--text2)}.prompt-output{width:100%;min-height:420px;border:1px solid var(--border);border-radius:10px;background:#fff;padding:14px 15px;font:400 12px/1.7 'IBM Plex Mono',monospace;color:var(--text);resize:vertical;outline:none;white-space:pre-wrap}.prompt-output:focus{border-color:var(--blue)}.prompt-actions{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.secondary-btn{border:1px solid var(--border2);border-radius:10px;background:#fff;color:var(--text2);padding:9px 12px;font:600 12px 'Manrope',sans-serif;cursor:pointer}.secondary-btn:hover{border-color:var(--blue);color:var(--blue)}.prompt-meta{font-size:11px;color:var(--text3)}@media(max-width:860px){.people-grid{grid-template-columns:1fr}.people-controls{border-right:none;border-bottom:1px solid var(--border)}}
+.context-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px}
+.context-tag{border:1px solid var(--border2);background:#fff;border-radius:999px;padding:6px 10px;font:600 11px 'Manrope',sans-serif;color:var(--text2);cursor:pointer;transition:.18s}
+.context-tag:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-lt)}
 .chart-wrap{position:relative;width:100%}
 .footer-note{font-size:11px;color:var(--text3);margin-top:10px}
 .site-footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--border2);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);font-family:'IBM Plex Mono',monospace;text-align:center}
@@ -459,6 +462,15 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
                   <option value="gpt-4.1-mini">gpt-4.1-mini</option>
                   <option value="gpt-4.1">gpt-4.1</option>
                 </select>
+              </div>
+              <div class="field">
+                <label class="field-label">Quick Context Tags</label>
+                <div class="context-row" id="contextTags">
+                  <button class="context-tag" type="button" data-context="Drafting an email">Drafting an email</button>
+                  <button class="context-tag" type="button" data-context="Preparing for conflict">Preparing for conflict</button>
+                  <button class="context-tag" type="button" data-context="Feeling stressed">Feeling stressed</button>
+                  <button class="context-tag" type="button" data-context="Team alignment">Team alignment</button>
+                </div>
               </div>
               <div class="field">
                 <label class="field-label" for="agentQuestion">Ask your question</label>
@@ -848,6 +860,16 @@ function applyQuickQuestion(button) {
   document.getElementById('agentQuestion').value = button.dataset.question || '';
 }
 
+function applyContextTag(contextText) {
+  const questionInput = document.getElementById('agentQuestion');
+  if (!questionInput || !contextText) return;
+
+  const prefix = `[Context: ${contextText}] - `;
+  const current = questionInput.value;
+  questionInput.value = current.startsWith(prefix) ? current : `${prefix}${current}`;
+  questionInput.focus();
+}
+
 window.addEventListener('load', () => {
   decorateInterfaceIcons();
 
@@ -860,6 +882,10 @@ window.addEventListener('load', () => {
 
   document.querySelectorAll('.quick-btn').forEach(button => {
     button.addEventListener('click', () => applyQuickQuestion(button));
+  });
+
+  document.querySelectorAll('.context-tag').forEach(button => {
+    button.addEventListener('click', () => applyContextTag(button.dataset.context));
   });
 
   const pCtx = document.getElementById('profileChart');
