@@ -34,13 +34,17 @@ body{background:radial-gradient(circle at 5% 0%,#f7fbff 0,#eef4fb 44%,#e9f1fb 10
 h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:700;letter-spacing:-.03em;line-height:1.03;margin-bottom:10px}
 .header-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text3);font-family:var(--font-mono)}
 .hdot{color:var(--surface3)}
-.header-auth{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.header-auth{display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative}
 .auth-btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:8px 12px;font:700 12px var(--font-sans);text-decoration:none;line-height:1}
 .auth-btn.google{border:1px solid #0a66d8;background:#0a66d8;color:#fff;box-shadow:0 8px 22px rgba(10,102,216,.25)}
 .auth-btn.dashboard{border:1px solid var(--border2);background:#fff;color:var(--text2)}
 .auth-btn.avatar{border:1px solid var(--border2);background:#fff;color:var(--text2);padding:2px;box-shadow:none}
 .auth-avatar-img{width:28px;height:28px;border-radius:999px;display:block}
 .auth-avatar-fallback{width:28px;height:28px;border-radius:999px;background:#0a66d8;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.auth-menu{position:absolute;right:0;top:44px;min-width:180px;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 30px rgba(16,34,61,.18);padding:6px;display:none;z-index:1700}
+.auth-menu.open{display:block}
+.auth-menu-item{width:100%;display:block;border:0;background:#fff;color:var(--text2);text-align:left;padding:8px 10px;border-radius:8px;font:600 12px var(--font-sans);text-decoration:none;cursor:pointer}
+.auth-menu-item:hover{background:var(--surface2);color:var(--text)}
 .body-grid{display:block}
 .mobile-menu-toggle{display:none;position:fixed;top:16px;left:14px;z-index:140;background:#fff;border:1px solid var(--border2);border-radius:10px;width:40px;height:40px;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(16,34,61,.14)}
 .mobile-menu-toggle svg{display:block}
@@ -171,6 +175,10 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
       </div>
       <div class="header-auth" data-testid="auth-top-right">
         <a class="auth-btn google" id="authSignInButton" data-testid="sign-in-google" href="#" onclick="openGoogleSignInPopup(event)">Sign In</a>
+        <div class="auth-menu" id="authMenu" data-testid="auth-menu">
+          <a class="auth-menu-item" href="/dashboard">Dashboard</a>
+          <button class="auth-menu-item" type="button" id="authSignOutButton">Sign out</button>
+        </div>
       </div>
     </div>
     <div class="header-controls">
@@ -607,6 +615,22 @@ function getAuthButton() {
   return document.getElementById("authSignInButton");
 }
 
+function getAuthMenu() {
+  return document.getElementById("authMenu");
+}
+
+function closeAuthMenu() {
+  const menu = getAuthMenu();
+  if (!menu) return;
+  menu.classList.remove("open");
+}
+
+function toggleAuthMenu() {
+  const menu = getAuthMenu();
+  if (!menu) return;
+  menu.classList.toggle("open");
+}
+
 function getInitials(nameOrEmail) {
   if (!nameOrEmail) return "U";
   const parts = String(nameOrEmail).trim().split(/\s+/).filter(Boolean);
@@ -618,6 +642,7 @@ function setSignedOutAuthUi() {
   const button = getAuthButton();
   if (!button) return;
 
+  closeAuthMenu();
   button.classList.remove("avatar");
   button.classList.add("google");
   button.textContent = "Sign In";
@@ -631,11 +656,15 @@ function setSignedInAuthUi(user) {
   const button = getAuthButton();
   if (!button) return;
 
+  closeAuthMenu();
   button.classList.remove("google");
   button.classList.add("avatar");
-  button.setAttribute("href", "/dashboard");
+  button.setAttribute("href", "#");
   button.setAttribute("data-testid", "signed-in-avatar");
-  button.onclick = null;
+  button.onclick = (event) => {
+    event.preventDefault();
+    toggleAuthMenu();
+  };
   button.textContent = "";
 
   if (user?.image) {
@@ -652,6 +681,43 @@ function setSignedInAuthUi(user) {
   }
 
   button.title = user?.name ? `Signed in as ${user.name}` : "Signed in";
+}
+
+async function signOutUser() {
+  const baseUrl = AUTH_BASE_URL.replace(/\/$/, "");
+  try {
+    const csrfResponse = await fetch(`${baseUrl}/api/auth/csrf`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "include",
+      cache: "no-store",
+    });
+    const csrfData = await csrfResponse.json();
+    const csrfToken = csrfData?.csrfToken;
+
+    if (!csrfToken) {
+      console.log("[auth] Missing CSRF token, redirecting to signout route");
+      window.location.href = `${baseUrl}/api/auth/signout?callbackUrl=${encodeURIComponent(window.location.origin)}`;
+      return;
+    }
+
+    await fetch(`${baseUrl}/api/auth/signout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      credentials: "include",
+      body: new URLSearchParams({
+        csrfToken,
+        callbackUrl: `${window.location.origin}/`,
+        json: "true",
+      }),
+    });
+
+    console.log("[auth] Sign out completed");
+    window.location.reload();
+  } catch (error) {
+    console.log("[auth] Sign out failed, redirecting to signout route:", error);
+    window.location.href = `${baseUrl}/api/auth/signout?callbackUrl=${encodeURIComponent(window.location.origin)}`;
+  }
 }
 
 async function refreshAuthUi() {
@@ -761,6 +827,22 @@ window.addEventListener("message", (event) => {
 });
 
 window.addEventListener("DOMContentLoaded", () => {
+  const signOutButton = document.getElementById("authSignOutButton");
+  if (signOutButton) {
+    signOutButton.addEventListener("click", () => {
+      closeAuthMenu();
+      signOutUser();
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    const menu = getAuthMenu();
+    const button = getAuthButton();
+    if (!menu || !button) return;
+    if (menu.contains(event.target) || button.contains(event.target)) return;
+    closeAuthMenu();
+  });
+
   refreshAuthUi();
 });
 
