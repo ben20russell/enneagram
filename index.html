@@ -44,9 +44,27 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .mobile-menu-list{display:flex;flex-direction:column;padding:10px}
 .mobile-menu-item{border:none;background:transparent;text-align:left;padding:11px 12px;border-radius:10px;font:600 13px var(--font-sans);color:var(--text2);cursor:pointer}
 .mobile-menu-item.active{background:linear-gradient(135deg,#0a66d8,#0f9e83);color:#fff}
+.focus-prompt{position:static;width:100%;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 24px rgba(16,34,61,.12);overflow:hidden;margin-bottom:14px}
+.focus-prompt-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,#f5faff,#eef6ff)}
+.focus-prompt-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
+.focus-prompt-body{padding:12px}
+.focus-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.focus-field{display:flex;flex-direction:column;gap:5px}
+.focus-label{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3)}
+.focus-input,.focus-textarea{border:1px solid var(--border2);border-radius:9px;padding:8px 9px;font:500 12px var(--font-sans);color:var(--text);background:#fff}
+.focus-textarea{resize:vertical;min-height:132px}
+.focus-input:focus,.focus-textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,102,216,.12)}
+.focus-actions{display:flex;gap:8px;align-items:center;margin-top:10px}
+.focus-submit{border:none;border-radius:9px;background:linear-gradient(135deg,#0a66d8,#0f9e83);color:#fff;padding:9px 12px;font:600 12px var(--font-sans);cursor:pointer}
+.focus-ghost{border:1px solid var(--border2);border-radius:9px;background:#fff;color:var(--text2);padding:9px 12px;font:600 12px var(--font-sans);cursor:pointer}
+.focus-note{font-size:11px;color:var(--text3)}
+.focus-result-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.focus-result-item{display:flex;flex-direction:column;gap:6px}
+.focus-source{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
+.focus-empty{font-size:13px;color:var(--text2);line-height:1.65}
 .sidebar-col{position:fixed;right:22px;bottom:22px;z-index:50;width:min(360px,calc(100vw - 24px))}
 @media(max-width:900px){.sidebar-col{right:12px;bottom:12px;width:min(360px,calc(100vw - 16px))}}
-@media(max-width:760px){.eyebrow{flex-wrap:wrap}.report-switch{margin-left:0;width:100%;justify-content:flex-end}.nav-wrap{display:none}.mobile-menu-toggle{display:inline-flex}.mobile-menu-overlay.show{display:block}}
+@media(max-width:760px){.header{position:relative;padding-top:72px}.eyebrow{flex-wrap:wrap}.report-switch{position:absolute;top:16px;right:16px;margin-left:0;width:auto;justify-content:flex-end}.nav-wrap{display:none}.mobile-menu-toggle{display:inline-flex}.mobile-menu-overlay.show{display:block}.focus-grid{grid-template-columns:1fr}.focus-result-grid{grid-template-columns:1fr}}
 .nav-wrap{border:1px solid var(--border);border-radius:14px;padding:6px;background:rgba(255,255,255,.86);overflow-x:auto;scrollbar-width:none;margin-bottom:22px;box-shadow:0 6px 20px rgba(17,42,75,.06)}
 .nav-wrap::-webkit-scrollbar{display:none}
 .nav{display:flex;gap:6px;padding:0}
@@ -120,6 +138,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
     </button>
   </div>
   <div class="mobile-menu-list">
+    <button class="mobile-menu-item" data-sec="focus" onclick="showSec('focus');toggleMobileMenu(false)">Focus View</button>
     <button class="mobile-menu-item active" data-sec="overview" onclick="showSec('overview');toggleMobileMenu(false)">Overview</button>
     <button class="mobile-menu-item" data-sec="centers" onclick="showSec('centers');toggleMobileMenu(false)">Centers &amp; Instincts</button>
     <button class="mobile-menu-item" data-sec="strengths" onclick="showSec('strengths');toggleMobileMenu(false)">Strengths &amp; Gaps</button>
@@ -150,18 +169,13 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
         </select>
       </div>
     </div>
-    <h1 id="reportTitle" data-testid="report-title">Type 8 Example Report</h1>
-    <div class="header-meta">
-      <span>Enneagram Mock Report · Example Use Only</span>
-      <span class="hdot">•</span>
-      <span>Language aligned to standard Enneagram terminology</span>
-    </div>
   </div>
 
   <div class="body-grid">
     <div class="main-col">
       <div class="nav-wrap">
         <nav class="nav">
+          <button data-sec="focus" onclick="showSec('focus')">Focus View</button>
           <button class="active" data-sec="overview" onclick="showSec('overview')">Overview</button>
           <button data-sec="centers" onclick="showSec('centers')">Centers &amp; Instincts</button>
           <button data-sec="strengths" onclick="showSec('strengths')">Strengths &amp; Gaps</button>
@@ -171,6 +185,32 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
           <button data-sec="integration" onclick="showSec('integration')">Integration</button>
           <button data-sec="growth" onclick="showSec('growth')">Growth Path</button>
         </nav>
+      </div>
+
+      <div id="sec-focus" class="sec">
+        <div class="focus-prompt" id="focusPrompt" data-testid="focus-prompt">
+          <div class="focus-prompt-head">
+            <span class="focus-prompt-title">Prompt-Based Focus</span>
+          </div>
+          <div class="focus-prompt-body">
+            <div class="focus-grid" style="grid-template-columns:1fr">
+              <div class="focus-field">
+                <label class="focus-label" for="focusPromptText">What is your current feeling, context, question, or exploration goal?</label>
+                <textarea class="focus-textarea" id="focusPromptText" placeholder="Examples: I feel overwhelmed in team conflict. How can I communicate clearly today? What should I focus on first?"></textarea>
+              </div>
+            </div>
+            <div class="focus-actions">
+              <button class="focus-submit" type="button" id="focusSubmit">Find Relevant Sections</button>
+              <button class="focus-ghost" type="button" id="focusReset">Reset</button>
+              <span class="focus-note" id="focusStatus">Uses your report content to surface the most relevant modules.</span>
+            </div>
+          </div>
+        </div>
+        <div class="card mb24">
+          <div class="ct">Personalized Focus View</div>
+          <p class="focus-empty" id="focusIntro">Use the prompt above to generate a focused view of the most relevant parts of your Enneagram report.</p>
+        </div>
+        <div id="focusResults" class="focus-result-grid"></div>
       </div>
 
       <div id="sec-overview" class="sec active">
@@ -692,6 +732,7 @@ let REPORT = REPORT_EXAMPLES['8'];
 let profileChart;
 let strainChart;
 let reflectionDeck = {};
+let REPORT_MODULES = [];
 const PROFILE_TYPE_ORDER = ['8', '9', '1', '2', '3', '4', '5', '6', '7'];
 
 function iconSvg(name, size = 14, color = 'currentColor') {
@@ -720,6 +761,7 @@ function iconSvg(name, size = 14, color = 'currentColor') {
 
 function decorateInterfaceIcons() {
   const navIconMap = {
+    'Focus View': 'spark',
     Overview: 'overview',
     'Centers & Instincts': 'centers',
     'Strengths & Gaps': 'strengths',
@@ -731,6 +773,7 @@ function decorateInterfaceIcons() {
   };
 
   const sectionIconMap = {
+    'Personalized Focus View': 'spark',
     'Core Identity': 'card',
     'Enneagram Profile — All 9 Types': 'chart',
     'Basic Fear': 'target',
@@ -793,11 +836,17 @@ function decorateInterfaceIcons() {
 function showSec(id) {
   document.querySelectorAll('.sec').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav button,.mobile-menu-item').forEach(b => b.classList.remove('active'));
-  document.getElementById('sec-' + id).classList.add('active');
+  const targetSection = document.getElementById('sec-' + id);
+  if (!targetSection) {
+    console.log('[nav] section not found', id);
+    return;
+  }
+  targetSection.classList.add('active');
   const navButton = document.querySelector(`.nav button[data-sec="${id}"]`);
   const mobileButton = document.querySelector(`.mobile-menu-item[data-sec="${id}"]`);
   if (navButton) navButton.classList.add('active');
   if (mobileButton) mobileButton.classList.add('active');
+  console.log('[nav] switched section', id);
 }
 
 function toggleMobileMenu(open) {
@@ -809,6 +858,185 @@ function toggleMobileMenu(open) {
   overlay.classList.toggle('show', open);
   drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
   document.body.style.overflow = open ? 'hidden' : '';
+}
+
+function tokenize(text) {
+  return (text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 2);
+}
+
+function buildReportModuleIndex() {
+  const sectionNameMap = {
+    overview: 'Overview',
+    centers: 'Centers & Instincts',
+    strengths: 'Strengths & Gaps',
+    leadership: 'Leadership',
+    communication: 'Communication',
+    strain: 'Strain Profile',
+    integration: 'Integration',
+    growth: 'Growth Path'
+  };
+
+  const modules = [];
+  document.querySelectorAll('.sec').forEach(section => {
+    const sectionId = section.id.replace('sec-', '');
+    if (!sectionId || sectionId === 'focus') return;
+
+    section.querySelectorAll('.card').forEach((card, index) => {
+      const titleNode = card.querySelector('.ct');
+      const title = (titleNode ? titleNode.textContent : `Module ${index + 1}`).trim();
+      const rawText = card.innerText.replace(title, '').replace(/\s+/g, ' ').trim();
+      if (!rawText) return;
+
+      modules.push({
+        id: `${sectionId}-${index + 1}`,
+        sectionId,
+        sectionLabel: sectionNameMap[sectionId] || sectionId,
+        title,
+        element: card,
+        text: rawText,
+        tokens: tokenize(`${title} ${rawText}`)
+      });
+    });
+  });
+
+  REPORT_MODULES = modules;
+  console.log('[focus] built report module index', { count: REPORT_MODULES.length });
+}
+
+function cloneCardForFocus(card) {
+  const clone = card.cloneNode(true);
+
+  // Avoid duplicate IDs in focus view clones.
+  clone.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'));
+
+  // Snapshot chart canvases so visual content stays visible in cloned cards.
+  const sourceCanvases = card.querySelectorAll('canvas');
+  const clonedCanvases = clone.querySelectorAll('canvas');
+  sourceCanvases.forEach((sourceCanvas, index) => {
+    const clonedCanvas = clonedCanvases[index];
+    if (!clonedCanvas) return;
+
+    try {
+      const dataUrl = sourceCanvas.toDataURL('image/png');
+      const image = document.createElement('img');
+      image.src = dataUrl;
+      image.alt = 'Chart snapshot';
+      image.style.width = '100%';
+      image.style.height = '100%';
+      image.style.objectFit = 'contain';
+      clonedCanvas.replaceWith(image);
+    } catch (error) {
+      console.log('[focus] canvas snapshot failed', error);
+    }
+  });
+
+  return clone;
+}
+
+function scoreModule(module, queryText, queryTokens) {
+  let score = 0;
+  const moduleTokenSet = new Set(module.tokens);
+  queryTokens.forEach(token => {
+    if (moduleTokenSet.has(token)) score += 1;
+  });
+
+  const lowerQuery = queryText.toLowerCase();
+  const boostPairs = [
+    { keywords: ['stress', 'anxious', 'burnout', 'overwhelmed'], module: ['strain', 'health', 'integration'] },
+    { keywords: ['conflict', 'communication', 'feedback'], module: ['communication', 'triggers', 'conflict'] },
+    { keywords: ['leadership', 'team', 'decision', 'delegate'], module: ['leadership', 'delegation', 'decision'] },
+    { keywords: ['growth', 'develop', 'habit'], module: ['growth', 'line', 'integration'] }
+  ];
+
+  boostPairs.forEach(pair => {
+    const queryMatch = pair.keywords.some(key => lowerQuery.includes(key));
+    const moduleMatch = pair.module.some(key => module.text.toLowerCase().includes(key) || module.title.toLowerCase().includes(key));
+    if (queryMatch && moduleMatch) score += 3;
+  });
+
+  return score;
+}
+
+function renderFocusResults(results, queryText) {
+  const focusResults = document.getElementById('focusResults');
+  const focusIntro = document.getElementById('focusIntro');
+  if (!focusResults || !focusIntro) return;
+
+  if (!queryText.trim()) {
+    focusIntro.textContent = 'Add your context in the prompt to generate a focused report view.';
+    focusResults.innerHTML = '';
+    return;
+  }
+
+  if (!results.length) {
+    focusIntro.textContent = 'No direct matches found. Try adding more context or keywords.';
+    focusResults.innerHTML = '';
+    return;
+  }
+
+  focusIntro.textContent = `Showing ${results.length} most relevant modules for your prompt.`;
+  focusResults.innerHTML = '';
+
+  results.forEach(result => {
+    const item = document.createElement('article');
+    item.className = 'focus-result-item';
+
+    const source = document.createElement('div');
+    source.className = 'focus-source';
+    source.textContent = `${result.sectionLabel} · ${result.title}`;
+
+    item.appendChild(source);
+    item.appendChild(cloneCardForFocus(result.element));
+    focusResults.appendChild(item);
+  });
+}
+
+function runFocusFilter() {
+  const promptText = document.getElementById('focusPromptText')?.value || '';
+  const status = document.getElementById('focusStatus');
+
+  const combined = promptText;
+  const queryTokens = tokenize(combined);
+
+  if (!combined.trim()) {
+    if (status) status.textContent = 'Add at least one response to filter relevant modules.';
+    renderFocusResults([], '');
+    showSec('focus');
+    return;
+  }
+
+  if (!REPORT_MODULES.length) buildReportModuleIndex();
+
+  const ranked = REPORT_MODULES
+    .map(module => ({ ...module, score: scoreModule(module, combined, queryTokens) }))
+    .sort((a, b) => b.score - a.score)
+    .filter(module => module.score > 0)
+    .slice(0, 6);
+
+  console.log('[focus] run filter', {
+    queryLength: combined.length,
+    tokenCount: queryTokens.length,
+    matched: ranked.length
+  });
+
+  if (status) status.textContent = ranked.length ? `Found ${ranked.length} relevant modules.` : 'No strong matches. Try adding more specifics.';
+  renderFocusResults(ranked, combined);
+  showSec('focus');
+}
+
+function resetFocusPrompt() {
+  ['focusPromptText'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
+  });
+  const status = document.getElementById('focusStatus');
+  if (status) status.textContent = 'Uses your report content to surface the most relevant modules.';
+  renderFocusResults([], '');
+  console.log('[focus] prompt reset');
 }
 
 let refCat = 'leadership';
@@ -921,6 +1149,7 @@ function applyReport(typeId) {
     traitChips.innerHTML = REPORT.traits.map(trait => `<span class="chip cgn">${trait}</span>`).join('');
 
     updateCharts();
+    buildReportModuleIndex();
     genReflection();
   } catch (error) {
     console.log('[report-switch] failed', error);
@@ -951,6 +1180,12 @@ function toggleReflections(minimize) {
 
 window.addEventListener('load', () => {
   decorateInterfaceIcons();
+  buildReportModuleIndex();
+
+  const focusSubmit = document.getElementById('focusSubmit');
+  if (focusSubmit) focusSubmit.addEventListener('click', runFocusFilter);
+  const focusReset = document.getElementById('focusReset');
+  if (focusReset) focusReset.addEventListener('click', resetFocusPrompt);
 
   const pCtx = document.getElementById('profileChart');
   if (pCtx) {
