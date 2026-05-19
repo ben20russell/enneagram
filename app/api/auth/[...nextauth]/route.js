@@ -1,5 +1,7 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import { FirebaseAdapter } from "@next-auth/firebase-adapter";
+import { adminDb } from "../../../../lib/firebaseAdmin";
 
 const env = process.env;
 
@@ -10,6 +12,7 @@ export const authOptions = {
       clientSecret: env.GOOGLE_CLIENT_SECRET,
     }),
   ],
+  adapter: FirebaseAdapter(adminDb),
 };
 
 const handler = NextAuth(authOptions);

@@ -176,7 +176,6 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
       <div class="header-auth" data-testid="auth-top-right">
         <a class="auth-btn google" id="authSignInButton" data-testid="sign-in-google" href="#" onclick="openGoogleSignInPopup(event)">Sign In</a>
         <div class="auth-menu" id="authMenu" data-testid="auth-menu">
-          <a class="auth-menu-item" href="/dashboard">Dashboard</a>
           <button class="auth-menu-item" type="button" id="authSignOutButton">Sign out</button>
         </div>
       </div>
@@ -772,7 +771,7 @@ async function openGoogleSignInPopup(event) {
   const baseUrl = AUTH_BASE_URL.replace(/\/$/, "");
   const callbackUrl = `${window.location.origin}/auth/popup-done`;
   const authUrl = `${baseUrl}/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`;
-  console.log("[auth] Sign-in clicked. OAuth URL:", authUrl);
+  console.log("[auth] Sign-in clicked. Provider URL:", authUrl);
 
   if (event) {
     event.preventDefault();
@@ -791,7 +790,7 @@ async function openGoogleSignInPopup(event) {
   }
 
   const popup = window.open(
-    authUrl,
+    "about:blank",
     "googleAuthPopup",
     "width=520,height=700,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes,status=yes",
   );
@@ -806,6 +805,58 @@ async function openGoogleSignInPopup(event) {
     popup.focus();
   } catch (error) {
     console.log("[auth] Popup opened but focus failed:", error);
+  }
+
+  try {
+    console.log("[auth] Requesting CSRF token for direct provider sign-in...");
+    const csrfResponse = await fetch(`${baseUrl}/api/auth/csrf`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      credentials: "include",
+    });
+
+    const csrfContentType = csrfResponse.headers.get("content-type") || "";
+    if (!csrfResponse.ok || !csrfContentType.includes("application/json")) {
+      throw new Error(`CSRF endpoint failed with status ${csrfResponse.status}`);
+    }
+
+    const csrfData = await csrfResponse.json();
+    const csrfToken = csrfData?.csrfToken;
+    if (!csrfToken) {
+      throw new Error("Missing csrfToken from /api/auth/csrf");
+    }
+
+    console.log("[auth] CSRF token acquired. Submitting direct Google sign-in form in popup.");
+
+    popup.document.open();
+    popup.document.write(
+      '<!doctype html><html><head><title>Redirecting...</title></head><body style="font-family:system-ui;padding:16px">Redirecting to Google sign-in...</body></html>',
+    );
+    popup.document.close();
+
+    const form = popup.document.createElement("form");
+    form.method = "POST";
+    form.action = `${baseUrl}/api/auth/signin/google`;
+    form.style.display = "none";
+
+    const csrfInput = popup.document.createElement("input");
+    csrfInput.type = "hidden";
+    csrfInput.name = "csrfToken";
+    csrfInput.value = csrfToken;
+    form.appendChild(csrfInput);
+
+    const callbackInput = popup.document.createElement("input");
+    callbackInput.type = "hidden";
+    callbackInput.name = "callbackUrl";
+    callbackInput.value = callbackUrl;
+    form.appendChild(callbackInput);
+
+    popup.document.body.appendChild(form);
+    form.submit();
+  } catch (error) {
+    console.log("[auth] Direct sign-in POST failed, falling back to GET sign-in URL:", error);
+    popup.location.href = authUrl;
   }
 
   const popupWatcher = window.setInterval(() => {
