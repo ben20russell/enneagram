@@ -33,9 +33,20 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .header-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text3);font-family:var(--font-mono)}
 .hdot{color:var(--surface3)}
 .body-grid{display:block}
+.mobile-menu-toggle{display:none;position:fixed;top:16px;left:14px;z-index:140;background:#fff;border:1px solid var(--border2);border-radius:10px;width:40px;height:40px;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(16,34,61,.14)}
+.mobile-menu-toggle svg{display:block}
+.mobile-menu-overlay{display:none;position:fixed;inset:0;background:rgba(10,20,36,.42);z-index:130}
+.mobile-menu{position:fixed;top:0;left:0;height:100%;width:min(86vw,320px);background:#fff;border-right:1px solid var(--border);box-shadow:0 14px 38px rgba(16,34,61,.2);z-index:135;transform:translateX(-100%);transition:transform .22s ease}
+.mobile-menu.open{transform:translateX(0)}
+.mobile-menu-head{display:flex;align-items:center;justify-content:space-between;padding:14px 14px;border-bottom:1px solid var(--border)}
+.mobile-menu-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
+.mobile-menu-close{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;display:flex;align-items:center}
+.mobile-menu-list{display:flex;flex-direction:column;padding:10px}
+.mobile-menu-item{border:none;background:transparent;text-align:left;padding:11px 12px;border-radius:10px;font:600 13px var(--font-sans);color:var(--text2);cursor:pointer}
+.mobile-menu-item.active{background:linear-gradient(135deg,#0a66d8,#0f9e83);color:#fff}
 .sidebar-col{position:fixed;right:22px;bottom:22px;z-index:50;width:min(360px,calc(100vw - 24px))}
 @media(max-width:900px){.sidebar-col{right:12px;bottom:12px;width:min(360px,calc(100vw - 16px))}}
-@media(max-width:760px){.eyebrow{flex-wrap:wrap}.report-switch{margin-left:0;width:100%;justify-content:flex-end}}
+@media(max-width:760px){.eyebrow{flex-wrap:wrap}.report-switch{margin-left:0;width:100%;justify-content:flex-end}.nav-wrap{display:none}.mobile-menu-toggle{display:inline-flex}.mobile-menu-overlay.show{display:block}}
 .nav-wrap{border:1px solid var(--border);border-radius:14px;padding:6px;background:rgba(255,255,255,.86);overflow-x:auto;scrollbar-width:none;margin-bottom:22px;box-shadow:0 6px 20px rgba(17,42,75,.06)}
 .nav-wrap::-webkit-scrollbar{display:none}
 .nav{display:flex;gap:6px;padding:0}
@@ -47,9 +58,10 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .sec{display:none}.sec.active{display:block}
 .card,.sidebar-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--r)}
 .card{padding:22px 24px;box-shadow:0 8px 24px rgba(16,34,61,.06)}.card+.card{margin-top:0}
-.ct{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:14px}
-.ct .title-icon{display:inline-flex;vertical-align:middle;margin-right:7px;position:relative;top:-1px}
-.title-icon-chip{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);margin-right:7px;position:relative;top:-1px}
+.ct{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:14px}
+.ct .title-icon{display:inline-flex;align-items:center;justify-content:center;width:100%;height:100%;line-height:0;margin:0;position:static}
+.ct .title-icon svg{display:block}
+.title-icon-chip{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);margin-right:7px;line-height:0;vertical-align:middle;position:static}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 @media(max-width:700px){.g2,.g3{grid-template-columns:1fr}}
@@ -92,6 +104,32 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 </style>
 </head>
 <body>
+<button class="mobile-menu-toggle" id="mobileMenuToggle" type="button" aria-label="Open navigation menu" data-testid="mobile-menu-toggle" onclick="toggleMobileMenu(true)">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#36506f" stroke-width="1.8" stroke-linecap="round">
+    <path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>
+  </svg>
+</button>
+<div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="toggleMobileMenu(false)"></div>
+<aside class="mobile-menu" id="mobileMenu" aria-hidden="true">
+  <div class="mobile-menu-head">
+    <span class="mobile-menu-title">Menu</span>
+    <button class="mobile-menu-close" type="button" aria-label="Close navigation menu" onclick="toggleMobileMenu(false)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
+      </svg>
+    </button>
+  </div>
+  <div class="mobile-menu-list">
+    <button class="mobile-menu-item active" data-sec="overview" onclick="showSec('overview');toggleMobileMenu(false)">Overview</button>
+    <button class="mobile-menu-item" data-sec="centers" onclick="showSec('centers');toggleMobileMenu(false)">Centers &amp; Instincts</button>
+    <button class="mobile-menu-item" data-sec="strengths" onclick="showSec('strengths');toggleMobileMenu(false)">Strengths &amp; Gaps</button>
+    <button class="mobile-menu-item" data-sec="leadership" onclick="showSec('leadership');toggleMobileMenu(false)">Leadership</button>
+    <button class="mobile-menu-item" data-sec="communication" onclick="showSec('communication');toggleMobileMenu(false)">Communication</button>
+    <button class="mobile-menu-item" data-sec="strain" onclick="showSec('strain');toggleMobileMenu(false)">Strain Profile</button>
+    <button class="mobile-menu-item" data-sec="integration" onclick="showSec('integration');toggleMobileMenu(false)">Integration</button>
+    <button class="mobile-menu-item" data-sec="growth" onclick="showSec('growth');toggleMobileMenu(false)">Growth Path</button>
+  </div>
+</aside>
 <div class="page">
   <div class="header">
     <div class="eyebrow">
@@ -116,7 +154,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
     <div class="header-meta">
       <span>Enneagram Mock Report · Example Use Only</span>
       <span class="hdot">•</span>
-      <span>Language synthesized from [docs/ENNEAGRAM_MASTER.md]</span>
+      <span>Language aligned to standard Enneagram terminology</span>
     </div>
   </div>
 
@@ -124,14 +162,14 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
     <div class="main-col">
       <div class="nav-wrap">
         <nav class="nav">
-          <button class="active" onclick="showSec('overview',this)">Overview</button>
-          <button onclick="showSec('centers',this)">Centers &amp; Instincts</button>
-          <button onclick="showSec('strengths',this)">Strengths &amp; Gaps</button>
-          <button onclick="showSec('leadership',this)">Leadership</button>
-          <button onclick="showSec('communication',this)">Communication</button>
-          <button onclick="showSec('strain',this)">Strain Profile</button>
-          <button onclick="showSec('integration',this)">Integration</button>
-          <button onclick="showSec('growth',this)">Growth Path</button>
+          <button class="active" data-sec="overview" onclick="showSec('overview')">Overview</button>
+          <button data-sec="centers" onclick="showSec('centers')">Centers &amp; Instincts</button>
+          <button data-sec="strengths" onclick="showSec('strengths')">Strengths &amp; Gaps</button>
+          <button data-sec="leadership" onclick="showSec('leadership')">Leadership</button>
+          <button data-sec="communication" onclick="showSec('communication')">Communication</button>
+          <button data-sec="strain" onclick="showSec('strain')">Strain Profile</button>
+          <button data-sec="integration" onclick="showSec('integration')">Integration</button>
+          <button data-sec="growth" onclick="showSec('growth')">Growth Path</button>
         </nav>
       </div>
 
@@ -524,7 +562,7 @@ const MASTER_SOURCE_COPY = {
     focus: 'Attention goes to errors, inconsistencies, and what should be improved.',
     motivation1: 'Key motivations: to be right, to improve everything, and to avoid blame or censure.',
     motivation2: 'Growth comes through acceptance, flexibility, and compassionate objectivity.',
-    deepTitle: 'Type 1 Core Pattern (Master Source Synthesis)',
+    deepTitle: 'Type 1 Core Pattern',
     deep: ['Ones are ethically serious and often feel responsible for standards.', 'They seek integrity and self-control to avoid being wrong or out of line.', 'Their gift is principled reform grounded in realism, discipline, and fairness.', 'Their growth edge is releasing rigid self-judgment and relaxing into humanity.'],
     meta: 'Let us do what is right and responsible.'
   },
@@ -539,7 +577,7 @@ const MASTER_SOURCE_COPY = {
     focus: 'Attention goes to other people needs, moods, and opportunities to help.',
     motivation1: 'Key motivations: to be loved, to feel needed, and to avoid acknowledging personal need.',
     motivation2: 'Growth comes through humility, boundaries, and direct expression of one own needs.',
-    deepTitle: 'Type 2 Core Pattern (Master Source Synthesis)',
+    deepTitle: 'Type 2 Core Pattern',
     deep: ['Twos orient to relationship, warmth, and emotional support.', 'They often anticipate others needs before their own.', 'Their gift is heartfelt generosity that builds belonging and trust.', 'Their growth edge is receiving love without earning it through over-giving.'],
     meta: 'I care, and I want to be close.'
   },
@@ -554,7 +592,7 @@ const MASTER_SOURCE_COPY = {
     focus: 'Attention goes to goals, metrics, status signals, and what works quickly.',
     motivation1: 'Key motivations: to be admired, to distinguish oneself, and to avoid failure.',
     motivation2: 'Growth comes through truthfulness, inner stillness, and heart-level authenticity.',
-    deepTitle: 'Type 3 Core Pattern (Master Source Synthesis)',
+    deepTitle: 'Type 3 Core Pattern',
     deep: ['Threes are adaptive, goal-focused, and highly productive.', 'They intuit social expectations and optimize for results.', 'Their gift is turning vision into measurable progress.', 'Their growth edge is valuing being over constant doing.'],
     meta: 'Let us make this excellent and effective.'
   },
@@ -569,7 +607,7 @@ const MASTER_SOURCE_COPY = {
     focus: 'Attention goes to emotional nuance, longing, and the search for meaning.',
     motivation1: 'Key motivations: to find themselves, to be authentic, and to avoid ordinariness.',
     motivation2: 'Growth comes through grounded presence, gratitude, and disciplined creativity.',
-    deepTitle: 'Type 4 Core Pattern (Master Source Synthesis)',
+    deepTitle: 'Type 4 Core Pattern',
     deep: ['Fours seek identity through emotional depth and personal meaning.', 'They are sensitive to atmosphere, aesthetics, and symbolic significance.', 'Their gift is transforming feeling into artistry and empathy.', 'Their growth edge is steady action beyond mood and comparison.'],
     meta: 'I want what is real, meaningful, and true.'
   },
@@ -584,7 +622,7 @@ const MASTER_SOURCE_COPY = {
     focus: 'Attention goes to complexity, systems, and conserving inner resources.',
     motivation1: 'Key motivations: to master knowledge, to remain independent, and to avoid depletion.',
     motivation2: 'Growth comes through embodied participation, generosity, and trusting engagement.',
-    deepTitle: 'Type 5 Core Pattern (Master Source Synthesis)',
+    deepTitle: 'Type 5 Core Pattern',
     deep: ['Fives seek security through knowledge, insight, and self-sufficiency.', 'They prefer depth and precision over superficial interaction.', 'Their gift is lucid analysis and original synthesis.', 'Their growth edge is entering life before certainty is complete.'],
     meta: 'Give me space to observe and understand.'
   },
@@ -599,7 +637,7 @@ const MASTER_SOURCE_COPY = {
     focus: 'Attention goes to uncertainty, contingencies, loyalties, and worst-case scenarios.',
     motivation1: 'Key motivations: to have security, to find certainty, and to avoid being unprepared.',
     motivation2: 'Growth comes through inner authority, grounded trust, and lived courage.',
-    deepTitle: 'Type 6 Core Pattern (Master Source Synthesis)',
+    deepTitle: 'Type 6 Core Pattern',
     deep: ['Sixes seek reliable support in an uncertain world.', 'They test systems and people to establish trustworthiness.', 'Their gift is foresight, loyalty, and practical courage.', 'Their growth edge is acting from inner confidence instead of fear loops.'],
     meta: 'Let us test this so we can trust it.'
   },
@@ -614,7 +652,7 @@ const MASTER_SOURCE_COPY = {
     focus: 'Attention goes to options, opportunities, and positive future scenarios.',
     motivation1: 'Key motivations: to maintain freedom, to keep options open, and to avoid suffering.',
     motivation2: 'Growth comes through sobriety, presence, and sustained commitment.',
-    deepTitle: 'Type 7 Core Pattern (Master Source Synthesis)',
+    deepTitle: 'Type 7 Core Pattern',
     deep: ['Sevens seek freedom through possibility and positive anticipation.', 'They reframe quickly and generate alternatives under pressure.', 'Their gift is optimism, innovation, and momentum.', 'Their growth edge is staying with difficulty long enough to integrate it.'],
     meta: 'Let us keep possibility open and stay energized.'
   },
@@ -629,7 +667,7 @@ const MASTER_SOURCE_COPY = {
     focus: 'Attention goes to power, control, vulnerability, and immediate impact.',
     motivation1: 'Key motivations: to be independent, to avoid weakness, and to protect their people.',
     motivation2: 'Growth comes through restraint, tenderness, and conscious use of power.',
-    deepTitle: 'Type 8 Core Pattern (Master Source Synthesis)',
+    deepTitle: 'Type 8 Core Pattern',
     deep: ['Eights seek autonomy and resist being controlled by others.', 'They move quickly, speak directly, and challenge what feels false or unjust.', 'Their gift is courageous leadership and fierce protection of the vulnerable.', 'Their growth edge is integrating softness without losing strength.'],
     meta: 'Be direct and honest; no games.'
   },
@@ -644,7 +682,7 @@ const MASTER_SOURCE_COPY = {
     focus: 'Attention goes to harmony, comfort, and minimizing tension.',
     motivation1: 'Key motivations: to maintain peace, to avoid conflict, and to keep connection.',
     motivation2: 'Growth comes through prioritizing one own agenda with clear and timely action.',
-    deepTitle: 'Type 9 Core Pattern (Master Source Synthesis)',
+    deepTitle: 'Type 9 Core Pattern',
     deep: ['Nines seek wholeness and stability by reducing conflict.', 'They naturally hold multiple perspectives and mediate tension.', 'Their gift is calm presence that helps others regulate.', 'Their growth edge is active engagement and strong personal priorities.'],
     meta: 'Let us keep this calm, connected, and workable.'
   }
@@ -752,11 +790,25 @@ function decorateInterfaceIcons() {
   }
 }
 
-function showSec(id, btn) {
+function showSec(id) {
   document.querySelectorAll('.sec').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.nav button,.mobile-menu-item').forEach(b => b.classList.remove('active'));
   document.getElementById('sec-' + id).classList.add('active');
-  btn.classList.add('active');
+  const navButton = document.querySelector(`.nav button[data-sec="${id}"]`);
+  const mobileButton = document.querySelector(`.mobile-menu-item[data-sec="${id}"]`);
+  if (navButton) navButton.classList.add('active');
+  if (mobileButton) mobileButton.classList.add('active');
+}
+
+function toggleMobileMenu(open) {
+  const drawer = document.getElementById('mobileMenu');
+  const overlay = document.getElementById('mobileMenuOverlay');
+  if (!drawer || !overlay) return;
+
+  drawer.classList.toggle('open', open);
+  overlay.classList.toggle('show', open);
+  drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+  document.body.style.overflow = open ? 'hidden' : '';
 }
 
 let refCat = 'leadership';
