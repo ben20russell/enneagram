@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Enneagram Example Report</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -14,20 +14,23 @@
   --border:#d6e2ef;--border2:#b8cae0;
   --red:#d63864;--red-lt:#ffeef3;--gold:#9b6a16;--gold-lt:#fff7e8;
   --green:#0f9e83;--green-lt:#e9f8f4;--blue:#0a66d8;--blue-lt:#ebf4ff;
-  --text:#10223d;--text2:#36506f;--text3:#6f87a3;--r:14px;--r-sm:10px;--sidebar:320px;
+  --text:#10223d;--text2:#36506f;--text3:#5d7694;--r:14px;--r-sm:10px;--sidebar:320px;
+  --font-sans:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+  --font-display:'Space Grotesk','Plus Jakarta Sans',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace;
 }
-body{background:radial-gradient(circle at 5% 0%,#f7fbff 0,#eef4fb 44%,#e9f1fb 100%);color:var(--text);font-family:'Manrope',sans-serif;font-size:15px;line-height:1.6;min-height:100vh}
+body{background:radial-gradient(circle at 5% 0%,#f7fbff 0,#eef4fb 44%,#e9f1fb 100%);color:var(--text);font-family:var(--font-sans);font-size:15px;line-height:1.6;min-height:100vh}
 .page{max-width:1340px;margin:0 auto;padding:26px 24px 80px}
 .header{padding:26px 30px;margin-bottom:18px;border:1px solid var(--border);border-radius:20px;background:linear-gradient(155deg,#ffffff 0,#f6fbff 100%);box-shadow:0 12px 32px rgba(15,37,64,.08)}
 .report-switch{display:flex;align-items:center;gap:8px;margin-left:auto}
 .report-switch-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)}
-.report-switch-select{border:1px solid var(--border2);border-radius:10px;background:#fff;color:var(--text);padding:6px 10px;font:600 12px 'Manrope',sans-serif;outline:none}
+.report-switch-select{border:1px solid var(--border2);border-radius:10px;background:#fff;color:var(--text);padding:6px 10px;font:600 12px var(--font-sans);outline:none}
 .report-switch-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,102,216,.12)}
 .eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .e8-circle{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#0f9e83,#0a66d8);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:#fff;box-shadow:0 6px 16px rgba(10,102,216,.35)}
 .eyebrow-text{font-size:12px;font-weight:500;color:var(--text3);letter-spacing:.06em;text-transform:uppercase}
-h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-height:1.03;margin-bottom:10px}
-.header-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace}
+h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:700;letter-spacing:-.03em;line-height:1.03;margin-bottom:10px}
+.header-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text3);font-family:var(--font-mono)}
 .hdot{color:var(--surface3)}
 .body-grid{display:block}
 .sidebar-col{position:fixed;right:22px;bottom:22px;z-index:50;width:min(360px,calc(100vw - 24px))}
@@ -36,7 +39,7 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
 .nav-wrap{border:1px solid var(--border);border-radius:14px;padding:6px;background:rgba(255,255,255,.86);overflow-x:auto;scrollbar-width:none;margin-bottom:22px;box-shadow:0 6px 20px rgba(17,42,75,.06)}
 .nav-wrap::-webkit-scrollbar{display:none}
 .nav{display:flex;gap:6px;padding:0}
-.nav button{background:transparent;border:none;border-radius:10px;padding:10px 14px;font:600 12px 'Manrope',sans-serif;color:var(--text3);cursor:pointer;transition:.18s;white-space:nowrap}
+.nav button{background:transparent;border:none;border-radius:10px;padding:10px 14px;font:600 12px var(--font-sans);color:var(--text3);cursor:pointer;transition:.18s;white-space:nowrap}
 .nav button:hover{color:var(--text2)}
 .nav button.active{color:#fff;background:linear-gradient(135deg,#0a66d8,#0f9e83)}
 .nav button .nav-icon{display:inline-flex;vertical-align:middle;margin-right:8px;opacity:.92}
@@ -72,20 +75,20 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
 .sb-refresh,.sb-min{background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center}
 .sb-refresh:hover,.sb-min:hover{color:var(--blue)}
 .sb-cats{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border)}
-.sb-cat{background:#fff;border:1px solid var(--border2);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--text3);cursor:pointer;font-family:'Manrope',sans-serif}
+.sb-cat{background:#fff;border:1px solid var(--border2);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--text3);cursor:pointer;font-family:var(--font-sans)}
 .sb-cat.active{background:var(--blue);border-color:var(--blue);color:#fff}
 .sb-body{padding:14px}
 .sb-tip{font-size:13px;line-height:1.7;color:var(--text)}
 .sb-meta{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}
 .sb-tag{font-size:10px;color:var(--text3);background:var(--surface2);padding:2px 8px;border-radius:999px}
-.reflection-launcher{position:fixed;right:22px;bottom:22px;z-index:51;border:none;border-radius:999px;background:linear-gradient(135deg,#0a66d8,#0f9e83);color:#fff;padding:10px 14px;font:600 12px 'Manrope',sans-serif;display:none;align-items:center;gap:8px;box-shadow:0 12px 30px rgba(10,102,216,.35);cursor:pointer}
+.reflection-launcher{position:fixed;right:22px;bottom:22px;z-index:51;border:none;border-radius:999px;background:linear-gradient(135deg,#0a66d8,#0f9e83);color:#fff;padding:10px 14px;font:600 12px var(--font-sans);display:none;align-items:center;gap:8px;box-shadow:0 12px 30px rgba(10,102,216,.35);cursor:pointer}
 .reflection-launcher:hover{filter:brightness(1.04)}
 .sidebar-col.minimized{display:none}
 .sidebar-col.minimized+.reflection-launcher{display:inline-flex}
 @media(max-width:900px){.reflection-launcher{right:12px;bottom:12px}}
 .chart-wrap{position:relative;width:100%}
 .footer-note{font-size:11px;color:var(--text3);margin-top:10px}
-.site-footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--border2);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);font-family:'IBM Plex Mono',monospace;text-align:center}
+.site-footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--border2);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);font-family:var(--font-mono);text-align:center}
 </style>
 </head>
 <body>
@@ -168,7 +171,7 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
             <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="focusValue"><strong style="color:var(--text)">Focus of Attention:</strong> You focus on ensuring that nobody can control you. You pay attention to solutions and results and strive to expand your influence.</p>
             <div style="background:var(--surface2);border-radius:var(--r-sm);padding:12px">
               <div class="kvl">Self-Talk</div>
-              <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-style:italic;color:var(--text)" id="selfTalkValue">I must be in control; I must be strong.</div>
+              <div style="font-family:var(--font-display);font-size:17px;font-weight:600;color:var(--text)" id="selfTalkValue">I must be in control; I must be strong.</div>
             </div>
           </div>
           <div class="card">
@@ -339,7 +342,7 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
             <div class="div"></div>
             <div style="background:var(--surface2);border-radius:var(--r-sm);padding:12px">
               <div class="kvl">Your Meta-Message</div>
-              <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-style:italic;color:var(--text)" id="languageMeta">Be honest and forthright, but don't waste my time.</div>
+              <div style="font-family:var(--font-display);font-size:18px;font-weight:600;color:var(--text)" id="languageMeta">Be honest and forthright, but don't waste my time.</div>
             </div>
           </div>
           <div class="card">
@@ -388,7 +391,7 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
         <div class="g2 mb24">
           <div class="card">
             <div class="ct">Levels of Health and Integration</div>
-            <div style="margin-bottom:14px"><div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:700;color:var(--red)">Low</div><div style="font-size:12px;color:var(--text3)">You are operating at a low level of Enneagram awareness and mastery in this report.</div></div>
+            <div style="margin-bottom:14px"><div style="font-family:var(--font-display);font-size:26px;font-weight:700;color:var(--red)">Low</div><div style="font-size:12px;color:var(--text3)">You are operating at a low level of Enneagram awareness and mastery in this report.</div></div>
             <div class="int-segs"><div class="int-seg act"></div><div class="int-seg"></div><div class="int-seg"></div><div class="int-seg"></div><div class="int-seg"></div></div>
             <div class="int-labels"><span>Very Low ◀</span><span>Low</span><span>Moderate</span><span>High</span><span>Very High</span></div>
             <div class="div"></div>
@@ -415,12 +418,12 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
           <div class="ct">Wing Influence — Types 7 &amp; 9</div>
           <div class="g2">
             <div>
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--gold-lt);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:700;color:var(--gold)">7</div><div><div style="font-size:13px;font-weight:600">Wing 7</div><div style="font-size:11px;color:var(--text3)">Moderate integration</div></div></div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--gold-lt);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--gold)">7</div><div><div style="font-size:13px;font-weight:600">Wing 7</div><div style="font-size:11px;color:var(--text3)">Moderate integration</div></div></div>
               <div class="wing-item">May combine interests in power and experience, making you seem pushy, tough or manipulative.</div>
               <div class="wing-item">At high integration, it helps you lighten up, experiment, and soften intensity.</div>
             </div>
             <div>
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--blue-lt);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:700;color:var(--blue)">9</div><div><div style="font-size:13px;font-weight:600">Wing 9</div><div style="font-size:11px;color:var(--text3)">Moderate integration</div></div></div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--blue-lt);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--blue)">9</div><div><div style="font-size:13px;font-weight:600">Wing 9</div><div style="font-size:11px;color:var(--text3)">Moderate integration</div></div></div>
               <div class="wing-item">May make you calmer than an 8w7, yet still unexpectedly overt in anger.</div>
               <div class="wing-item">At high integration, it increases warmth, empathy, consensus-building and flexibility.</div>
             </div>
@@ -915,8 +918,8 @@ window.addEventListener('load', () => {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color:'#9a978f', font: { size: 11 } } },
-          y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color:'#9a978f', font: { size: 11 } }, min: 0, max: 90 }
+          x: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color:'#7b8ea4', font: { size: 11 } } },
+          y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color:'#7b8ea4', font: { size: 11 } }, min: 0, max: 90 }
         }
       }
     });
@@ -947,7 +950,7 @@ window.addEventListener('load', () => {
             grid: { color: 'rgba(0,0,0,0.07)' },
             angleLines: { color: 'rgba(0,0,0,0.07)' },
             ticks: { display: false },
-            pointLabels: { color: '#52504a', font: { size: 11 } }
+            pointLabels: { color: '#4f647e', font: { size: 11 } }
           }
         }
       }
