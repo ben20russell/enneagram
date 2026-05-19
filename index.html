@@ -18,7 +18,11 @@
 }
 body{background:radial-gradient(circle at 5% 0%,#f7fbff 0,#eef4fb 44%,#e9f1fb 100%);color:var(--text);font-family:'Manrope',sans-serif;font-size:15px;line-height:1.6;min-height:100vh}
 .page{max-width:1340px;margin:0 auto;padding:26px 24px 80px}
-.header{padding:26px 30px;margin-bottom:18px;border:1px solid var(--border);border-radius:20px;background:linear-gradient(155deg,#ffffff 0,#f6fbff 100%);box-shadow:0 12px 32px rgba(15,37,64,.08)}
+.header{padding:26px 30px;margin-bottom:18px;border:1px solid var(--border);border-radius:20px;background:linear-gradient(155deg,#ffffff 0,#f6fbff 100%);box-shadow:0 12px 32px rgba(15,37,64,.08);position:relative}
+.report-switch{position:absolute;top:18px;right:20px;display:flex;align-items:center;gap:8px}
+.report-switch-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)}
+.report-switch-select{border:1px solid var(--border2);border-radius:10px;background:#fff;color:var(--text);padding:6px 10px;font:600 12px 'Manrope',sans-serif;outline:none}
+.report-switch-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,102,216,.12)}
 .eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .e8-circle{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#0f9e83,#0a66d8);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:#fff;box-shadow:0 6px 16px rgba(10,102,216,.35)}
 .eyebrow-text{font-size:12px;font-weight:500;color:var(--text3);letter-spacing:.06em;text-transform:uppercase}
@@ -28,6 +32,7 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
 .body-grid{display:block}
 .sidebar-col{position:fixed;right:22px;bottom:22px;z-index:50;width:min(360px,calc(100vw - 24px))}
 @media(max-width:900px){.sidebar-col{right:12px;bottom:12px;width:min(360px,calc(100vw - 16px))}}
+@media(max-width:760px){.report-switch{position:static;margin-bottom:10px;justify-content:flex-end}}
 .nav-wrap{border:1px solid var(--border);border-radius:14px;padding:6px;background:rgba(255,255,255,.86);overflow-x:auto;scrollbar-width:none;margin-bottom:22px;box-shadow:0 6px 20px rgba(17,42,75,.06)}
 .nav-wrap::-webkit-scrollbar{display:none}
 .nav{display:flex;gap:6px;padding:0}
@@ -90,11 +95,25 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
 <body>
 <div class="page">
   <div class="header">
-    <div class="eyebrow">
-      <div class="e8-circle">8</div>
-      <span class="eyebrow-text">Active Controller · SX Subtype · Keyword: Possession</span>
+    <div class="report-switch">
+      <label class="report-switch-label" for="reportSelector">Example Report</label>
+      <select class="report-switch-select" id="reportSelector" data-testid="report-selector">
+        <option value="1">Type 1 — Reformer</option>
+        <option value="2">Type 2 — Helper</option>
+        <option value="3">Type 3 — Achiever</option>
+        <option value="4">Type 4 — Individualist</option>
+        <option value="5">Type 5 — Investigator</option>
+        <option value="6">Type 6 — Loyalist</option>
+        <option value="7">Type 7 — Enthusiast</option>
+        <option value="8" selected>Type 8 — Challenger</option>
+        <option value="9">Type 9 — Peacemaker</option>
+      </select>
     </div>
-    <h1>Ben Russell</h1>
+    <div class="eyebrow">
+      <div class="e8-circle" id="typeBadge" data-testid="type-badge">8</div>
+      <span class="eyebrow-text" id="headerSubtitle" data-testid="header-subtitle">Active Controller · SX Subtype · Keyword: Possession</span>
+    </div>
+    <h1 id="reportTitle" data-testid="report-title">Type 8 Example Report</h1>
     <div class="header-meta">
       <span>iEQ9 Individual Professional Report</span>
     </div>
@@ -121,60 +140,60 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
           <div class="card">
             <div class="ct">Core Identity</div>
             <div class="kv-grid mb16">
-              <div><div class="kvl">Main Type</div><div class="kvv red">8 — Active Controller</div></div>
-              <div><div class="kvl">Dominant Instinct</div><div class="kvv gold">SX — One-on-One</div></div>
-              <div><div class="kvl">Subtype Keyword</div><div class="kvv">Possession</div></div>
-              <div><div class="kvl">Release Line</div><div class="kvv green">Type 2 · Considerate Helper</div></div>
-              <div><div class="kvl">Stretch Line</div><div class="kvv">Type 5 · Quiet Specialist</div></div>
-              <div><div class="kvl">Integration Level</div><div class="kvv red">Low (CC Report: Moderate)</div></div>
+              <div><div class="kvl">Main Type</div><div class="kvv red" id="mainTypeValue" data-testid="main-type">8 — Active Controller</div></div>
+              <div><div class="kvl">Dominant Instinct</div><div class="kvv gold" id="instinctValue">SX — One-on-One</div></div>
+              <div><div class="kvl">Subtype Keyword</div><div class="kvv" id="keywordValue">Possession</div></div>
+              <div><div class="kvl">Release Line</div><div class="kvv green" id="releaseValue">Type 2 · Considerate Helper</div></div>
+              <div><div class="kvl">Stretch Line</div><div class="kvv" id="stretchValue">Type 5 · Quiet Specialist</div></div>
+              <div><div class="kvl">Integration Level</div><div class="kvv red" id="integrationValue">Low (CC Report: Moderate)</div></div>
             </div>
             <div class="div"></div>
-            <div class="quote"><p>“Be honest and forthright, but don't waste my time.”</p></div>
+            <div class="quote"><p id="metaQuote">“Be honest and forthright, but don't waste my time.”</p></div>
             <div class="footer-note">Your meta-message</div>
           </div>
           <div class="card">
             <div class="ct">Enneagram Profile — All 9 Types</div>
             <div class="chart-wrap" style="height:220px"><canvas id="profileChart"></canvas></div>
-            <div class="footer-note">Main — 8 (78) · Release — 2 (71) · Stretch — 5 (56)</div>
+            <div class="footer-note" id="profileFooter">Main — 8 (78) · Release — 2 (71) · Stretch — 5 (56)</div>
           </div>
         </div>
 
         <div class="g3 mb24">
-          <div class="card"><div class="ct">Core Fear</div><p style="font-size:14px;color:var(--text2)">Helplessness or vulnerability. Total weakness. Being controlled by others.</p></div>
-          <div class="card"><div class="ct">Gifts</div><p style="font-size:15px;color:var(--green);font-weight:600;margin-bottom:6px">Strength, Direction, Aliveness</p><p style="font-size:13px;color:var(--text3)">At your best others experience you as empowering and encouraging.</p></div>
-          <div class="card"><div class="ct">Vice</div><p style="font-size:15px;color:var(--red);font-weight:600;margin-bottom:6px">Lust</p><p style="font-size:13px;color:var(--text3)">An insatiable push for control can lead to excess and make connection harder.</p></div>
+          <div class="card"><div class="ct">Core Fear</div><p style="font-size:14px;color:var(--text2)" id="coreFearValue">Helplessness or vulnerability. Total weakness. Being controlled by others.</p></div>
+          <div class="card"><div class="ct">Gifts</div><p style="font-size:15px;color:var(--green);font-weight:600;margin-bottom:6px" id="giftsTitle">Strength, Direction, Aliveness</p><p style="font-size:13px;color:var(--text3)" id="giftsDesc">At your best others experience you as empowering and encouraging.</p></div>
+          <div class="card"><div class="ct">Vice</div><p style="font-size:15px;color:var(--red);font-weight:600;margin-bottom:6px" id="viceTitle">Lust</p><p style="font-size:13px;color:var(--text3)" id="viceDesc">An insatiable push for control can lead to excess and make connection harder.</p></div>
         </div>
 
         <div class="g2 mb24">
           <div class="card">
             <div class="ct">Worldview &amp; Focus of Attention</div>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:12px"><strong style="color:var(--text)">Worldview:</strong> The world is a tough and unjust place in which only the strong survive. Good things happen to those who take control.</p>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:12px"><strong style="color:var(--text)">Focus of Attention:</strong> You focus on ensuring that nobody can control you. You pay attention to solutions and results and strive to expand your influence.</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="worldviewValue"><strong style="color:var(--text)">Worldview:</strong> The world is a tough and unjust place in which only the strong survive. Good things happen to those who take control.</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="focusValue"><strong style="color:var(--text)">Focus of Attention:</strong> You focus on ensuring that nobody can control you. You pay attention to solutions and results and strive to expand your influence.</p>
             <div style="background:var(--surface2);border-radius:var(--r-sm);padding:12px">
               <div class="kvl">Self-Talk</div>
-              <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-style:italic;color:var(--text)">I must be in control; I must be strong.</div>
+              <div style="font-family:'Cormorant Garamond',serif;font-size:17px;font-style:italic;color:var(--text)" id="selfTalkValue">I must be in control; I must be strong.</div>
             </div>
           </div>
           <div class="card">
             <div class="ct">Motivation</div>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:12px">This style stems from the need to be strong and avoid vulnerability. Being direct, impactful, and justice-minded is central to how you move through the world.</p>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:12px">At your best you are empowering and encouraging. At your worst you can be experienced as domineering, aggressive, and unstoppable.</p>
-            <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="motivationLine1">This style stems from the need to be strong and avoid vulnerability. Being direct, impactful, and justice-minded is central to how you move through the world.</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="motivationLine2">At your best you are empowering and encouraging. At your worst you can be experienced as domineering, aggressive, and unstoppable.</p>
+            <div style="display:flex;gap:7px;flex-wrap:wrap" id="traitChips">
               <span class="chip cgn">Assertive</span><span class="chip cgn">Decisive</span><span class="chip cgn">Protective</span><span class="chip cgn">Independent</span><span class="chip cgn">Influential</span>
             </div>
           </div>
         </div>
 
         <div class="card mb24">
-          <div class="ct">A Deeper Understanding of the SX — 8</div>
+          <div class="ct" id="deepTitle">A Deeper Understanding of the SX — 8</div>
           <div class="g2">
             <div>
-              <p style="font-size:14px;color:var(--text2);margin-bottom:10px">You are passionate, intense and charismatic, with great personal magnetism. When you go after a goal or ideal you tend to have a big impact on the environment.</p>
-              <p style="font-size:14px;color:var(--text2);margin-bottom:10px">You may act impulsively and provocatively, standing out as a rebel or trail blazer. Material things do not particularly interest you as much as power, attention, and influence.</p>
+              <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="deepP1">You are passionate, intense and charismatic, with great personal magnetism. When you go after a goal or ideal you tend to have a big impact on the environment.</p>
+              <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="deepP2">You may act impulsively and provocatively, standing out as a rebel or trail blazer. Material things do not particularly interest you as much as power, attention, and influence.</p>
             </div>
             <div>
-              <p style="font-size:14px;color:var(--text2);margin-bottom:10px">You collect a small group of trusted people around you and are a loyal, reliable and protective friend.</p>
-              <p style="font-size:14px;color:var(--text2)">On some level you are seeking a true equal — someone who can offer you the guidance, protection and challenge that you give to others.</p>
+              <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="deepP3">You collect a small group of trusted people around you and are a loyal, reliable and protective friend.</p>
+              <p style="font-size:14px;color:var(--text2)" id="deepP4">On some level you are seeking a true equal — someone who can offer you the guidance, protection and challenge that you give to others.</p>
             </div>
           </div>
         </div>
@@ -316,14 +335,14 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
       <div id="sec-communication" class="sec">
         <div class="g2 mb24">
           <div class="card">
-            <div class="ct">The Language of the Ennea 8</div>
+            <div class="ct" id="languageTitle">The Language of the Ennea 8</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
               <span class="chip cx">Strong nouns and verbs</span><span class="chip cx">Direct and forthright</span><span class="chip cx">Say “no” first and “yes” later</span><span class="chip cx">Express certainty</span><span class="chip cx">Tell, sell, yell</span><span class="chip cx">May lack variation</span>
             </div>
             <div class="div"></div>
             <div style="background:var(--surface2);border-radius:var(--r-sm);padding:12px">
               <div class="kvl">Your Meta-Message</div>
-              <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-style:italic;color:var(--text)">Be honest and forthright, but don't waste my time.</div>
+              <div style="font-family:'Cormorant Garamond',serif;font-size:18px;font-style:italic;color:var(--text)" id="languageMeta">Be honest and forthright, but don't waste my time.</div>
             </div>
           </div>
           <div class="card">
@@ -520,7 +539,7 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
           <div id="refCard"><p class="sb-tip">Loading reflection…</p></div>
           <div id="refMeta" class="sb-meta">
             <span class="sb-tag" id="refCatTag">Leadership</span>
-            <span class="sb-tag">Type 8 · SX</span>
+            <span class="sb-tag" id="refTypeTag" data-testid="reflection-type-tag">Type 8 · SX</span>
           </div>
         </div>
       </div>
@@ -535,21 +554,23 @@ h1{font-size:clamp(30px,4vw,46px);font-weight:800;letter-spacing:-.035em;line-he
 </div>
 
 <script>
-const REPORT = {
-  coreType: '8 — Active Controller',
-  instinct: 'SX — One-on-One',
-  keyword: 'Possession',
-  release: 'Type 2 · Considerate Helper',
-  stretch: 'Type 5 · Quiet Specialist',
-  integration: 'Low',
-  meta: "Be honest and forthright, but don't waste my time.",
-  strengths: ['strength', 'direction', 'aliveness'],
-  dominantCenter: 'Action Center',
-  weakestCenter: 'Thinking Center',
-  thinkingStyle: 'Internalised',
-  conflictStyle: 'Reactive',
-  scores: { profile:[78,13,50,71,43,46,56,53,50], strain:[46,33,26,33,6,6] }
+const REPORT_EXAMPLES = {
+  '1': { typeNumber:'1', typeName:'Principled Reformer', instinct:'SO — Social', keyword:'Standards', release:'Type 7 · Joyful Visionary', stretch:'Type 4 · Reflective Individualist', integration:'Moderate', coreFear:'Being wrong, corrupt, or irresponsible.', gifts:'Integrity, Clarity, Discipline', giftsDesc:'At your best you model fairness, restraint, and principled leadership.', vice:'Resentment', viceDesc:'Pressure for perfection can harden into criticism and rigidity.', worldview:'The world improves when people do things correctly and ethically.', focus:'You track errors, inefficiencies, and what needs refinement.', selfTalk:'I must be good, correct, and responsible.', motivation1:'This style is motivated by conscience and improvement.', motivation2:'At your best you are wise and balanced; under strain you can become rigid and judgmental.', traits:['Principled','Orderly','Reliable','High standards','Ethical'], deepTitle:'A Deeper Understanding of the SO — 1', deep:['You channel your energy toward better systems and shared standards.','You often feel responsible for quality, ethics, and process.','People trust your consistency and careful preparation.','Growth comes from pairing standards with patience and self-compassion.'], dominantCenter:'Thinking Center', weakestCenter:'Feeling Center', thinkingStyle:'Externalised', conflictStyle:'Competency', meta:'Let us do this the right way.', profile:[32,46,81,36,41,52,68,39,44], strain:[23,24,27,22,19,31], mainValue:81, releaseValue:44, stretchValue:52 },
+  '2': { typeNumber:'2', typeName:'Caring Helper', instinct:'SX — One-on-One', keyword:'Connection', release:'Type 4 · Sensitive Individualist', stretch:'Type 8 · Protective Challenger', integration:'Moderate', coreFear:'Being unwanted, unloved, or unnecessary.', gifts:'Generosity, Warmth, Support', giftsDesc:'At your best you are emotionally attuned and deeply encouraging.', vice:'Pride', viceDesc:'Helping can become controlling when needs go unspoken.', worldview:'Love and belonging are built through care and responsiveness.', focus:'You track who needs support and where connection is weakening.', selfTalk:'I must be needed to be loved.', motivation1:'This style is driven by the desire to be valuable through care.', motivation2:'At your best you serve freely; under strain you over-give and feel unappreciated.', traits:['Supportive','Relational','Warm','Encouraging','Loyal'], deepTitle:'A Deeper Understanding of the SX — 2', deep:['You bring intensity, affection, and devotion to close relationships.','You can be highly intuitive about others emotional states.','Your strength is creating belonging and momentum through care.','Growth comes from naming your own needs directly.'], dominantCenter:'Feeling Center', weakestCenter:'Thinking Center', thinkingStyle:'Internalised', conflictStyle:'Compliant', meta:'I see you and I can help.', profile:[45,35,38,79,48,61,33,42,36], strain:[29,21,31,24,20,28], mainValue:79, releaseValue:61, stretchValue:45 },
+  '3': { typeNumber:'3', typeName:'Driven Achiever', instinct:'SO — Social', keyword:'Image', release:'Type 6 · Loyal Strategist', stretch:'Type 9 · Grounded Peacemaker', integration:'Moderate', coreFear:'Failure, worthlessness, or being seen as ineffective.', gifts:'Drive, Adaptability, Results', giftsDesc:'At your best you inspire confidence and execute with precision.', vice:'Deceit', viceDesc:'Over-identifying with performance can disconnect you from authenticity.', worldview:'Success creates safety, influence, and opportunity.', focus:'You track goals, outcomes, and signals of effectiveness.', selfTalk:'I must succeed to be valued.', motivation1:'This style is energized by achievement and visible progress.', motivation2:'At your best you are inspiring and efficient; under strain you can become image-driven.', traits:['Efficient','Ambitious','Polished','Focused','Pragmatic'], deepTitle:'A Deeper Understanding of the SO — 3', deep:['You read social context quickly and align to what works.','You naturally convert strategy into measurable outcomes.','Others often trust your confidence and momentum.','Growth comes from anchoring identity in truth, not output alone.'], dominantCenter:'Feeling Center', weakestCenter:'Action Center', thinkingStyle:'Externalised', conflictStyle:'Competency', meta:'Lets win, then iterate.', profile:[39,42,37,41,83,47,36,64,58], strain:[34,27,25,29,17,26], mainValue:83, releaseValue:64, stretchValue:58 },
+  '4': { typeNumber:'4', typeName:'Reflective Individualist', instinct:'SP — Self-Preservation', keyword:'Identity', release:'Type 1 · Principled Reformer', stretch:'Type 2 · Caring Helper', integration:'Low', coreFear:'Having no personal significance or identity.', gifts:'Depth, Creativity, Meaning', giftsDesc:'At your best you bring emotional truth and originality.', vice:'Envy', viceDesc:'Comparison can narrow perspective and drain gratitude.', worldview:'Meaning matters more than appearance or convenience.', focus:'You track emotional nuance, authenticity, and what feels missing.', selfTalk:'I must be true to who I am.', motivation1:'This style seeks significance through depth and authenticity.', motivation2:'At your best you transform pain into insight; under strain you can withdraw and ruminate.', traits:['Creative','Sensitive','Expressive','Introspective','Original'], deepTitle:'A Deeper Understanding of the SP — 4', deep:['You feel deeply yet often carry pain privately.','You strive to build a life that reflects your values and aesthetics.','People value your emotional honesty and perspective.','Growth comes from practicing steadiness and appreciative presence.'], dominantCenter:'Feeling Center', weakestCenter:'Action Center', thinkingStyle:'Internalised', conflictStyle:'Reactive', meta:'See me as I am.', profile:[51,44,57,33,40,84,42,36,34], strain:[41,30,34,28,22,38], mainValue:84, releaseValue:51, stretchValue:33 },
+  '5': { typeNumber:'5', typeName:'Quiet Investigator', instinct:'SP — Self-Preservation', keyword:'Competence', release:'Type 8 · Decisive Challenger', stretch:'Type 7 · Expansive Enthusiast', integration:'Moderate', coreFear:'Being overwhelmed, depleted, or incapable.', gifts:'Insight, Precision, Independence', giftsDesc:'At your best you bring calm clarity and strategic depth.', vice:'Avarice', viceDesc:'Withholding energy can become isolation and over-detachment.', worldview:'Resources are finite, so attention and energy must be protected.', focus:'You track complexity, boundaries, and what is knowable.', selfTalk:'I must conserve energy and understand fully.', motivation1:'This style seeks mastery through knowledge and careful pacing.', motivation2:'At your best you are objective and original; under strain you can retreat too far from people.', traits:['Analytical','Independent','Curious','Focused','Measured'], deepTitle:'A Deeper Understanding of the SP — 5', deep:['You are naturally observant and less reactive under pressure.','You value autonomy, depth, and clear boundaries.','People rely on your expertise and objectivity.','Growth comes from re-engaging before certainty is complete.'], dominantCenter:'Thinking Center', weakestCenter:'Action Center', thinkingStyle:'Internalised', conflictStyle:'Withdrawn', meta:'Give me time to think.', profile:[36,38,48,29,45,53,82,41,67], strain:[25,28,24,21,18,29], mainValue:82, releaseValue:36, stretchValue:67 },
+  '6': { typeNumber:'6', typeName:'Committed Loyalist', instinct:'SO — Social', keyword:'Security', release:'Type 9 · Steady Peacemaker', stretch:'Type 3 · Effective Achiever', integration:'Moderate', coreFear:'Lack of support, guidance, or certainty.', gifts:'Loyalty, Preparedness, Courage', giftsDesc:'At your best you are brave, grounded, and reliable under pressure.', vice:'Anxiety', viceDesc:'Threat scanning can become overthinking and self-doubt.', worldview:'The world is uncertain, so trust must be tested and built.', focus:'You track risk, motives, and contingency plans.', selfTalk:'I must be prepared and stay loyal to what is trustworthy.', motivation1:'This style seeks stability through foresight and commitment.', motivation2:'At your best you are courageous and collaborative; under strain you can become suspicious or indecisive.', traits:['Loyal','Prepared','Practical','Responsible','Questioning'], deepTitle:'A Deeper Understanding of the SO — 6', deep:['You balance skepticism with commitment to people and systems.','You ask clarifying questions others avoid.','Teams value your foresight and reliability in uncertainty.','Growth comes from trusting your inner authority alongside external guidance.'], dominantCenter:'Thinking Center', weakestCenter:'Action Center', thinkingStyle:'Externalised', conflictStyle:'Reactive', meta:'Lets pressure-test this first.', profile:[44,41,35,39,62,43,45,81,47], strain:[33,26,29,31,24,35], mainValue:81, releaseValue:47, stretchValue:62 },
+  '7': { typeNumber:'7', typeName:'Energetic Enthusiast', instinct:'SX — One-on-One', keyword:'Possibility', release:'Type 5 · Quiet Investigator', stretch:'Type 1 · Principled Reformer', integration:'High', coreFear:'Being trapped in pain, boredom, or limitation.', gifts:'Optimism, Vision, Agility', giftsDesc:'At your best you generate options and energize momentum.', vice:'Gluttony', viceDesc:'Over-scattering can dilute follow-through and depth.', worldview:'Life is full of opportunities that should be explored.', focus:'You track possibility, variety, and future options.', selfTalk:'I must stay free and keep moving.', motivation1:'This style is driven by freedom, stimulation, and anticipation.', motivation2:'At your best you are joyful and inventive; under strain you avoid discomfort and over-commit.', traits:['Optimistic','Fast-moving','Innovative','Spontaneous','Future-focused'], deepTitle:'A Deeper Understanding of the SX — 7', deep:['You bring charisma and contagious energy to one-on-one bonds.','You can reframe setbacks quickly and create alternatives.','People often feel uplifted and expanded around you.','Growth comes from staying present with discomfort instead of escaping it.'], dominantCenter:'Thinking Center', weakestCenter:'Feeling Center', thinkingStyle:'Externalised', conflictStyle:'Assertive', meta:'Keep it moving.', profile:[47,61,42,36,48,37,56,44,84], strain:[18,19,22,23,15,17], mainValue:84, releaseValue:56, stretchValue:47 },
+  '8': { typeNumber:'8', typeName:'Active Controller', instinct:'SX — One-on-One', keyword:'Possession', release:'Type 2 · Considerate Helper', stretch:'Type 5 · Quiet Specialist', integration:'Low', coreFear:'Helplessness or vulnerability. Total weakness. Being controlled by others.', gifts:'Strength, Direction, Aliveness', giftsDesc:'At your best others experience you as empowering and encouraging.', vice:'Lust', viceDesc:'An insatiable push for control can lead to excess and make connection harder.', worldview:'The world is a tough and unjust place in which only the strong survive. Good things happen to those who take control.', focus:'You focus on ensuring that nobody can control you. You pay attention to solutions and results and strive to expand your influence.', selfTalk:'I must be in control; I must be strong.', motivation1:'This style stems from the need to be strong and avoid vulnerability. Being direct, impactful, and justice-minded is central to how you move through the world.', motivation2:'At your best you are empowering and encouraging. At your worst you can be experienced as domineering, aggressive, and unstoppable.', traits:['Assertive','Decisive','Protective','Independent','Influential'], deepTitle:'A Deeper Understanding of the SX — 8', deep:['You are passionate, intense and charismatic, with great personal magnetism. When you go after a goal or ideal you tend to have a big impact on the environment.','You may act impulsively and provocatively, standing out as a rebel or trail blazer. Material things do not particularly interest you as much as power, attention, and influence.','You collect a small group of trusted people around you and are a loyal, reliable and protective friend.','On some level you are seeking a true equal - someone who can offer you the guidance, protection and challenge that you give to others.'], dominantCenter:'Action Center', weakestCenter:'Thinking Center', thinkingStyle:'Internalised', conflictStyle:'Reactive', meta:"Be honest and forthright, but don't waste my time.", profile:[78,13,50,71,43,46,56,53,50], strain:[46,33,26,33,6,6], mainValue:78, releaseValue:71, stretchValue:56 },
+  '9': { typeNumber:'9', typeName:'Steady Peacemaker', instinct:'SP — Self-Preservation', keyword:'Harmony', release:'Type 3 · Effective Achiever', stretch:'Type 6 · Committed Loyalist', integration:'High', coreFear:'Loss of connection, conflict, or inner fragmentation.', gifts:'Calm, Inclusion, Stability', giftsDesc:'At your best you create trust, unity, and balanced perspective.', vice:'Sloth', viceDesc:'Inertia can delay priorities and mute your true voice.', worldview:'Peace and continuity are protected through patience and inclusion.', focus:'You track interpersonal atmosphere and what keeps things settled.', selfTalk:'I must keep the peace and stay connected.', motivation1:'This style seeks harmony, comfort, and relational continuity.', motivation2:'At your best you are grounding and wise; under strain you avoid conflict and postpone action.', traits:['Calm','Diplomatic','Patient','Inclusive','Steady'], deepTitle:'A Deeper Understanding of the SP — 9', deep:['You create a calm field that helps others regulate and collaborate.','You are skilled at seeing multiple perspectives without escalating tension.','People trust your steadiness and fairness under stress.','Growth comes from prioritizing your agenda with clear, timely action.'], dominantCenter:'Action Center', weakestCenter:'Thinking Center', thinkingStyle:'Internalised', conflictStyle:'Withdrawn', meta:'Lets keep this grounded and workable.', profile:[49,77,46,42,39,44,41,66,37], strain:[20,22,24,21,16,19], mainValue:77, releaseValue:42, stretchValue:66 }
 };
+
+let REPORT = REPORT_EXAMPLES['8'];
+let profileChart;
+let strainChart;
+let reflectionDeck = {};
+const PROFILE_TYPE_ORDER = ['8', '9', '1', '2', '3', '4', '5', '6', '7'];
 
 function iconSvg(name, size = 14, color = 'currentColor') {
   const common = `width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"`;
@@ -659,38 +680,127 @@ function showSec(id, btn) {
 
 let refCat = 'leadership';
 const refCatLabels = {leadership:'Leadership',relationships:'Relationships',regulation:'Self-Regulation',growth:'Growth',wellbeing:'Wellbeing'};
-const reflectionDeck = {
-  leadership: [
-    'Your goals are likely to be clear and linked to challenges, but people may also feel overwhelmed by the force and certainty behind them. Today, slow down long enough to check whether alignment is real or merely compliance.',
-    'Directing action toward the vision is one of your natural gifts. The growth edge is to collaborate before the end product is already decided in your mind.'
-  ],
-  relationships: [
-    'You are loyal, protective, and intense in close relationships, but your presence can become so strong that others feel dominated or dependent. Make room today for a true equal rather than a dependent ally.',
-    'The SX instinct wants depth, intensity, and one-to-one loyalty. Ask where your force of personality is building connection and where it may be crowding it out.'
-  ],
-  regulation: [
-    'Your reaction is likely to be strongly driven by an instinctive and physical response. When anger rises, pausing before action is not weakness — it is mastery.',
-    'Low integration can make retaliation feel justified in the moment. Today, notice the first surge and choose regulation before escalation.'
-  ],
-  growth: [
-    'Your release line at Type 2 asks you to identify the positive traits you appreciate in others, especially the people who irritate you most. Giving people an “A” can release tension faster than pushing harder.',
-    'Your development journey begins with the realisation that you do not have to be powerful to be worthy of love and respect. Let that be the experiment for today.'
-  ],
-  wellbeing: [
-    'There is always one more thing demanding your attention before self-care happens. Notice that pattern today, because self-neglect keeps reactivity closer to the surface.',
-    'The more you take care of your physical health, the less emotionally reactive you are likely to be. Recovery is part of your strength, not a break from it.'
-  ]
-};
+
+function currentCoreTypeLabel() {
+  return `${REPORT.typeNumber} — ${REPORT.typeName}`;
+}
+
+function getLineTypeNumber(line) {
+  const match = line.match(/Type (\d)/);
+  return match ? match[1] : '';
+}
+
+function setText(id, value) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.textContent = value;
+}
+
+function buildReflectionDeck(report) {
+  return {
+    leadership: [
+      `As a Type ${report.typeNumber}, your leadership edge is balancing your natural gift (${report.gifts.split(',')[0]}) with deliberate pacing and inclusion.`,
+      `In your next high-stakes meeting, pair your ${report.typeName.toLowerCase()} strengths with one explicit check-in question before deciding.`
+    ],
+    relationships: [
+      `Your ${report.instinct} pattern is likely to shape how quickly you seek closeness and trust. Notice whether that pace works for others.`,
+      `Today, practice communicating your need directly instead of expecting people to infer it from your style.`
+    ],
+    regulation: [
+      `When pressure rises, your Type ${report.typeNumber} strategy can overfire. Pause, name the signal in your body, and choose your response.`,
+      `A 90-second reset can prevent a full reactivity cycle and preserve connection.`
+    ],
+    growth: [
+      `Your growth stretch includes integrating lessons from ${report.release} and balancing strain from ${report.stretch}.`,
+      `Pick one small behavior this week that reflects your high-integration ${report.typeName.toLowerCase()} self.`
+    ],
+    wellbeing: [
+      `Your system works best when recovery is planned, not optional. Add one non-negotiable reset block to your calendar.`,
+      `Sustainable performance for Type ${report.typeNumber} means rhythm: effort, pause, reflect, then re-engage.`
+    ]
+  };
+}
+
+function updateCharts() {
+  if (profileChart) {
+    profileChart.data.datasets[0].data = REPORT.profile;
+    profileChart.data.datasets[0].backgroundColor = ['#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8'];
+    const mainIndex = PROFILE_TYPE_ORDER.indexOf(REPORT.typeNumber);
+    const releaseIndex = PROFILE_TYPE_ORDER.indexOf(getLineTypeNumber(REPORT.release));
+    const stretchIndex = PROFILE_TYPE_ORDER.indexOf(getLineTypeNumber(REPORT.stretch));
+    if (mainIndex >= 0) profileChart.data.datasets[0].backgroundColor[mainIndex] = '#b02c34';
+    if (releaseIndex >= 0) profileChart.data.datasets[0].backgroundColor[releaseIndex] = '#9a6e1a';
+    if (stretchIndex >= 0) profileChart.data.datasets[0].backgroundColor[stretchIndex] = '#295c87';
+    profileChart.update();
+  }
+
+  if (strainChart) {
+    strainChart.data.datasets[0].data = REPORT.strain;
+    strainChart.update();
+  }
+}
+
+function applyReport(typeId) {
+  try {
+    REPORT = REPORT_EXAMPLES[typeId] || REPORT_EXAMPLES['8'];
+    reflectionDeck = buildReflectionDeck(REPORT);
+    console.log('[report-switch] applying', REPORT.typeNumber, REPORT.typeName);
+
+    setText('typeBadge', REPORT.typeNumber);
+    setText('headerSubtitle', `${REPORT.typeName} · ${REPORT.instinct} · Keyword: ${REPORT.keyword}`);
+    setText('reportTitle', `Type ${REPORT.typeNumber} Example Report`);
+    setText('mainTypeValue', currentCoreTypeLabel());
+    setText('instinctValue', REPORT.instinct);
+    setText('keywordValue', REPORT.keyword);
+    setText('releaseValue', REPORT.release);
+    setText('stretchValue', REPORT.stretch);
+    setText('integrationValue', REPORT.integration);
+    setText('metaQuote', `"${REPORT.meta}"`);
+    setText('profileFooter', `Main — ${REPORT.typeNumber} (${REPORT.mainValue}) · Release — ${getLineTypeNumber(REPORT.release)} (${REPORT.releaseValue}) · Stretch — ${getLineTypeNumber(REPORT.stretch)} (${REPORT.stretchValue})`);
+    setText('coreFearValue', REPORT.coreFear);
+    setText('giftsTitle', REPORT.gifts);
+    setText('giftsDesc', REPORT.giftsDesc);
+    setText('viceTitle', REPORT.vice);
+    setText('viceDesc', REPORT.viceDesc);
+    document.getElementById('worldviewValue').innerHTML = `<strong style="color:var(--text)">Worldview:</strong> ${REPORT.worldview}`;
+    document.getElementById('focusValue').innerHTML = `<strong style="color:var(--text)">Focus of Attention:</strong> ${REPORT.focus}`;
+    setText('selfTalkValue', REPORT.selfTalk);
+    setText('motivationLine1', REPORT.motivation1);
+    setText('motivationLine2', REPORT.motivation2);
+    document.getElementById('deepTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('users', 12, 'var(--blue)')}</span></span>${REPORT.deepTitle}`;
+    setText('deepP1', REPORT.deep[0]);
+    setText('deepP2', REPORT.deep[1]);
+    setText('deepP3', REPORT.deep[2]);
+    setText('deepP4', REPORT.deep[3]);
+    document.getElementById('languageTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('communication', 12, 'var(--blue)')}</span></span>The Language of the Ennea ${REPORT.typeNumber}`;
+    setText('languageMeta', REPORT.meta);
+    setText('refTypeTag', `Type ${REPORT.typeNumber} · ${REPORT.instinct.split(' — ')[0]}`);
+
+    const traitChips = document.getElementById('traitChips');
+    traitChips.innerHTML = REPORT.traits.map(trait => `<span class="chip cgn">${trait}</span>`).join('');
+
+    if (document.getElementById('agentConversation')) {
+      renderAgentShell();
+    }
+
+    updateCharts();
+    genReflection();
+  } catch (error) {
+    console.log('[report-switch] failed', error);
+  }
+}
 
 function genReflection() {
   const options = reflectionDeck[refCat];
   const choice = options[Math.floor(Math.random() * options.length)];
+  console.log('[reflection] category', refCat, 'choice', choice);
   document.getElementById('refCatTag').textContent = refCatLabels[refCat];
   document.getElementById('refCard').innerHTML = `<p class="sb-tip">${choice}</p>`;
 }
 
 function setRef(cat, btn) {
   refCat = cat;
+  console.log('[reflection] switching category', cat);
   document.querySelectorAll('.sb-cat').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   genReflection();
@@ -718,7 +828,7 @@ function renderAgentShell() {
   result.innerHTML = `
     <div class="prompt-card">
       <div class="prompt-label">Live GPT Conversation</div>
-      <div class="prompt-body">Grounded in your profile: ${REPORT.coreType}, ${REPORT.instinct}, ${REPORT.conflictStyle} conflict style, ${REPORT.integration.toLowerCase()} integration.</div>
+      <div class="prompt-body">Grounded in your profile: ${currentCoreTypeLabel()}, ${REPORT.instinct}, ${REPORT.conflictStyle} conflict style, ${REPORT.integration.toLowerCase()} integration.</div>
       <div class="prompt-output" id="agentConversation" style="min-height:420px;overflow:auto"></div>
       <div class="prompt-actions">
         <button class="secondary-btn" id="clearConversation" type="button">Clear chat</button>
@@ -749,7 +859,7 @@ function buildAgentSystemPrompt() {
   return [
     'You are an expert Enneagram coach and practical communication advisor.',
     'Your primary context is the user report profile below:',
-    `- Core type: ${REPORT.coreType}`,
+    `- Core type: ${currentCoreTypeLabel()}`,
     `- Instinct: ${REPORT.instinct}`,
     `- Keyword: ${REPORT.keyword}`,
     `- Integration: ${REPORT.integration}`,
@@ -815,6 +925,7 @@ async function askEnneagramAgent() {
   status.textContent = 'Thinking...';
 
   try {
+    console.log('[agent] request start', { model, questionLength: question.length, reportType: REPORT.typeNumber });
     const conversationWindow = enneagramChat.slice(-10);
     const input = [
       {
@@ -845,6 +956,7 @@ async function askEnneagramAgent() {
 
     const data = await response.json();
     const answer = extractResponseText(data) || 'I could not parse a response from the model. Please try again.';
+    console.log('[agent] response received', { answerLength: answer.length });
     appendAgentMessage('assistant', answer);
     enneagramChat.push({ role: 'assistant', text: answer });
     status.textContent = 'Answered.';
@@ -890,12 +1002,12 @@ window.addEventListener('load', () => {
 
   const pCtx = document.getElementById('profileChart');
   if (pCtx) {
-    new Chart(pCtx, {
+    profileChart = new Chart(pCtx, {
       type: 'bar',
       data: {
         labels: ['8','9','1','2','3','4','5','6','7'],
         datasets: [{
-          data: REPORT.scores.profile,
+          data: REPORT.profile,
           backgroundColor:['#b02c34','#d4d0c8','#d4d0c8','#9a6e1a','#d4d0c8','#d4d0c8','#295c87','#d4d0c8','#d4d0c8'],
           borderRadius: 3,
           borderSkipped: false
@@ -915,12 +1027,12 @@ window.addEventListener('load', () => {
 
   const sCtx = document.getElementById('strainChart');
   if (sCtx) {
-    new Chart(sCtx, {
+    strainChart = new Chart(sCtx, {
       type: 'radar',
       data: {
         labels: ['Happiness','Vocational','Interpersonal','Physical','Environmental','Psychological'],
         datasets: [{
-          data: REPORT.scores.strain,
+          data: REPORT.strain,
           backgroundColor: 'rgba(176,44,52,0.08)',
           borderColor: '#b02c34',
           borderWidth: 2,
@@ -945,7 +1057,14 @@ window.addEventListener('load', () => {
     });
   }
 
-  genReflection();
+  const reportSelector = document.getElementById('reportSelector');
+  reportSelector.addEventListener('change', event => {
+    const selectedType = event.target.value;
+    console.log('[report-switch] selector changed to', selectedType);
+    applyReport(selectedType);
+  });
+
+  applyReport(reportSelector.value);
 });
 </script>
 </body>
