@@ -22,16 +22,22 @@
 body{background:radial-gradient(circle at 5% 0%,#f7fbff 0,#eef4fb 44%,#e9f1fb 100%);color:var(--text);font-family:var(--font-sans);font-size:15px;line-height:1.6;min-height:100vh}
 .page{max-width:1340px;margin:0 auto;padding:26px 24px 80px}
 .header{padding:26px 30px;margin-bottom:18px;border:1px solid var(--border);border-radius:20px;background:linear-gradient(155deg,#ffffff 0,#f6fbff 100%);box-shadow:0 12px 32px rgba(15,37,64,.08)}
-.report-switch{display:flex;align-items:center;gap:8px;margin-left:auto}
+.header-top{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.report-switch{display:flex;align-items:center;gap:8px;justify-content:flex-start}
 .report-switch-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)}
 .report-switch-select{border:1px solid var(--border2);border-radius:10px;background:#fff;color:var(--text);padding:6px 10px;font:600 12px var(--font-sans);outline:none}
 .report-switch-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,102,216,.12)}
-.eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.eyebrow{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
 .e8-circle{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#0f9e83,#0a66d8);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:#fff;box-shadow:0 6px 16px rgba(10,102,216,.35)}
 .eyebrow-text{font-size:12px;font-weight:500;color:var(--text3);letter-spacing:.06em;text-transform:uppercase}
+.header-controls{margin-top:12px;padding-left:50px}
 h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:700;letter-spacing:-.03em;line-height:1.03;margin-bottom:10px}
 .header-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text3);font-family:var(--font-mono)}
 .hdot{color:var(--surface3)}
+.header-auth{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.auth-btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:8px 12px;font:700 12px var(--font-sans);text-decoration:none;line-height:1}
+.auth-btn.google{border:1px solid #0a66d8;background:#0a66d8;color:#fff;box-shadow:0 8px 22px rgba(10,102,216,.25)}
+.auth-btn.dashboard{border:1px solid var(--border2);background:#fff;color:var(--text2)}
 .body-grid{display:block}
 .mobile-menu-toggle{display:none;position:fixed;top:16px;left:14px;z-index:140;background:#fff;border:1px solid var(--border2);border-radius:10px;width:40px;height:40px;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(16,34,61,.14)}
 .mobile-menu-toggle svg{display:block}
@@ -68,7 +74,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .focus-empty{font-size:13px;color:var(--text2);line-height:1.65}
 .sidebar-col{position:fixed;right:22px;bottom:22px;z-index:50;width:min(360px,calc(100vw - 24px))}
 @media(max-width:900px){.sidebar-col{right:12px;bottom:12px;width:min(360px,calc(100vw - 16px))}}
-@media(max-width:760px){.header{position:relative;padding-top:72px}.eyebrow{flex-wrap:wrap}.report-switch{position:absolute;top:16px;right:16px;margin-left:0;width:auto;justify-content:flex-end}.nav-wrap{display:none}.mobile-menu-toggle{display:inline-flex}.mobile-menu-overlay.show{display:block}.focus-grid{grid-template-columns:1fr}.focus-result-grid{column-count:1}}
+@media(max-width:760px){.header{padding:18px 16px}.header-top{align-items:flex-start;flex-direction:column;gap:10px}.eyebrow{width:100%}.header-auth{width:100%;justify-content:flex-start}.header-controls{margin-top:10px;padding-left:0}.report-switch{justify-content:flex-start;flex-wrap:wrap}.auth-btn{padding:7px 10px;font-size:11px}.nav-wrap{display:none}.mobile-menu-toggle{display:inline-flex}.mobile-menu-overlay.show{display:block}.focus-grid{grid-template-columns:1fr}.focus-result-grid{column-count:1}}
 .nav-wrap{border:1px solid var(--border);border-radius:14px;padding:6px;background:rgba(255,255,255,.86);overflow-x:auto;scrollbar-width:none;margin-bottom:22px;box-shadow:0 6px 20px rgba(17,42,75,.06)}
 .nav-wrap::-webkit-scrollbar{display:none}
 .nav{display:flex;gap:6px;padding:0}
@@ -155,9 +161,17 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 </aside>
 <div class="page">
   <div class="header">
-    <div class="eyebrow">
-      <div class="e8-circle" id="typeBadge" data-testid="type-badge">8</div>
-      <span class="eyebrow-text" id="headerSubtitle" data-testid="header-subtitle">Active Controller · SX Subtype · Keyword: Possession</span>
+    <div class="header-top">
+      <div class="eyebrow">
+        <div class="e8-circle" id="typeBadge" data-testid="type-badge">8</div>
+        <span class="eyebrow-text" id="headerSubtitle" data-testid="header-subtitle">Active Controller · SX Subtype · Keyword: Possession</span>
+      </div>
+      <div class="header-auth" data-testid="auth-top-right">
+        <a class="auth-btn google" data-testid="sign-in-google" href="#" onclick="openGoogleSignInPopup(event)">Sign In</a>
+        <a class="auth-btn dashboard" data-testid="dashboard-link" href="/dashboard">Dashboard</a>
+      </div>
+    </div>
+    <div class="header-controls">
       <div class="report-switch">
         <label class="report-switch-label" for="reportSelector">Example Report</label>
         <select class="report-switch-select" id="reportSelector" data-testid="report-selector">
@@ -582,6 +596,74 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 </div>
 
 <script>
+const AUTH_BASE_URL =
+  (window.__AUTH_BASE_URL__ && String(window.__AUTH_BASE_URL__).trim()) ||
+  window.localStorage.getItem("AUTH_BASE_URL") ||
+  window.location.origin;
+
+async function hasWorkingAuthBackend(baseUrl) {
+  const providersUrl = `${baseUrl.replace(/\/$/, "")}/api/auth/providers`;
+  console.log("[auth] Checking NextAuth providers endpoint:", providersUrl);
+
+  try {
+    const response = await fetch(providersUrl, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    const contentType = response.headers.get("content-type") || "";
+    const isJson = contentType.includes("application/json");
+    console.log("[auth] Providers endpoint status/content-type:", response.status, contentType);
+    return response.ok && isJson;
+  } catch (error) {
+    console.log("[auth] Providers endpoint check failed:", error);
+    return false;
+  }
+}
+
+async function openGoogleSignInPopup(event) {
+  const baseUrl = AUTH_BASE_URL.replace(/\/$/, "");
+  const callbackUrl = `${window.location.origin}/dashboard`;
+  const authUrl = `${baseUrl}/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+  console.log("[auth] Sign-in clicked. OAuth URL:", authUrl);
+
+  if (event) {
+    event.preventDefault();
+  }
+
+  const authReady = await hasWorkingAuthBackend(baseUrl);
+  if (!authReady) {
+    const message =
+      "Google sign-in backend is not running on " +
+      baseUrl +
+      ". This page is static, so /api/auth routes are being served as index.html. " +
+      "Start a NextAuth server or set AUTH_BASE_URL to that server.";
+    console.log("[auth] " + message);
+    alert(message);
+    return false;
+  }
+
+  const popup = window.open(
+    authUrl,
+    "googleAuthPopup",
+    "width=520,height=700,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes,status=yes",
+  );
+
+  if (!popup) {
+    console.log("[auth] Popup blocked by browser. Falling back to full-page redirect.");
+    window.location.href = authUrl;
+    return false;
+  }
+
+  try {
+    popup.focus();
+  } catch (error) {
+    console.log("[auth] Popup opened but focus failed:", error);
+  }
+
+  return false;
+}
+
 const REPORT_EXAMPLES = {
   '1': { typeNumber:'1', typeName:'Principled Reformer', instinct:'SO — Social', keyword:'Standards', release:'Type 7 · Joyful Visionary', stretch:'Type 4 · Reflective Individualist', integration:'Moderate', coreFear:'Being wrong, corrupt, or irresponsible.', gifts:'Integrity, Clarity, Discipline', giftsDesc:'At your best you model fairness, restraint, and principled leadership.', vice:'Resentment', viceDesc:'Pressure for perfection can harden into criticism and rigidity.', worldview:'The world improves when people do things correctly and ethically.', focus:'You track errors, inefficiencies, and what needs refinement.', selfTalk:'I must be good, correct, and responsible.', motivation1:'This style is motivated by conscience and improvement.', motivation2:'At your best you are wise and balanced; under strain you can become rigid and judgmental.', traits:['Principled','Orderly','Reliable','High standards','Ethical'], deepTitle:'A Deeper Understanding of the SO — 1', deep:['You channel your energy toward better systems and shared standards.','You often feel responsible for quality, ethics, and process.','People trust your consistency and careful preparation.','Growth comes from pairing standards with patience and self-compassion.'], dominantCenter:'Thinking Center', weakestCenter:'Feeling Center', thinkingStyle:'Externalised', conflictStyle:'Competency', meta:'Let us do this the right way.', profile:[32,46,81,36,41,52,68,39,44], strain:[23,24,27,22,19,31], mainValue:81, releaseValue:44, stretchValue:52 },
   '2': { typeNumber:'2', typeName:'Caring Helper', instinct:'SX — One-on-One', keyword:'Connection', release:'Type 4 · Sensitive Individualist', stretch:'Type 8 · Protective Challenger', integration:'Moderate', coreFear:'Being unwanted, unloved, or unnecessary.', gifts:'Generosity, Warmth, Support', giftsDesc:'At your best you are emotionally attuned and deeply encouraging.', vice:'Pride', viceDesc:'Helping can become controlling when needs go unspoken.', worldview:'Love and belonging are built through care and responsiveness.', focus:'You track who needs support and where connection is weakening.', selfTalk:'I must be needed to be loved.', motivation1:'This style is driven by the desire to be valuable through care.', motivation2:'At your best you serve freely; under strain you over-give and feel unappreciated.', traits:['Supportive','Relational','Warm','Encouraging','Loyal'], deepTitle:'A Deeper Understanding of the SX — 2', deep:['You bring intensity, affection, and devotion to close relationships.','You can be highly intuitive about others emotional states.','Your strength is creating belonging and momentum through care.','Growth comes from naming your own needs directly.'], dominantCenter:'Feeling Center', weakestCenter:'Thinking Center', thinkingStyle:'Internalised', conflictStyle:'Compliant', meta:'I see you and I can help.', profile:[45,35,38,79,48,61,33,42,36], strain:[29,21,31,24,20,28], mainValue:79, releaseValue:61, stretchValue:45 },
@@ -738,6 +820,9 @@ let strainChart;
 let reflectionDeck = {};
 let REPORT_MODULES = [];
 const PROFILE_TYPE_ORDER = ['8', '9', '1', '2', '3', '4', '5', '6', '7'];
+let focusRequestCounter = 0;
+const FOCUS_AI_API_ROUTE = '/api/focus-rank';
+const FOCUS_AI_ENABLED = true;
 
 function iconSvg(name, size = 14, color = 'currentColor') {
   const common = `width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"`;
@@ -965,6 +1050,145 @@ function scoreModule(module, queryText, queryTokens) {
   return score;
 }
 
+function classifyFocusError(error) {
+  if (!error) return 'unknown';
+  if (typeof error.status === 'number') return `http_${error.status}`;
+  const message = String(error.message || error).toLowerCase();
+  if (message.includes('aborted') || message.includes('timeout')) return 'timeout';
+  if (message.includes('stream disconnected before completion')) return 'stream_disconnected';
+  if (message.includes('failed to fetch') || message.includes('network')) return 'network';
+  return 'unknown';
+}
+
+function isTransientFocusError(error) {
+  const status = Number(error && error.status);
+  if ([408, 409, 429].includes(status)) return true;
+  if (status >= 500 && status < 600) return true;
+  const message = String(error && error.message ? error.message : error).toLowerCase();
+  return (
+    message.includes('stream disconnected before completion') ||
+    message.includes('failed to fetch') ||
+    message.includes('network') ||
+    message.includes('timeout') ||
+    message.includes('aborted')
+  );
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function requestFocusRerankFromAI(promptText, candidates) {
+  const url = FOCUS_AI_API_ROUTE;
+  const attempts = 5;
+  const backoffMs = [500, 1000, 2000, 4000, 8000];
+  const shortCandidates = candidates.map(item => ({
+    id: item.id,
+    sectionLabel: item.sectionLabel,
+    title: item.title,
+    excerpt: item.text.slice(0, 600)
+  }));
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            promptText,
+            candidates: shortCandidates
+          })
+        },
+        60 * 1000
+      );
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        const error = new Error(`Focus AI route error ${response.status}: ${errorBody.slice(0, 240)}`);
+        error.status = response.status;
+        throw error;
+      }
+
+      const data = await response.json();
+      const rankedIds = Array.isArray(data.rankedIds) ? data.rankedIds : [];
+      const rationales = data.rationales && typeof data.rationales === 'object' ? data.rationales : {};
+      return { rankedIds, rationales };
+    } catch (error) {
+      const errorClass = classifyFocusError(error);
+      const transient = isTransientFocusError(error);
+      const delay = backoffMs[Math.min(attempt - 1, backoffMs.length - 1)];
+      const jitterFactor = 1 + ((Math.random() * 0.4) - 0.2);
+      const jitteredDelay = Math.max(50, Math.round(delay * jitterFactor));
+
+      console.log('[focus][ai] retry decision', {
+        attempt,
+        maxAttempts: attempts,
+        transient,
+        errorClass,
+        delayMs: transient && attempt < attempts ? jitteredDelay : 0
+      });
+
+      if (!transient || attempt >= attempts) {
+        throw error;
+      }
+
+      await sleep(jitteredDelay);
+    }
+  }
+
+  return { rankedIds: [], rationales: {} };
+}
+
+async function rankFocusModules(promptText, queryTokens) {
+  const keywordRanked = REPORT_MODULES
+    .map(module => ({ ...module, score: scoreModule(module, promptText, queryTokens) }))
+    .sort((a, b) => b.score - a.score)
+    .filter(module => module.score > 0);
+
+  if (!keywordRanked.length) {
+    return { results: [], aiUsed: false };
+  }
+
+  const candidatePool = keywordRanked.slice(0, 12);
+  if (!FOCUS_AI_ENABLED) {
+    return { results: candidatePool.slice(0, 6), aiUsed: false };
+  }
+
+  const aiResponse = await requestFocusRerankFromAI(promptText, candidatePool);
+  const candidateMap = new Map(candidatePool.map(item => [item.id, item]));
+  const reranked = [];
+
+  aiResponse.rankedIds.forEach(id => {
+    if (!candidateMap.has(id)) return;
+    const module = candidateMap.get(id);
+    reranked.push({
+      ...module,
+      aiReason: typeof aiResponse.rationales[id] === 'string' ? aiResponse.rationales[id] : ''
+    });
+  });
+
+  if (!reranked.length) {
+    return { results: candidatePool.slice(0, 6), aiUsed: false };
+  }
+
+  return { results: reranked.slice(0, 6), aiUsed: true };
+}
+
 function renderFocusResults(results, queryText) {
   const focusResults = document.getElementById('focusResults');
   const focusIntro = document.getElementById('focusIntro');
@@ -1027,9 +1251,11 @@ function renderFocusResults(results, queryText) {
   });
 }
 
-function runFocusFilter() {
+async function runFocusFilter() {
   const promptText = document.getElementById('focusPromptText')?.value || '';
   const status = document.getElementById('focusStatus');
+  const submitButton = document.getElementById('focusSubmit');
+  const requestId = ++focusRequestCounter;
 
   const combined = promptText;
   const queryTokens = tokenize(combined);
@@ -1042,25 +1268,59 @@ function runFocusFilter() {
   }
 
   if (!REPORT_MODULES.length) buildReportModuleIndex();
+  if (submitButton) submitButton.disabled = true;
 
-  const ranked = REPORT_MODULES
-    .map(module => ({ ...module, score: scoreModule(module, combined, queryTokens) }))
-    .sort((a, b) => b.score - a.score)
-    .filter(module => module.score > 0)
-    .slice(0, 6);
+  if (status) {
+    status.textContent = FOCUS_AI_ENABLED
+      ? 'Analyzing your prompt and ranking with AI...'
+      : 'AI not configured. Using keyword ranking...';
+  }
 
-  console.log('[focus] run filter', {
-    queryLength: combined.length,
-    tokenCount: queryTokens.length,
-    matched: ranked.length
-  });
+  try {
+    const ranked = await rankFocusModules(combined, queryTokens);
+    if (requestId !== focusRequestCounter) return;
 
-  if (status) status.textContent = ranked.length ? `Found ${ranked.length} relevant modules.` : 'No strong matches. Try adding more specifics.';
-  renderFocusResults(ranked, combined);
-  showSec('focus');
+    console.log('[focus] run filter', {
+      queryLength: combined.length,
+      tokenCount: queryTokens.length,
+      matched: ranked.results.length,
+      aiUsed: ranked.aiUsed
+    });
+
+    if (status) {
+      if (!ranked.results.length) {
+        status.textContent = 'No strong matches. Try adding more specifics.';
+      } else if (ranked.aiUsed) {
+        status.textContent = `Found ${ranked.results.length} relevant modules (AI ranked).`;
+      } else {
+        status.textContent = `Found ${ranked.results.length} relevant modules.`;
+      }
+    }
+
+    renderFocusResults(ranked.results, combined);
+    showSec('focus');
+  } catch (error) {
+    const errorClass = classifyFocusError(error);
+    console.log('[focus][ai] ranking failed, falling back to keyword ranking', { errorClass, error });
+    const fallback = REPORT_MODULES
+      .map(module => ({ ...module, score: scoreModule(module, combined, queryTokens) }))
+      .sort((a, b) => b.score - a.score)
+      .filter(module => module.score > 0)
+      .slice(0, 6);
+    if (status) {
+      status.textContent = fallback.length
+        ? `Found ${fallback.length} relevant modules (AI error: ${errorClass}; fallback used).`
+        : 'No strong matches. Try adding more specifics.';
+    }
+    renderFocusResults(fallback, combined);
+    showSec('focus');
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+  }
 }
 
 function resetFocusPrompt() {
+  focusRequestCounter += 1;
   ['focusPromptText'].forEach(id => {
     const input = document.getElementById(id);
     if (input) input.value = '';

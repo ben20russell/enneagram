@@ -12,6 +12,7 @@
     "vite": "^7.1.0"
   },
   "dependencies": {
+    "firebase-admin": "^13.10.0",
     "next-auth": "^4.24.14"
   }
 }
