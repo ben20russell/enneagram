@@ -56,7 +56,12 @@
   - Before sharing the URL, verify a listener exists on that port and verify the page responds.
   - Preferred flow for app projects: run `npm run dev` and use its active local URL.
   - Fallback flow for static pages or when dev tooling is unavailable: run `python3 -m http.server <PORT> --directory .` and share `http://127.0.0.1:<PORT>/`.
-  - Treat this localhost link as required output for every completed task in this repository.
+- Treat this localhost link as required output for every completed task in this repository.
+
+## Enneagram Copy Source (Hardcoded)
+- Moving forward, when making updates, use copy/language from `docs/enneagram-master-source.txt`.
+- Treat `docs/enneagram-master-source.txt` as the canonical wording source for Enneagram concepts, labels, and descriptions.
+- If existing UI copy conflicts with the master source, update it to align with the master source language.
 - If you encounter the runtime/tooling error `stream disconnected before completion: response.failed event received`, continue the task and retry or proceed with the next safe step instead of stopping.
 
 ## Streaming Failure Retry Policy (Hardcoded)
