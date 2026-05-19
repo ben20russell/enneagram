@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/auth/layout,_N_T_/auth/popup-done/layout,_N_T_/auth/popup-done/page,_N_T_/auth/popup-done"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/auth/popup-done/__PAGE__",
+    "/auth/popup-done",
+    "/auth",
+    "/_index",
+    "/_head"
+  ]
+}

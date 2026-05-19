@@ -1,0 +1,1651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Enneagram Example Report</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#eef4fb;--surface:#fff;--surface2:#f6faff;--surface3:#e8f0fb;
+  --border:#d6e2ef;--border2:#b8cae0;
+  --red:#d63864;--red-lt:#ffeef3;--gold:#9b6a16;--gold-lt:#fff7e8;
+  --green:#0f9e83;--green-lt:#e9f8f4;--blue:#0a66d8;--blue-lt:#ebf4ff;
+  --text:#10223d;--text2:#36506f;--text3:#5d7694;--r:14px;--r-sm:10px;--sidebar:320px;
+  --font-sans:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+  --font-display:'Space Grotesk','Plus Jakarta Sans',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace;
+}
+body{background:radial-gradient(circle at 5% 0%,#f7fbff 0,#eef4fb 44%,#e9f1fb 100%);color:var(--text);font-family:var(--font-sans);font-size:15px;line-height:1.6;min-height:100vh}
+.page{max-width:1340px;margin:0 auto;padding:26px 24px 80px}
+.header{padding:26px 30px;margin-bottom:18px;border:1px solid var(--border);border-radius:20px;background:linear-gradient(155deg,#ffffff 0,#f6fbff 100%);box-shadow:0 12px 32px rgba(15,37,64,.08)}
+.header-top{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.report-switch{display:flex;align-items:center;gap:8px;justify-content:flex-start}
+.report-switch-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)}
+.report-switch-select{border:1px solid var(--border2);border-radius:10px;background:#fff;color:var(--text);padding:6px 10px;font:600 12px var(--font-sans);outline:none}
+.report-switch-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,102,216,.12)}
+.eyebrow{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.e8-circle{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#0f9e83,#0a66d8);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:#fff;box-shadow:0 6px 16px rgba(10,102,216,.35)}
+.eyebrow-text{font-size:12px;font-weight:500;color:var(--text3);letter-spacing:.06em;text-transform:uppercase}
+.header-controls{margin-top:12px;padding-left:50px}
+h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:700;letter-spacing:-.03em;line-height:1.03;margin-bottom:10px}
+.header-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text3);font-family:var(--font-mono)}
+.hdot{color:var(--surface3)}
+.header-auth{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.auth-btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:8px 12px;font:700 12px var(--font-sans);text-decoration:none;line-height:1}
+.auth-btn.google{border:1px solid #0a66d8;background:#0a66d8;color:#fff;box-shadow:0 8px 22px rgba(10,102,216,.25)}
+.auth-btn.dashboard{border:1px solid var(--border2);background:#fff;color:var(--text2)}
+.auth-btn.avatar{border:1px solid var(--border2);background:#fff;color:var(--text2);padding:2px;box-shadow:none}
+.auth-avatar-img{width:28px;height:28px;border-radius:999px;display:block}
+.auth-avatar-fallback{width:28px;height:28px;border-radius:999px;background:#0a66d8;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.body-grid{display:block}
+.mobile-menu-toggle{display:none;position:fixed;top:16px;left:14px;z-index:140;background:#fff;border:1px solid var(--border2);border-radius:10px;width:40px;height:40px;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(16,34,61,.14)}
+.mobile-menu-toggle svg{display:block}
+.mobile-menu-overlay{display:none;position:fixed;inset:0;background:rgba(10,20,36,.42);z-index:130}
+.mobile-menu{position:fixed;top:0;left:0;height:100%;width:min(86vw,320px);background:#fff;border-right:1px solid var(--border);box-shadow:0 14px 38px rgba(16,34,61,.2);z-index:135;transform:translateX(-100%);transition:transform .22s ease}
+.mobile-menu.open{transform:translateX(0)}
+.mobile-menu-head{display:flex;align-items:center;justify-content:space-between;padding:14px 14px;border-bottom:1px solid var(--border)}
+.mobile-menu-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
+.mobile-menu-close{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;display:flex;align-items:center}
+.mobile-menu-list{display:flex;flex-direction:column;padding:10px}
+.mobile-menu-item{border:none;background:transparent;text-align:left;padding:11px 12px;border-radius:10px;font:600 13px var(--font-sans);color:var(--text2);cursor:pointer}
+.mobile-menu-item.active{background:linear-gradient(135deg,#0a66d8,#0f9e83);color:#fff}
+.focus-prompt{position:static;width:100%;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 24px rgba(16,34,61,.12);overflow:hidden;margin-bottom:14px}
+.focus-prompt-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,#f5faff,#eef6ff)}
+.focus-prompt-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}
+.focus-prompt-body{padding:12px}
+.focus-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.focus-field{display:flex;flex-direction:column;gap:5px}
+.focus-label{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3)}
+.focus-input,.focus-textarea{border:1px solid var(--border2);border-radius:9px;padding:8px 9px;font:500 12px var(--font-sans);color:var(--text);background:#fff}
+.focus-textarea{resize:vertical;min-height:132px}
+.focus-input:focus,.focus-textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,102,216,.12)}
+.focus-actions{display:flex;gap:8px;align-items:center;margin-top:10px}
+.focus-submit{border:none;border-radius:9px;background:linear-gradient(135deg,#0a66d8,#0f9e83);color:#fff;padding:9px 12px;font:600 12px var(--font-sans);cursor:pointer}
+.focus-ghost{border:1px solid var(--border2);border-radius:9px;background:#fff;color:var(--text2);padding:9px 12px;font:600 12px var(--font-sans);cursor:pointer}
+.focus-note{font-size:11px;color:var(--text3)}
+.focus-result-grid{column-count:2;column-gap:14px}
+.focus-result-item{display:inline-flex;flex-direction:column;gap:6px;width:100%;margin:0 0 14px;break-inside:avoid}
+.focus-result-item .card{height:100%}
+.focus-jump{border:1px solid var(--border2);background:#fff;color:var(--text2);border-radius:999px;padding:4px 9px;font:600 10px var(--font-sans);letter-spacing:.05em;text-transform:uppercase;cursor:pointer;white-space:nowrap;margin:0 0 0 12px;flex-shrink:0}
+.focus-jump:hover{border-color:var(--blue);color:var(--blue)}
+.focus-result-item .card .ct{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left}
+.focus-card-title{display:inline-flex;align-items:center;justify-content:flex-start;gap:0;flex:1;min-width:0;text-align:left}
+.focus-empty{font-size:13px;color:var(--text2);line-height:1.65}
+.sidebar-col{position:fixed;right:22px;bottom:22px;z-index:50;width:min(360px,calc(100vw - 24px))}
+@media(max-width:900px){.sidebar-col{right:12px;bottom:12px;width:min(360px,calc(100vw - 16px))}}
+@media(max-width:760px){.header{padding:18px 16px}.header-top{align-items:flex-start;flex-direction:column;gap:10px}.eyebrow{width:100%}.header-auth{width:100%;justify-content:flex-start}.header-controls{margin-top:10px;padding-left:0}.report-switch{justify-content:flex-start;flex-wrap:wrap}.auth-btn{padding:7px 10px;font-size:11px}.nav-wrap{display:none}.mobile-menu-toggle{display:inline-flex}.mobile-menu-overlay.show{display:block}.focus-grid{grid-template-columns:1fr}.focus-result-grid{column-count:1}}
+.nav-wrap{border:1px solid var(--border);border-radius:14px;padding:6px;background:rgba(255,255,255,.86);overflow-x:auto;scrollbar-width:none;margin-bottom:22px;box-shadow:0 6px 20px rgba(17,42,75,.06)}
+.nav-wrap::-webkit-scrollbar{display:none}
+.nav{display:flex;gap:6px;padding:0}
+.nav button{background:transparent;border:none;border-radius:10px;padding:10px 14px;font:600 12px var(--font-sans);color:var(--text3);cursor:pointer;transition:.18s;white-space:nowrap}
+.nav button:hover{color:var(--text2)}
+.nav button.active{color:#fff;background:linear-gradient(135deg,#0a66d8,#0f9e83)}
+.nav button .nav-icon{display:inline-flex;vertical-align:middle;margin-right:8px;opacity:.92}
+.nav button.active .nav-icon{opacity:1}
+.sec{display:none}.sec.active{display:block}
+.card,.sidebar-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--r)}
+.card{padding:22px 24px;box-shadow:0 8px 24px rgba(16,34,61,.06)}.card+.card{margin-top:0}
+.ct{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:14px}
+.ct .title-icon{display:inline-flex;align-items:center;justify-content:center;width:100%;height:100%;line-height:0;margin:0;position:static}
+.ct .title-icon svg{display:block}
+.title-icon-chip{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);margin-right:7px;line-height:0;vertical-align:middle;position:static}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:700px){.g2,.g3{grid-template-columns:1fr}}
+.mb16{margin-bottom:16px}.mb24{margin-bottom:24px}.mb32{margin-bottom:32px}
+.kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.kvl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:2px}
+.kvv{font-size:14px;color:var(--text);line-height:1.4}.kvv.red{color:var(--red);font-weight:600}.kvv.gold{color:var(--gold);font-weight:600}.kvv.green{color:var(--green);font-weight:600}
+.div{height:1px;background:var(--border);margin:16px 0}.quote{border-left:3px solid var(--blue);padding:3px 0 3px 16px;margin:12px 0}.quote p{font-size:17px;font-weight:500;color:var(--text2)}
+.brow{display:flex;align-items:center;gap:10px;margin-bottom:10px}.brow:last-child{margin-bottom:0}.blbl{font-size:13px;color:var(--text2);min-width:130px;flex-shrink:0}.btrk{flex:1;height:4px;background:var(--surface3);border-radius:100px;overflow:hidden}.bfil{height:100%;border-radius:100px}.bval{font-size:12px;font-weight:500;color:var(--text);min-width:36px;text-align:right}
+.chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:500;line-height:1.4}.cr{background:var(--red-lt);color:var(--red)}.cg{background:var(--gold-lt);color:var(--gold)}.cgn{background:var(--green-lt);color:var(--green)}.cb{background:var(--blue-lt);color:var(--blue)}.cx{background:var(--surface2);color:var(--text3)}
+.tlist{display:flex;flex-direction:column;gap:11px}.ti{display:flex;gap:11px;align-items:flex-start}.tic{width:26px;height:26px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;margin-top:1px}.tic.pos{background:var(--green-lt);color:var(--green)}.tic.neg{background:var(--red-lt);color:var(--red)}.tic.neu{background:var(--gold-lt);color:var(--gold)}.tic.inf{background:var(--blue-lt);color:var(--blue)}.tt{font-size:13px;color:var(--text2);line-height:1.65}.tt strong{color:var(--text);font-weight:600}
+.sh{font-size:20px;font-weight:700;margin-bottom:14px}.subh{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:16px 0 8px}
+.tg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.tg-item{background:var(--red-lt);border-left:3px solid var(--red);border-radius:var(--r-sm);padding:12px}.tg-title{font-size:12px;font-weight:600;color:var(--red);margin-bottom:3px}.tg-desc{font-size:12px;color:var(--text3);line-height:1.5}
+.ibox{background:var(--blue-lt);border-left:3px solid var(--blue);border-radius:var(--r-sm);padding:13px 15px}.ibox p{font-size:13px;color:var(--blue);line-height:1.6}
+.devbox{background:var(--gold-lt);border:1px solid rgba(154,110,26,.15);border-radius:var(--r);padding:18px}.devbox-title{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);margin-bottom:12px}.dev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.dev-item{background:rgba(255,255,255,.75);border-radius:var(--r-sm);padding:12px}.dev-item-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.dev-item p{font-size:12px;color:var(--text2);line-height:1.6}
+.int-segs{display:flex;gap:4px;height:28px;margin:10px 0}.int-seg{flex:1;border-radius:4px;background:var(--surface3)}.int-seg.act{background:var(--red)}.int-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);letter-spacing:.04em}
+.rdrow{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}.rdrow:last-child{border-bottom:none}.rdname{font-size:13px;color:var(--text2);min-width:100px}.rdbar{flex:1;height:4px;background:var(--surface3);border-radius:100px;overflow:hidden;margin:0 12px}.rdfil{height:100%;border-radius:100px;background:var(--gold)}.rdscore{font-size:13px;font-weight:600;color:var(--text)}
+.stage{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:8px}.stage-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.sdot{width:8px;height:8px;border-radius:50%}
+.wing-item{background:var(--surface2);border-radius:var(--r-sm);padding:10px 12px;font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:6px}
+.sidebar-box{overflow:hidden;margin-bottom:0;background:linear-gradient(180deg,#ffffff,#f8fbff);border:1px solid var(--border);border-radius:16px;box-shadow:0 16px 40px rgba(16,34,61,.18)}
+.sb-header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sb-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)}
+.sb-tools{display:flex;align-items:center;gap:4px}
+.sb-refresh,.sb-min{background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;align-items:center}
+.sb-refresh:hover,.sb-min:hover{color:var(--blue)}
+.sb-cats{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border)}
+.sb-cat{background:#fff;border:1px solid var(--border2);border-radius:999px;padding:4px 10px;font-size:11px;color:var(--text3);cursor:pointer;font-family:var(--font-sans)}
+.sb-cat.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.sb-body{padding:14px}
+.sb-tip{font-size:13px;line-height:1.7;color:var(--text)}
+.sb-meta{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}
+.sb-tag{font-size:10px;color:var(--text3);background:var(--surface2);padding:2px 8px;border-radius:999px}
+.reflection-launcher{position:fixed;right:22px;bottom:22px;z-index:51;border:none;border-radius:999px;background:linear-gradient(135deg,#0a66d8,#0f9e83);color:#fff;padding:10px 14px;font:600 12px var(--font-sans);display:none;align-items:center;gap:8px;box-shadow:0 12px 30px rgba(10,102,216,.35);cursor:pointer}
+.reflection-launcher:hover{filter:brightness(1.04)}
+.sidebar-col.minimized{display:none}
+.sidebar-col.minimized+.reflection-launcher{display:inline-flex}
+@media(max-width:900px){.reflection-launcher{right:12px;bottom:12px}}
+.chart-wrap{position:relative;width:100%}
+.footer-note{font-size:11px;color:var(--text3);margin-top:10px}
+.site-footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--border2);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);font-family:var(--font-mono);text-align:center}
+</style>
+</head>
+<body>
+<button class="mobile-menu-toggle" id="mobileMenuToggle" type="button" aria-label="Open navigation menu" data-testid="mobile-menu-toggle" onclick="toggleMobileMenu(true)">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#36506f" stroke-width="1.8" stroke-linecap="round">
+    <path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>
+  </svg>
+</button>
+<div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="toggleMobileMenu(false)"></div>
+<aside class="mobile-menu" id="mobileMenu" aria-hidden="true">
+  <div class="mobile-menu-head">
+    <span class="mobile-menu-title">Menu</span>
+    <button class="mobile-menu-close" type="button" aria-label="Close navigation menu" onclick="toggleMobileMenu(false)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
+      </svg>
+    </button>
+  </div>
+  <div class="mobile-menu-list">
+    <button class="mobile-menu-item" data-sec="focus" onclick="showSec('focus');toggleMobileMenu(false)">Focus View</button>
+    <button class="mobile-menu-item active" data-sec="overview" onclick="showSec('overview');toggleMobileMenu(false)">Overview</button>
+    <button class="mobile-menu-item" data-sec="centers" onclick="showSec('centers');toggleMobileMenu(false)">Centers &amp; Instincts</button>
+    <button class="mobile-menu-item" data-sec="strengths" onclick="showSec('strengths');toggleMobileMenu(false)">Strengths &amp; Gaps</button>
+    <button class="mobile-menu-item" data-sec="leadership" onclick="showSec('leadership');toggleMobileMenu(false)">Leadership</button>
+    <button class="mobile-menu-item" data-sec="communication" onclick="showSec('communication');toggleMobileMenu(false)">Communication</button>
+    <button class="mobile-menu-item" data-sec="strain" onclick="showSec('strain');toggleMobileMenu(false)">Strain Profile</button>
+    <button class="mobile-menu-item" data-sec="integration" onclick="showSec('integration');toggleMobileMenu(false)">Integration</button>
+    <button class="mobile-menu-item" data-sec="growth" onclick="showSec('growth');toggleMobileMenu(false)">Growth Path</button>
+  </div>
+</aside>
+<div class="page">
+  <div class="header">
+    <div class="header-top">
+      <div class="eyebrow">
+        <div class="e8-circle" id="typeBadge" data-testid="type-badge">8</div>
+        <span class="eyebrow-text" id="headerSubtitle" data-testid="header-subtitle">Active Controller · SX Subtype · Keyword: Possession</span>
+      </div>
+      <div class="header-auth" data-testid="auth-top-right">
+        <a class="auth-btn google" id="authSignInButton" data-testid="sign-in-google" href="#" onclick="openGoogleSignInPopup(event)">Sign In</a>
+        <a class="auth-btn dashboard" data-testid="dashboard-link" href="/dashboard">Dashboard</a>
+      </div>
+    </div>
+    <div class="header-controls">
+      <div class="report-switch">
+        <label class="report-switch-label" for="reportSelector">Example Report</label>
+        <select class="report-switch-select" id="reportSelector" data-testid="report-selector">
+          <option value="1">Type 1</option>
+          <option value="2">Type 2</option>
+          <option value="3">Type 3</option>
+          <option value="4">Type 4</option>
+          <option value="5">Type 5</option>
+          <option value="6">Type 6</option>
+          <option value="7">Type 7</option>
+          <option value="8" selected>Type 8</option>
+          <option value="9">Type 9</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="body-grid">
+    <div class="main-col">
+      <div class="nav-wrap">
+        <nav class="nav">
+          <button data-sec="focus" onclick="showSec('focus')">Focus View</button>
+          <button class="active" data-sec="overview" onclick="showSec('overview')">Overview</button>
+          <button data-sec="centers" onclick="showSec('centers')">Centers &amp; Instincts</button>
+          <button data-sec="strengths" onclick="showSec('strengths')">Strengths &amp; Gaps</button>
+          <button data-sec="leadership" onclick="showSec('leadership')">Leadership</button>
+          <button data-sec="communication" onclick="showSec('communication')">Communication</button>
+          <button data-sec="strain" onclick="showSec('strain')">Strain Profile</button>
+          <button data-sec="integration" onclick="showSec('integration')">Integration</button>
+          <button data-sec="growth" onclick="showSec('growth')">Growth Path</button>
+        </nav>
+      </div>
+
+      <div id="sec-focus" class="sec">
+        <div class="focus-prompt" id="focusPrompt" data-testid="focus-prompt">
+          <div class="focus-prompt-head">
+            <span class="focus-prompt-title">Prompt-Based Focus</span>
+          </div>
+          <div class="focus-prompt-body">
+            <div class="focus-grid" style="grid-template-columns:1fr">
+              <div class="focus-field">
+                <label class="focus-label" for="focusPromptText">What is your current feeling, context, question, or exploration goal?</label>
+                <textarea class="focus-textarea" id="focusPromptText" placeholder="Examples: I feel overwhelmed in team conflict. How can I communicate clearly today? What should I focus on first?"></textarea>
+              </div>
+            </div>
+            <div class="focus-actions">
+              <button class="focus-submit" type="button" id="focusSubmit">Find Relevant Sections</button>
+              <button class="focus-ghost" type="button" id="focusReset">Reset</button>
+              <span class="focus-note" id="focusStatus">Uses your report content to surface the most relevant modules.</span>
+            </div>
+          </div>
+        </div>
+        <div class="card mb24">
+          <div class="ct">Personalized Focus View</div>
+          <p class="focus-empty" id="focusIntro">Use the prompt above to generate a focused view of the most relevant parts of your Enneagram report.</p>
+        </div>
+        <div id="focusResults" class="focus-result-grid"></div>
+      </div>
+
+      <div id="sec-overview" class="sec active">
+        <div class="g2 mb24">
+          <div class="card">
+            <div class="ct">Core Identity</div>
+            <div class="kv-grid mb16">
+              <div><div class="kvl">Main Type</div><div class="kvv red" id="mainTypeValue" data-testid="main-type">8 — Active Controller</div></div>
+              <div><div class="kvl">Dominant Instinct</div><div class="kvv gold" id="instinctValue">SX — One-on-One</div></div>
+              <div><div class="kvl">Subtype Keyword</div><div class="kvv" id="keywordValue">Possession</div></div>
+              <div><div class="kvl">Connected Line A</div><div class="kvv green" id="releaseValue">Type 2 · Considerate Helper</div></div>
+              <div><div class="kvl">Connected Line B</div><div class="kvv" id="stretchValue">Type 5 · Quiet Specialist</div></div>
+              <div><div class="kvl">Integration Level</div><div class="kvv red" id="integrationValue">Low</div></div>
+            </div>
+            <div class="div"></div>
+            <div class="quote"><p id="metaQuote">“Be honest and forthright, but don't waste my time.”</p></div>
+            <div class="footer-note">Example meta-message</div>
+          </div>
+          <div class="card">
+            <div class="ct">Enneagram Profile — All 9 Types</div>
+            <div class="chart-wrap" style="height:220px"><canvas id="profileChart"></canvas></div>
+            <div class="footer-note" id="profileFooter">Main — 8 (78) · Line A — 2 (71) · Line B — 5 (56)</div>
+          </div>
+        </div>
+
+        <div class="g3 mb24">
+          <div class="card"><div class="ct">Basic Fear</div><p style="font-size:14px;color:var(--text2)" id="coreFearValue">Helplessness or vulnerability. Total weakness. Being controlled by others.</p></div>
+          <div class="card"><div class="ct">Basic Desire</div><p style="font-size:15px;color:var(--green);font-weight:600;margin-bottom:6px" id="giftsTitle">Strength, Direction, Aliveness</p><p style="font-size:13px;color:var(--text3)" id="giftsDesc">At your best others experience you as empowering and encouraging.</p></div>
+          <div class="card"><div class="ct">Passion (Habit Energy)</div><p style="font-size:15px;color:var(--red);font-weight:600;margin-bottom:6px" id="viceTitle">Lust</p><p style="font-size:13px;color:var(--text3)" id="viceDesc">An insatiable push for control can lead to excess and make connection harder.</p></div>
+        </div>
+
+        <div class="g2 mb24">
+          <div class="card">
+            <div class="ct">Core Belief &amp; Attention Pattern</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="worldviewValue"><strong style="color:var(--text)">Worldview:</strong> The world is a tough and unjust place in which only the strong survive. Good things happen to those who take control.</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="focusValue"><strong style="color:var(--text)">Focus of Attention:</strong> You focus on ensuring that nobody can control you. You pay attention to solutions and results and strive to expand your influence.</p>
+            <div style="background:var(--surface2);border-radius:var(--r-sm);padding:12px">
+              <div class="kvl">Self-Talk</div>
+              <div style="font-family:var(--font-display);font-size:17px;font-weight:600;color:var(--text)" id="selfTalkValue">I must be in control; I must be strong.</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">Basic Desire &amp; Key Motivations</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="motivationLine1">This style stems from the need to be strong and avoid vulnerability. Being direct, impactful, and justice-minded is central to how you move through the world.</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="motivationLine2">At your best you are empowering and encouraging. At your worst you can be experienced as domineering, aggressive, and unstoppable.</p>
+            <div style="display:flex;gap:7px;flex-wrap:wrap" id="traitChips">
+              <span class="chip cgn">Assertive</span><span class="chip cgn">Decisive</span><span class="chip cgn">Protective</span><span class="chip cgn">Independent</span><span class="chip cgn">Influential</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb24">
+          <div class="ct" id="deepTitle">A Deeper Understanding of the SX — 8</div>
+          <div class="g2">
+            <div>
+              <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="deepP1">You are passionate, intense and charismatic, with great personal magnetism. When you go after a goal or ideal you tend to have a big impact on the environment.</p>
+              <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="deepP2">You may act impulsively and provocatively, standing out as a rebel or trail blazer. Material things do not particularly interest you as much as power, attention, and influence.</p>
+            </div>
+            <div>
+              <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="deepP3">You collect a small group of trusted people around you and are a loyal, reliable and protective friend.</p>
+              <p style="font-size:14px;color:var(--text2)" id="deepP4">On some level you are seeking a true equal — someone who can offer you the guidance, protection and challenge that you give to others.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="sec-centers" class="sec">
+        <div class="g2 mb24">
+          <div class="card">
+            <div class="ct">Centers of Expression</div>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:14px">Dominant Center: <strong style="color:var(--text)">Action Center</strong>. Weakest Center: <strong style="color:var(--text)">Thinking Center</strong>.</p>
+            <div class="brow"><div class="blbl">Action Center</div><div class="btrk"><div class="bfil" style="width:47%;background:var(--red)"></div></div><div class="bval">47</div></div>
+            <div class="brow"><div class="blbl">Feeling Center</div><div class="btrk"><div class="bfil" style="width:27%;background:var(--gold)"></div></div><div class="bval">27</div></div>
+            <div class="brow"><div class="blbl">Thinking Center</div><div class="btrk"><div class="bfil" style="width:25%;background:var(--surface3)"></div></div><div class="bval">25</div></div>
+            <div class="div"></div>
+            <div class="tlist">
+              <div class="ti"><div class="tic pos">→</div><div class="tt"><strong>Externalised Action:</strong> You act on gut impulses in quick and compelling ways.</div></div>
+              <div class="ti"><div class="tic neu">♥</div><div class="tt"><strong>Externalised Feeling:</strong> You focus emotional and relational energy on others.</div></div>
+              <div class="ti"><div class="tic inf">◎</div><div class="tt"><strong>Internalised Thinking:</strong> You quietly apply thinking energy inward, creating a rich thought-world.</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">27 Subtypes &amp; Instincts</div>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:14px"><strong style="color:var(--text)">You are an Enneagram type 8 with an SX instinct.</strong></p>
+            <div class="brow"><div class="blbl">SX — One-On-One</div><div class="btrk"><div class="bfil" style="width:54%;background:var(--red)"></div></div><div class="bval">54</div></div>
+            <div class="brow"><div class="blbl">SO — Social</div><div class="btrk"><div class="bfil" style="width:29%;background:var(--gold)"></div></div><div class="bval">29</div></div>
+            <div class="brow"><div class="blbl">SP — Self-Preserv</div><div class="btrk"><div class="bfil" style="width:17%;background:var(--surface3)"></div></div><div class="bval">17</div></div>
+            <div class="div"></div>
+            <p style="font-size:13px;color:var(--text2)">The one-to-one instinct is concerned with intensity of experience and strong connection with specific people.</p>
+            <div class="subh">Interaction &amp; Conflict Styles</div>
+            <div class="brow"><div class="blbl">Assertive</div><div class="btrk"><div class="bfil" style="width:44%;background:var(--red)"></div></div><div class="bval">44</div></div>
+            <div class="brow"><div class="blbl">Reactive</div><div class="btrk"><div class="bfil" style="width:51%;background:var(--red)"></div></div><div class="bval">51</div></div>
+            <p style="font-size:13px;color:var(--text2);margin-top:12px"><strong style="color:var(--text)">Your preferred conflict processing strategy is reactive.</strong></p>
+          </div>
+        </div>
+
+        <div class="card mb24">
+          <div class="ct">Typical Patterns</div>
+          <div class="g3">
+            <div>
+              <div class="subh" style="margin-top:0">Action Patterns</div>
+              <div class="tlist">
+                <div class="ti"><div class="tic pos">→</div><div class="tt">Acting from your gut instinct to make things happen is second nature.</div></div>
+                <div class="ti"><div class="tic pos">→</div><div class="tt">You pursue justice and actively work to protect the vulnerable.</div></div>
+                <div class="ti"><div class="tic neg">!</div><div class="tt">You dislike weakness and may challenge people to toughen up.</div></div>
+              </div>
+            </div>
+            <div>
+              <div class="subh" style="margin-top:0">Thinking Patterns</div>
+              <div class="tlist">
+                <div class="ti"><div class="tic inf">◎</div><div class="tt">You quickly assess people as strong or weak and then treat them accordingly.</div></div>
+                <div class="ti"><div class="tic inf">◎</div><div class="tt">You prefer big picture strategy over too many details.</div></div>
+                <div class="ti"><div class="tic neg">!</div><div class="tt">You do not respond well to being forced, bribed, or charmed into something unimportant.</div></div>
+              </div>
+            </div>
+            <div>
+              <div class="subh" style="margin-top:0">Feeling Patterns</div>
+              <div class="tlist">
+                <div class="ti"><div class="tic neu">♥</div><div class="tt">You tend to be quick to express anger and then try to channel it into immediate action.</div></div>
+                <div class="ti"><div class="tic neu">♥</div><div class="tt">You are generous and kind-hearted with people close to you.</div></div>
+                <div class="ti"><div class="tic neg">!</div><div class="tt">Sadness and fear can feel vulnerable and weak, so softer emotions show up mainly when you feel safe.</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="sec-strengths" class="sec">
+        <div class="g2 mb24">
+          <div class="card">
+            <div class="ct">Strengths &amp; Positive Qualities</div>
+            <div class="tlist">
+              <div class="ti"><div class="tic pos">+</div><div class="tt">You naturally gravitate toward leadership and authority.</div></div>
+              <div class="ti"><div class="tic pos">+</div><div class="tt">You exude vitality and a larger-than-life presence.</div></div>
+              <div class="ti"><div class="tic pos">+</div><div class="tt">You defend your team and show confidence that others can lean on.</div></div>
+              <div class="ti"><div class="tic pos">+</div><div class="tt">You are willing to take risks and make unsentimental decisions when needed.</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">Weaknesses &amp; Challenges</div>
+            <div class="tlist">
+              <div class="ti"><div class="tic neg">!</div><div class="tt">There is a fine line between defending yourself and being aggressive.</div></div>
+              <div class="ti"><div class="tic neg">!</div><div class="tt">Your certainty can push others away and make collaboration harder.</div></div>
+              <div class="ti"><div class="tic neg">!</div><div class="tt">Compromise does not come naturally and self-neglect can creep in.</div></div>
+              <div class="ti"><div class="tic neg">!</div><div class="tt">Acting fast can mean not fully considering the implications for others or the future.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb24">
+          <div class="ct">Blind Spots</div>
+          <div class="g2">
+            <div class="tlist">
+              <div class="ti"><div class="tic neg">!</div><div class="tt">Your energy may be stronger than you realise and more intimidating than intended.</div></div>
+              <div class="ti"><div class="tic neg">!</div><div class="tt">You may have a double standard on control — resisting it for yourself while asserting it over others.</div></div>
+            </div>
+            <div class="tlist">
+              <div class="ti"><div class="tic neg">!</div><div class="tt">You may expose more vulnerability than you realise.</div></div>
+              <div class="ti"><div class="tic neg">!</div><div class="tt">You move toward conclusions and action quickly, with a blind spot for others' pace and needs.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb24">
+          <div class="ct">Conflict — What Triggers You</div>
+          <div class="tg-grid mb16">
+            <div class="tg-item"><div class="tg-title">Injustice</div><div class="tg-desc">Especially toward people you have taken under your wing.</div></div>
+            <div class="tg-item"><div class="tg-title">Not dealing directly</div><div class="tg-desc">Indirectness and avoidance quickly raise your temperature.</div></div>
+            <div class="tg-item"><div class="tg-title">Blame-shifting</div><div class="tg-desc">You react strongly when people avoid responsibility.</div></div>
+            <div class="tg-item"><div class="tg-title">Vulnerability exposure</div><div class="tg-desc">Being blindsided, dishonesty, insincerity, and deceit.</div></div>
+            <div class="tg-item"><div class="tg-title">Excluded from decisions</div><div class="tg-desc">No input on matters significant to you.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="sec-leadership" class="sec">
+        <div class="ibox mb24"><p><strong>Your type 8 style focuses management efforts on directing action toward the vision and taking charge.</strong> The growth edge is true collaboration rather than relying on force, certainty, or speed alone.</p></div>
+        <div class="g2 mb24">
+          <div class="card">
+            <div class="ct">Goal Setting</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px">Your goals are likely to be clear, linked to challenges, and charged with urgency. You want action and results once direction is set.</p>
+            <div class="tlist">
+              <div class="ti"><div class="tic pos">✓</div><div class="tt">Aligned to strategic priorities and the big picture</div></div>
+              <div class="ti"><div class="tic pos">✓</div><div class="tt">Set by you rather than enforced by others</div></div>
+              <div class="ti"><div class="tic neg">!</div><div class="tt">Can feel overwhelming to others when buy-in is assumed rather than built.</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">Planning &amp; Task Completion</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px">You value plans that enable action. You are likely to become impatient when planning becomes overly detailed, laborious, or consultative.</p>
+            <p style="font-size:14px;color:var(--text2)">You prefer big, high-impact responsibilities and applied effort over low-impact detail work.</p>
+          </div>
+        </div>
+        <div class="g2 mb24">
+          <div class="card"><div class="ct">Delegation</div><p style="font-size:14px;color:var(--text2)">Once trust is established, you will delegate tasks, decisions and authority. If trust is thin, you are more likely to remain firmly in control.</p></div>
+          <div class="card"><div class="ct">Decision Making</div><div class="tlist"><div class="ti"><div class="tic pos">✓</div><div class="tt">You move toward decisions quickly, boldly and with certainty.</div></div><div class="ti"><div class="tic neg">!</div><div class="tt">You may make unilateral decisions or come across that way.</div></div><div class="ti"><div class="tic neg">!</div><div class="tt">Your bold presentation can increase opposition rather than enroll people.</div></div></div></div>
+        </div>
+      </div>
+
+      <div id="sec-communication" class="sec">
+        <div class="g2 mb24">
+          <div class="card">
+            <div class="ct" id="languageTitle">Type Communication Pattern</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+              <span class="chip cx">Strong nouns and verbs</span><span class="chip cx">Direct and forthright</span><span class="chip cx">Say “no” first and “yes” later</span><span class="chip cx">Express certainty</span><span class="chip cx">Tell, sell, yell</span><span class="chip cx">May lack variation</span>
+            </div>
+            <div class="div"></div>
+            <div style="background:var(--surface2);border-radius:var(--r-sm);padding:12px">
+              <div class="kvl">Your Meta-Message</div>
+              <div style="font-family:var(--font-display);font-size:18px;font-weight:600;color:var(--text)" id="languageMeta">Be honest and forthright, but don't waste my time.</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">Verbal &amp; Written Communication</div>
+            <div class="tlist">
+              <div class="ti"><div class="tic pos">→</div><div class="tt">Direct, certain, and intensity-forward communication is your default.</div></div>
+              <div class="ti"><div class="tic pos">→</div><div class="tt">You enjoy strategic and big-picture conversations.</div></div>
+              <div class="ti"><div class="tic neg">!</div><div class="tt">Your style can intimidate others or make participation less likely.</div></div>
+              <div class="ti"><div class="tic neg">!</div><div class="tt">When triggered, anger can dominate tone and body language.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="g2 mb24">
+          <div class="card"><div class="ct">Listening</div><div class="tlist"><div class="ti"><div class="tic pos">✓</div><div class="tt">You listen well when people are being honest and fair.</div></div><div class="ti"><div class="tic neg">!</div><div class="tt">Presence may intimidate people and make vulnerability harder for them.</div></div><div class="ti"><div class="tic neg">!</div><div class="tt">You react strongly to blame, hidden agendas, or vague communication.</div></div></div></div>
+          <div class="card"><div class="ct">Giving &amp; Receiving Feedback</div><div class="tlist"><div class="ti"><div class="tic neg">!</div><div class="tt">Be careful not to jump right into feedback with too much intensity.</div></div><div class="ti"><div class="tic neg">!</div><div class="tt">At low integration, feedback can trigger defending, anger, or a need to control the conversation.</div></div><div class="ti"><div class="tic pos">→</div><div class="tt">A more regulated body and explicit positive regard can change the outcome dramatically.</div></div></div></div>
+        </div>
+      </div>
+
+      <div id="sec-strain" class="sec">
+        <div class="g2 mb24">
+          <div class="card"><div class="ct">Strain Radar</div><div class="chart-wrap" style="height:280px"><canvas id="strainChart"></canvas></div></div>
+          <div class="card">
+            <div class="ct">Strain Area Breakdown</div>
+            <div style="margin-bottom:6px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+              <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">Overall strain is MEDIUM.</div>
+              <div style="font-size:12px;color:var(--text3)">Overall score: 26</div>
+            </div>
+            <div class="brow" style="margin-top:12px"><div class="blbl">Happiness</div><div class="btrk"><div class="bfil" style="width:46%;background:var(--red)"></div></div><div class="bval" style="color:var(--red)">46</div></div>
+            <div class="brow"><div class="blbl">Vocational</div><div class="btrk"><div class="bfil" style="width:33%;background:var(--gold)"></div></div><div class="bval">33</div></div>
+            <div class="brow"><div class="blbl">Interpersonal</div><div class="btrk"><div class="bfil" style="width:26%;background:var(--gold)"></div></div><div class="bval">26</div></div>
+            <div class="brow"><div class="blbl">Physical</div><div class="btrk"><div class="bfil" style="width:33%;background:var(--gold)"></div></div><div class="bval">33</div></div>
+            <div class="brow"><div class="blbl">Environmental</div><div class="btrk"><div class="bfil" style="width:6%;background:var(--green)"></div></div><div class="bval">6</div></div>
+            <div class="brow"><div class="blbl">Psychological</div><div class="btrk"><div class="bfil" style="width:6%;background:var(--green)"></div></div><div class="bval">6</div></div>
+          </div>
+        </div>
+
+        <div class="g3 mb24">
+          <div class="card"><div class="ct">Happiness — Low</div><div class="chip cr" style="margin-bottom:10px">More stress than joy at present</div><p style="font-size:13px;color:var(--text2)">General circumstances are detracting from your ability to feel happy, excited, and hopeful.</p></div>
+          <div class="card"><div class="ct">Vocational — Medium</div><div class="chip cg" style="margin-bottom:10px">Somewhat satisfied</div><p style="font-size:13px;color:var(--text2)">You are neutral or mildly positive about work, with some parts enjoyable and others mundane.</p></div>
+          <div class="card"><div class="ct">Interpersonal — Medium</div><div class="chip cg" style="margin-bottom:10px">Some conflict and frustration</div><p style="font-size:13px;color:var(--text2)">Your social life does not meet all your needs consistently, and support can feel uneven.</p></div>
+        </div>
+      </div>
+
+      <div id="sec-integration" class="sec">
+        <div class="g2 mb24">
+          <div class="card">
+            <div class="ct">Levels of Health and Integration</div>
+            <div style="margin-bottom:14px"><div style="font-family:var(--font-display);font-size:26px;font-weight:700;color:var(--red)">Low</div><div style="font-size:12px;color:var(--text3)">You are operating at a low level of Enneagram awareness and mastery in this report.</div></div>
+            <div class="int-segs"><div class="int-seg act"></div><div class="int-seg"></div><div class="int-seg"></div><div class="int-seg"></div><div class="int-seg"></div></div>
+            <div class="int-labels"><span>Very Low ◀</span><span>Low</span><span>Moderate</span><span>High</span><span>Very High</span></div>
+            <div class="div"></div>
+            <div class="tlist">
+              <div class="ti"><div class="tic neg">!</div><div class="tt">Reactive and aggressive behaviours are more likely to show up frequently.</div></div>
+              <div class="ti"><div class="tic neg">!</div><div class="tt">You may be especially sensitive to criticism from people you protect.</div></div>
+              <div class="ti"><div class="tic neg">!</div><div class="tt">Controlling explosive anger may be difficult when you feel vulnerable or controlled.</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">Levels of Health — Example</div>
+            <div class="brow"><div class="blbl">Fixations</div><div class="btrk"><div class="bfil" style="width:68%;background:var(--gold)"></div></div><div class="bval">68</div></div>
+            <div class="brow"><div class="blbl">Helpful Shifts</div><div class="btrk"><div class="bfil" style="width:66%;background:var(--gold)"></div></div><div class="bval">66</div></div>
+            <div class="brow"><div class="blbl">Lines</div><div class="btrk"><div class="bfil" style="width:63%;background:var(--gold)"></div></div><div class="bval">63</div></div>
+            <div class="brow"><div class="blbl">All Combined</div><div class="btrk"><div class="bfil" style="width:50%;background:var(--red)"></div></div><div class="bval">50</div></div>
+            <div class="div"></div>
+            <div class="ct" style="margin-bottom:8px">Reality Distortion</div>
+            <div class="rdrow"><div class="rdname">Faking Good</div><div class="rdbar"><div class="rdfil" style="width:33%"></div></div><div class="rdscore">33</div></div>
+            <div class="rdrow"><div class="rdname">Faking Bad</div><div class="rdbar"><div class="rdfil" style="width:20%;background:var(--red)"></div></div><div class="rdscore">20</div></div>
+          </div>
+        </div>
+
+        <div class="card mb24">
+          <div class="ct">Wing Influence — Types 7 &amp; 9</div>
+          <div class="g2">
+            <div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--gold-lt);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--gold)">7</div><div><div style="font-size:13px;font-weight:600">Wing 7</div><div style="font-size:11px;color:var(--text3)">Moderate integration</div></div></div>
+              <div class="wing-item">May combine interests in power and experience, making you seem pushy, tough or manipulative.</div>
+              <div class="wing-item">At high integration, it helps you lighten up, experiment, and soften intensity.</div>
+            </div>
+            <div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--blue-lt);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--blue)">9</div><div><div style="font-size:13px;font-weight:600">Wing 9</div><div style="font-size:11px;color:var(--text3)">Moderate integration</div></div></div>
+              <div class="wing-item">May make you calmer than an 8w7, yet still unexpectedly overt in anger.</div>
+              <div class="wing-item">At high integration, it increases warmth, empathy, consensus-building and flexibility.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="sec-growth" class="sec">
+        <div class="g2 mb24">
+          <div class="card">
+            <div class="ct">Connected Line A — Type 2</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px">Connected Line A links Type 8 with Type 2 themes such as empathy, warmth, and relational care.</p>
+            <p style="font-size:14px;color:var(--text2)">Consciously identifying the positive traits you appreciate in others can release tension and unlock compassion beyond self-interest.</p>
+            <div class="quote"><p>Release through surrender to the vulnerability of the power of love.</p></div>
+          </div>
+          <div class="card">
+            <div class="ct">Connected Line B — Type 5</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px">Connected Line B links Type 8 with Type 5 themes such as withdrawal, strategic distance, and analytic detachment under pressure.</p>
+            <div class="ibox"><p>Making time to recharge alone helps prevent overdrive and makes it less likely that anger will fly off the handle.</p></div>
+          </div>
+        </div>
+
+        <div class="devbox mb24">
+          <div class="devbox-title">Key Challenges Towards Self-Mastery and Integration</div>
+          <div class="dev-grid">
+            <div class="dev-item"><div class="dev-item-title">Resist the impulse to act</div><p>Slow your action-orientation down so you have time to think and process differently.</p></div>
+            <div class="dev-item"><div class="dev-item-title">Connect to the impact of anger</div><p>Notice how intensity and aggression may leave others feeling scared, bullied, or victimised.</p></div>
+            <div class="dev-item"><div class="dev-item-title">Investigate reactivity and grudges</div><p>Work on forgiveness instead of revenge or score-settling.</p></div>
+            <div class="dev-item"><div class="dev-item-title">Open yourself to feedback</div><p>Listen without dismissing or punishing people when they tell you the truth.</p></div>
+            <div class="dev-item"><div class="dev-item-title">Create opportunities for collaboration</div><p>Share power and reduce unilateral moves wherever possible.</p></div>
+            <div class="dev-item"><div class="dev-item-title">Balance through both wings</div><p>Wing 7 invites lightness and enjoyment; wing 9 invites receptivity to others' needs and ideas.</p></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="sidebar-col minimized" id="reflectionWidget">
+      <div class="sidebar-box">
+        <div class="sb-header">
+          <span class="sb-title">Reflections</span>
+          <div class="sb-tools">
+            <button class="sb-refresh" onclick="genReflection()" title="New reflection">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1 6.5a5.5 5.5 0 1 0 5.5-5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M1 1v5.5h5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="sb-min" onclick="toggleReflections(true)" title="Minimize reflections">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="sb-cats">
+          <button class="sb-cat active" onclick="setRef('leadership',this)">Leadership</button>
+          <button class="sb-cat" onclick="setRef('relationships',this)">Relationships</button>
+          <button class="sb-cat" onclick="setRef('regulation',this)">Self-Reg</button>
+          <button class="sb-cat" onclick="setRef('growth',this)">Growth</button>
+          <button class="sb-cat" onclick="setRef('wellbeing',this)">Wellbeing</button>
+        </div>
+        <div class="sb-body">
+          <div id="refCard"><p class="sb-tip">Loading reflection…</p></div>
+          <div id="refMeta" class="sb-meta">
+            <span class="sb-tag" id="refCatTag">Leadership</span>
+            <span class="sb-tag" id="refTypeTag" data-testid="reflection-type-tag">Type 8 · SX</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button class="reflection-launcher" id="reflectionLauncher" onclick="toggleReflections(false)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 18h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M10 21h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.7.6 1.2 1.3 1.5 2.1h4.6c.3-.8.8-1.5 1.5-2.1A6 6 0 0 0 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Reflections
+    </button>
+  </div>
+
+  <footer class="site-footer">© 2026 The Kapalaran Group LLC | All rights reserved</footer>
+</div>
+
+<script>
+const AUTH_BASE_URL =
+  (window.__AUTH_BASE_URL__ && String(window.__AUTH_BASE_URL__).trim()) ||
+  window.localStorage.getItem("AUTH_BASE_URL") ||
+  window.location.origin;
+
+function getAuthButton() {
+  return document.getElementById("authSignInButton");
+}
+
+function getInitials(nameOrEmail) {
+  if (!nameOrEmail) return "U";
+  const parts = String(nameOrEmail).trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+  return String(nameOrEmail).slice(0, 2).toUpperCase();
+}
+
+function setSignedOutAuthUi() {
+  const button = getAuthButton();
+  if (!button) return;
+
+  button.classList.remove("avatar");
+  button.classList.add("google");
+  button.textContent = "Sign In";
+  button.setAttribute("href", "#");
+  button.setAttribute("data-testid", "sign-in-google");
+  button.onclick = openGoogleSignInPopup;
+  button.removeAttribute("title");
+}
+
+function setSignedInAuthUi(user) {
+  const button = getAuthButton();
+  if (!button) return;
+
+  button.classList.remove("google");
+  button.classList.add("avatar");
+  button.setAttribute("href", "/dashboard");
+  button.setAttribute("data-testid", "signed-in-avatar");
+  button.onclick = null;
+  button.textContent = "";
+
+  if (user?.image) {
+    const avatar = document.createElement("img");
+    avatar.src = user.image;
+    avatar.alt = user.name ? `${user.name} profile photo` : "Profile photo";
+    avatar.className = "auth-avatar-img";
+    button.appendChild(avatar);
+  } else {
+    const fallback = document.createElement("span");
+    fallback.className = "auth-avatar-fallback";
+    fallback.textContent = getInitials(user?.name || user?.email);
+    button.appendChild(fallback);
+  }
+
+  button.title = user?.name ? `Signed in as ${user.name}` : "Signed in";
+}
+
+async function refreshAuthUi() {
+  const baseUrl = AUTH_BASE_URL.replace(/\/$/, "");
+  try {
+    const response = await fetch(`${baseUrl}/api/auth/session`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      credentials: "include",
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+    if (!response.ok || !contentType.includes("application/json")) {
+      setSignedOutAuthUi();
+      return;
+    }
+
+    const session = await response.json();
+    if (session?.user) {
+      setSignedInAuthUi(session.user);
+    } else {
+      setSignedOutAuthUi();
+    }
+  } catch (error) {
+    console.log("[auth] Session check failed:", error);
+    setSignedOutAuthUi();
+  }
+}
+
+async function hasWorkingAuthBackend(baseUrl) {
+  const providersUrl = `${baseUrl.replace(/\/$/, "")}/api/auth/providers`;
+  console.log("[auth] Checking NextAuth providers endpoint:", providersUrl);
+
+  try {
+    const response = await fetch(providersUrl, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    const contentType = response.headers.get("content-type") || "";
+    const isJson = contentType.includes("application/json");
+    console.log("[auth] Providers endpoint status/content-type:", response.status, contentType);
+    return response.ok && isJson;
+  } catch (error) {
+    console.log("[auth] Providers endpoint check failed:", error);
+    return false;
+  }
+}
+
+async function openGoogleSignInPopup(event) {
+  const baseUrl = AUTH_BASE_URL.replace(/\/$/, "");
+  const callbackUrl = `${window.location.origin}/auth/popup-done`;
+  const authUrl = `${baseUrl}/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+  console.log("[auth] Sign-in clicked. OAuth URL:", authUrl);
+
+  if (event) {
+    event.preventDefault();
+  }
+
+  const authReady = await hasWorkingAuthBackend(baseUrl);
+  if (!authReady) {
+    const message =
+      "Google sign-in backend is not running on " +
+      baseUrl +
+      ". This page is static, so /api/auth routes are being served as index.html. " +
+      "Start a NextAuth server or set AUTH_BASE_URL to that server.";
+    console.log("[auth] " + message);
+    alert(message);
+    return false;
+  }
+
+  const popup = window.open(
+    authUrl,
+    "googleAuthPopup",
+    "width=520,height=700,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes,status=yes",
+  );
+
+  if (!popup) {
+    console.log("[auth] Popup blocked by browser. Falling back to full-page redirect.");
+    window.location.href = authUrl;
+    return false;
+  }
+
+  try {
+    popup.focus();
+  } catch (error) {
+    console.log("[auth] Popup opened but focus failed:", error);
+  }
+
+  const popupWatcher = window.setInterval(() => {
+    if (popup.closed) {
+      window.clearInterval(popupWatcher);
+      refreshAuthUi();
+    }
+  }, 500);
+
+  return false;
+}
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin) return;
+  if (event.data && event.data.type === "auth-success") {
+    console.log("[auth] Received auth-success message from popup");
+    refreshAuthUi();
+  }
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+  refreshAuthUi();
+});
+
+const REPORT_EXAMPLES = {
+  '1': { typeNumber:'1', typeName:'Principled Reformer', instinct:'SO — Social', keyword:'Standards', release:'Type 7 · Joyful Visionary', stretch:'Type 4 · Reflective Individualist', integration:'Moderate', coreFear:'Being wrong, corrupt, or irresponsible.', gifts:'Integrity, Clarity, Discipline', giftsDesc:'At your best you model fairness, restraint, and principled leadership.', vice:'Resentment', viceDesc:'Pressure for perfection can harden into criticism and rigidity.', worldview:'The world improves when people do things correctly and ethically.', focus:'You track errors, inefficiencies, and what needs refinement.', selfTalk:'I must be good, correct, and responsible.', motivation1:'This style is motivated by conscience and improvement.', motivation2:'At your best you are wise and balanced; under strain you can become rigid and judgmental.', traits:['Principled','Orderly','Reliable','High standards','Ethical'], deepTitle:'A Deeper Understanding of the SO — 1', deep:['You channel your energy toward better systems and shared standards.','You often feel responsible for quality, ethics, and process.','People trust your consistency and careful preparation.','Growth comes from pairing standards with patience and self-compassion.'], dominantCenter:'Thinking Center', weakestCenter:'Feeling Center', thinkingStyle:'Externalised', conflictStyle:'Competency', meta:'Let us do this the right way.', profile:[32,46,81,36,41,52,68,39,44], strain:[23,24,27,22,19,31], mainValue:81, releaseValue:44, stretchValue:52 },
+  '2': { typeNumber:'2', typeName:'Caring Helper', instinct:'SX — One-on-One', keyword:'Connection', release:'Type 4 · Sensitive Individualist', stretch:'Type 8 · Protective Challenger', integration:'Moderate', coreFear:'Being unwanted, unloved, or unnecessary.', gifts:'Generosity, Warmth, Support', giftsDesc:'At your best you are emotionally attuned and deeply encouraging.', vice:'Pride', viceDesc:'Helping can become controlling when needs go unspoken.', worldview:'Love and belonging are built through care and responsiveness.', focus:'You track who needs support and where connection is weakening.', selfTalk:'I must be needed to be loved.', motivation1:'This style is driven by the desire to be valuable through care.', motivation2:'At your best you serve freely; under strain you over-give and feel unappreciated.', traits:['Supportive','Relational','Warm','Encouraging','Loyal'], deepTitle:'A Deeper Understanding of the SX — 2', deep:['You bring intensity, affection, and devotion to close relationships.','You can be highly intuitive about others emotional states.','Your strength is creating belonging and momentum through care.','Growth comes from naming your own needs directly.'], dominantCenter:'Feeling Center', weakestCenter:'Thinking Center', thinkingStyle:'Internalised', conflictStyle:'Compliant', meta:'I see you and I can help.', profile:[45,35,38,79,48,61,33,42,36], strain:[29,21,31,24,20,28], mainValue:79, releaseValue:61, stretchValue:45 },
+  '3': { typeNumber:'3', typeName:'Driven Achiever', instinct:'SO — Social', keyword:'Image', release:'Type 6 · Loyal Strategist', stretch:'Type 9 · Grounded Peacemaker', integration:'Moderate', coreFear:'Failure, worthlessness, or being seen as ineffective.', gifts:'Drive, Adaptability, Results', giftsDesc:'At your best you inspire confidence and execute with precision.', vice:'Deceit', viceDesc:'Over-identifying with performance can disconnect you from authenticity.', worldview:'Success creates safety, influence, and opportunity.', focus:'You track goals, outcomes, and signals of effectiveness.', selfTalk:'I must succeed to be valued.', motivation1:'This style is energized by achievement and visible progress.', motivation2:'At your best you are inspiring and efficient; under strain you can become image-driven.', traits:['Efficient','Ambitious','Polished','Focused','Pragmatic'], deepTitle:'A Deeper Understanding of the SO — 3', deep:['You read social context quickly and align to what works.','You naturally convert strategy into measurable outcomes.','Others often trust your confidence and momentum.','Growth comes from anchoring identity in truth, not output alone.'], dominantCenter:'Feeling Center', weakestCenter:'Action Center', thinkingStyle:'Externalised', conflictStyle:'Competency', meta:'Lets win, then iterate.', profile:[39,42,37,41,83,47,36,64,58], strain:[34,27,25,29,17,26], mainValue:83, releaseValue:64, stretchValue:58 },
+  '4': { typeNumber:'4', typeName:'Reflective Individualist', instinct:'SP — Self-Preservation', keyword:'Identity', release:'Type 1 · Principled Reformer', stretch:'Type 2 · Caring Helper', integration:'Low', coreFear:'Having no personal significance or identity.', gifts:'Depth, Creativity, Meaning', giftsDesc:'At your best you bring emotional truth and originality.', vice:'Envy', viceDesc:'Comparison can narrow perspective and drain gratitude.', worldview:'Meaning matters more than appearance or convenience.', focus:'You track emotional nuance, authenticity, and what feels missing.', selfTalk:'I must be true to who I am.', motivation1:'This style seeks significance through depth and authenticity.', motivation2:'At your best you transform pain into insight; under strain you can withdraw and ruminate.', traits:['Creative','Sensitive','Expressive','Introspective','Original'], deepTitle:'A Deeper Understanding of the SP — 4', deep:['You feel deeply yet often carry pain privately.','You strive to build a life that reflects your values and aesthetics.','People value your emotional honesty and perspective.','Growth comes from practicing steadiness and appreciative presence.'], dominantCenter:'Feeling Center', weakestCenter:'Action Center', thinkingStyle:'Internalised', conflictStyle:'Reactive', meta:'See me as I am.', profile:[51,44,57,33,40,84,42,36,34], strain:[41,30,34,28,22,38], mainValue:84, releaseValue:51, stretchValue:33 },
+  '5': { typeNumber:'5', typeName:'Quiet Investigator', instinct:'SP — Self-Preservation', keyword:'Competence', release:'Type 8 · Decisive Challenger', stretch:'Type 7 · Expansive Enthusiast', integration:'Moderate', coreFear:'Being overwhelmed, depleted, or incapable.', gifts:'Insight, Precision, Independence', giftsDesc:'At your best you bring calm clarity and strategic depth.', vice:'Avarice', viceDesc:'Withholding energy can become isolation and over-detachment.', worldview:'Resources are finite, so attention and energy must be protected.', focus:'You track complexity, boundaries, and what is knowable.', selfTalk:'I must conserve energy and understand fully.', motivation1:'This style seeks mastery through knowledge and careful pacing.', motivation2:'At your best you are objective and original; under strain you can retreat too far from people.', traits:['Analytical','Independent','Curious','Focused','Measured'], deepTitle:'A Deeper Understanding of the SP — 5', deep:['You are naturally observant and less reactive under pressure.','You value autonomy, depth, and clear boundaries.','People rely on your expertise and objectivity.','Growth comes from re-engaging before certainty is complete.'], dominantCenter:'Thinking Center', weakestCenter:'Action Center', thinkingStyle:'Internalised', conflictStyle:'Withdrawn', meta:'Give me time to think.', profile:[36,38,48,29,45,53,82,41,67], strain:[25,28,24,21,18,29], mainValue:82, releaseValue:36, stretchValue:67 },
+  '6': { typeNumber:'6', typeName:'Committed Loyalist', instinct:'SO — Social', keyword:'Security', release:'Type 9 · Steady Peacemaker', stretch:'Type 3 · Effective Achiever', integration:'Moderate', coreFear:'Lack of support, guidance, or certainty.', gifts:'Loyalty, Preparedness, Courage', giftsDesc:'At your best you are brave, grounded, and reliable under pressure.', vice:'Anxiety', viceDesc:'Threat scanning can become overthinking and self-doubt.', worldview:'The world is uncertain, so trust must be tested and built.', focus:'You track risk, motives, and contingency plans.', selfTalk:'I must be prepared and stay loyal to what is trustworthy.', motivation1:'This style seeks stability through foresight and commitment.', motivation2:'At your best you are courageous and collaborative; under strain you can become suspicious or indecisive.', traits:['Loyal','Prepared','Practical','Responsible','Questioning'], deepTitle:'A Deeper Understanding of the SO — 6', deep:['You balance skepticism with commitment to people and systems.','You ask clarifying questions others avoid.','Teams value your foresight and reliability in uncertainty.','Growth comes from trusting your inner authority alongside external guidance.'], dominantCenter:'Thinking Center', weakestCenter:'Action Center', thinkingStyle:'Externalised', conflictStyle:'Reactive', meta:'Lets pressure-test this first.', profile:[44,41,35,39,62,43,45,81,47], strain:[33,26,29,31,24,35], mainValue:81, releaseValue:47, stretchValue:62 },
+  '7': { typeNumber:'7', typeName:'Energetic Enthusiast', instinct:'SX — One-on-One', keyword:'Possibility', release:'Type 5 · Quiet Investigator', stretch:'Type 1 · Principled Reformer', integration:'High', coreFear:'Being trapped in pain, boredom, or limitation.', gifts:'Optimism, Vision, Agility', giftsDesc:'At your best you generate options and energize momentum.', vice:'Gluttony', viceDesc:'Over-scattering can dilute follow-through and depth.', worldview:'Life is full of opportunities that should be explored.', focus:'You track possibility, variety, and future options.', selfTalk:'I must stay free and keep moving.', motivation1:'This style is driven by freedom, stimulation, and anticipation.', motivation2:'At your best you are joyful and inventive; under strain you avoid discomfort and over-commit.', traits:['Optimistic','Fast-moving','Innovative','Spontaneous','Future-focused'], deepTitle:'A Deeper Understanding of the SX — 7', deep:['You bring charisma and contagious energy to one-on-one bonds.','You can reframe setbacks quickly and create alternatives.','People often feel uplifted and expanded around you.','Growth comes from staying present with discomfort instead of escaping it.'], dominantCenter:'Thinking Center', weakestCenter:'Feeling Center', thinkingStyle:'Externalised', conflictStyle:'Assertive', meta:'Keep it moving.', profile:[47,61,42,36,48,37,56,44,84], strain:[18,19,22,23,15,17], mainValue:84, releaseValue:56, stretchValue:47 },
+  '8': { typeNumber:'8', typeName:'Active Controller', instinct:'SX — One-on-One', keyword:'Possession', release:'Type 2 · Considerate Helper', stretch:'Type 5 · Quiet Specialist', integration:'Low', coreFear:'Helplessness or vulnerability. Total weakness. Being controlled by others.', gifts:'Strength, Direction, Aliveness', giftsDesc:'At your best others experience you as empowering and encouraging.', vice:'Lust', viceDesc:'An insatiable push for control can lead to excess and make connection harder.', worldview:'The world is a tough and unjust place in which only the strong survive. Good things happen to those who take control.', focus:'You focus on ensuring that nobody can control you. You pay attention to solutions and results and strive to expand your influence.', selfTalk:'I must be in control; I must be strong.', motivation1:'This style stems from the need to be strong and avoid vulnerability. Being direct, impactful, and justice-minded is central to how you move through the world.', motivation2:'At your best you are empowering and encouraging. At your worst you can be experienced as domineering, aggressive, and unstoppable.', traits:['Assertive','Decisive','Protective','Independent','Influential'], deepTitle:'A Deeper Understanding of the SX — 8', deep:['You are passionate, intense and charismatic, with great personal magnetism. When you go after a goal or ideal you tend to have a big impact on the environment.','You may act impulsively and provocatively, standing out as a rebel or trail blazer. Material things do not particularly interest you as much as power, attention, and influence.','You collect a small group of trusted people around you and are a loyal, reliable and protective friend.','On some level you are seeking a true equal - someone who can offer you the guidance, protection and challenge that you give to others.'], dominantCenter:'Action Center', weakestCenter:'Thinking Center', thinkingStyle:'Internalised', conflictStyle:'Reactive', meta:"Be honest and forthright, but don't waste my time.", profile:[78,13,50,71,43,46,56,53,50], strain:[46,33,26,33,6,6], mainValue:78, releaseValue:71, stretchValue:56 },
+  '9': { typeNumber:'9', typeName:'Steady Peacemaker', instinct:'SP — Self-Preservation', keyword:'Harmony', release:'Type 3 · Effective Achiever', stretch:'Type 6 · Committed Loyalist', integration:'High', coreFear:'Loss of connection, conflict, or inner fragmentation.', gifts:'Calm, Inclusion, Stability', giftsDesc:'At your best you create trust, unity, and balanced perspective.', vice:'Sloth', viceDesc:'Inertia can delay priorities and mute your true voice.', worldview:'Peace and continuity are protected through patience and inclusion.', focus:'You track interpersonal atmosphere and what keeps things settled.', selfTalk:'I must keep the peace and stay connected.', motivation1:'This style seeks harmony, comfort, and relational continuity.', motivation2:'At your best you are grounding and wise; under strain you avoid conflict and postpone action.', traits:['Calm','Diplomatic','Patient','Inclusive','Steady'], deepTitle:'A Deeper Understanding of the SP — 9', deep:['You create a calm field that helps others regulate and collaborate.','You are skilled at seeing multiple perspectives without escalating tension.','People trust your steadiness and fairness under stress.','Growth comes from prioritizing your agenda with clear, timely action.'], dominantCenter:'Action Center', weakestCenter:'Thinking Center', thinkingStyle:'Internalised', conflictStyle:'Withdrawn', meta:'Lets keep this grounded and workable.', profile:[49,77,46,42,39,44,41,66,37], strain:[20,22,24,21,16,19], mainValue:77, releaseValue:42, stretchValue:66 }
+};
+
+const MASTER_SOURCE_COPY = {
+  '1': {
+    typeName: 'The Reformer',
+    coreFear: 'Basic Fear: being bad, corrupt, evil, or defective.',
+    gifts: 'To be good, balanced, and have integrity.',
+    giftsDesc: 'At healthy levels, Ones are wise, discerning, realistic, and principled.',
+    vice: 'Resentment (anger held in tension).',
+    viceDesc: 'When strain rises, perfectionism and criticism become substitutes for inner ease.',
+    worldview: 'Improvement matters; life is guided by principles, conscience, and responsibility.',
+    focus: 'Attention goes to errors, inconsistencies, and what should be improved.',
+    motivation1: 'Key motivations: to be right, to improve everything, and to avoid blame or censure.',
+    motivation2: 'Growth comes through acceptance, flexibility, and compassionate objectivity.',
+    deepTitle: 'Type 1 Core Pattern',
+    deep: ['Ones are ethically serious and often feel responsible for standards.', 'They seek integrity and self-control to avoid being wrong or out of line.', 'Their gift is principled reform grounded in realism, discipline, and fairness.', 'Their growth edge is releasing rigid self-judgment and relaxing into humanity.'],
+    meta: 'Let us do what is right and responsible.'
+  },
+  '2': {
+    typeName: 'The Helper',
+    coreFear: 'Basic Fear: being unwanted, unworthy of love, or not needed.',
+    gifts: 'To feel loved through genuine connection and care.',
+    giftsDesc: 'At healthy levels, Twos are generous, nurturing, and deeply encouraging.',
+    vice: 'Pride (inflating the helper role while bypassing personal needs).',
+    viceDesc: 'Under strain, helping can become possessive, flattering, or controlling.',
+    worldview: 'Love is earned through giving, service, and emotional availability.',
+    focus: 'Attention goes to other people needs, moods, and opportunities to help.',
+    motivation1: 'Key motivations: to be loved, to feel needed, and to avoid acknowledging personal need.',
+    motivation2: 'Growth comes through humility, boundaries, and direct expression of one own needs.',
+    deepTitle: 'Type 2 Core Pattern',
+    deep: ['Twos orient to relationship, warmth, and emotional support.', 'They often anticipate others needs before their own.', 'Their gift is heartfelt generosity that builds belonging and trust.', 'Their growth edge is receiving love without earning it through over-giving.'],
+    meta: 'I care, and I want to be close.'
+  },
+  '3': {
+    typeName: 'The Achiever',
+    coreFear: 'Basic Fear: being worthless, failing, or without value.',
+    gifts: 'To feel valuable through authentic excellence and contribution.',
+    giftsDesc: 'At healthy levels, Threes are self-assured, effective, and inspiring.',
+    vice: 'Deceit (over-identifying with image and performance).',
+    viceDesc: 'Under strain, adaptation can become image-management and emotional disconnection.',
+    worldview: 'Value is proven through achievement, effectiveness, and visible success.',
+    focus: 'Attention goes to goals, metrics, status signals, and what works quickly.',
+    motivation1: 'Key motivations: to be admired, to distinguish oneself, and to avoid failure.',
+    motivation2: 'Growth comes through truthfulness, inner stillness, and heart-level authenticity.',
+    deepTitle: 'Type 3 Core Pattern',
+    deep: ['Threes are adaptive, goal-focused, and highly productive.', 'They intuit social expectations and optimize for results.', 'Their gift is turning vision into measurable progress.', 'Their growth edge is valuing being over constant doing.'],
+    meta: 'Let us make this excellent and effective.'
+  },
+  '4': {
+    typeName: 'The Individualist',
+    coreFear: 'Basic Fear: having no identity or personal significance.',
+    gifts: 'To find authentic selfhood and meaningful depth.',
+    giftsDesc: 'At healthy levels, Fours are creative, emotionally honest, and deeply humane.',
+    vice: 'Envy (fixation on what seems missing).',
+    viceDesc: 'Under strain, mood, comparison, and withdrawal can eclipse appreciation.',
+    worldview: 'Depth, beauty, and authenticity matter more than conformity.',
+    focus: 'Attention goes to emotional nuance, longing, and the search for meaning.',
+    motivation1: 'Key motivations: to find themselves, to be authentic, and to avoid ordinariness.',
+    motivation2: 'Growth comes through grounded presence, gratitude, and disciplined creativity.',
+    deepTitle: 'Type 4 Core Pattern',
+    deep: ['Fours seek identity through emotional depth and personal meaning.', 'They are sensitive to atmosphere, aesthetics, and symbolic significance.', 'Their gift is transforming feeling into artistry and empathy.', 'Their growth edge is steady action beyond mood and comparison.'],
+    meta: 'I want what is real, meaningful, and true.'
+  },
+  '5': {
+    typeName: 'The Investigator',
+    coreFear: 'Basic Fear: being helpless, incapable, or overwhelmed.',
+    gifts: 'To be capable through understanding, mastery, and clarity.',
+    giftsDesc: 'At healthy levels, Fives are perceptive, innovative, and objective.',
+    vice: 'Avarice (withholding energy, time, and self).',
+    viceDesc: 'Under strain, retreat and over-detachment reduce contact with life and people.',
+    worldview: 'Resources are limited; understanding and boundaries preserve autonomy.',
+    focus: 'Attention goes to complexity, systems, and conserving inner resources.',
+    motivation1: 'Key motivations: to master knowledge, to remain independent, and to avoid depletion.',
+    motivation2: 'Growth comes through embodied participation, generosity, and trusting engagement.',
+    deepTitle: 'Type 5 Core Pattern',
+    deep: ['Fives seek security through knowledge, insight, and self-sufficiency.', 'They prefer depth and precision over superficial interaction.', 'Their gift is lucid analysis and original synthesis.', 'Their growth edge is entering life before certainty is complete.'],
+    meta: 'Give me space to observe and understand.'
+  },
+  '6': {
+    typeName: 'The Loyalist',
+    coreFear: 'Basic Fear: being without support, guidance, or security.',
+    gifts: 'To find dependable trust and courageous steadiness.',
+    giftsDesc: 'At healthy levels, Sixes are committed, responsible, and genuinely courageous.',
+    vice: 'Anxiety (persistent doubt and threat-scanning).',
+    viceDesc: 'Under strain, suspicion and over-preparation can undermine confidence.',
+    worldview: 'Risk is real; trust must be tested and earned.',
+    focus: 'Attention goes to uncertainty, contingencies, loyalties, and worst-case scenarios.',
+    motivation1: 'Key motivations: to have security, to find certainty, and to avoid being unprepared.',
+    motivation2: 'Growth comes through inner authority, grounded trust, and lived courage.',
+    deepTitle: 'Type 6 Core Pattern',
+    deep: ['Sixes seek reliable support in an uncertain world.', 'They test systems and people to establish trustworthiness.', 'Their gift is foresight, loyalty, and practical courage.', 'Their growth edge is acting from inner confidence instead of fear loops.'],
+    meta: 'Let us test this so we can trust it.'
+  },
+  '7': {
+    typeName: 'The Enthusiast',
+    coreFear: 'Basic Fear: being trapped in pain, deprivation, or limitation.',
+    gifts: 'To remain free, joyful, and fully alive.',
+    giftsDesc: 'At healthy levels, Sevens are appreciative, versatile, and exuberant.',
+    vice: 'Gluttony (insatiable pursuit of options and stimulation).',
+    viceDesc: 'Under strain, over-planning and distraction can avoid necessary pain.',
+    worldview: 'Life is rich with possibilities and should be explored widely.',
+    focus: 'Attention goes to options, opportunities, and positive future scenarios.',
+    motivation1: 'Key motivations: to maintain freedom, to keep options open, and to avoid suffering.',
+    motivation2: 'Growth comes through sobriety, presence, and sustained commitment.',
+    deepTitle: 'Type 7 Core Pattern',
+    deep: ['Sevens seek freedom through possibility and positive anticipation.', 'They reframe quickly and generate alternatives under pressure.', 'Their gift is optimism, innovation, and momentum.', 'Their growth edge is staying with difficulty long enough to integrate it.'],
+    meta: 'Let us keep possibility open and stay energized.'
+  },
+  '8': {
+    typeName: 'The Challenger',
+    coreFear: 'Basic Fear: being harmed, controlled, or violated.',
+    gifts: 'To protect themselves and shape reality through strength and justice.',
+    giftsDesc: 'At healthy levels, Eights are magnanimous, decisive, and protective.',
+    vice: 'Lust (excessive intensity and force).',
+    viceDesc: 'Under strain, intensity can become domination, impulsiveness, or retaliation.',
+    worldview: 'The world can be hard and unjust; strength protects what matters.',
+    focus: 'Attention goes to power, control, vulnerability, and immediate impact.',
+    motivation1: 'Key motivations: to be independent, to avoid weakness, and to protect their people.',
+    motivation2: 'Growth comes through restraint, tenderness, and conscious use of power.',
+    deepTitle: 'Type 8 Core Pattern',
+    deep: ['Eights seek autonomy and resist being controlled by others.', 'They move quickly, speak directly, and challenge what feels false or unjust.', 'Their gift is courageous leadership and fierce protection of the vulnerable.', 'Their growth edge is integrating softness without losing strength.'],
+    meta: 'Be direct and honest; no games.'
+  },
+  '9': {
+    typeName: 'The Peacemaker',
+    coreFear: 'Basic Fear: loss of connection, conflict, and fragmentation.',
+    gifts: 'To keep inner peace, harmony, and belonging.',
+    giftsDesc: 'At healthy levels, Nines are grounded, receptive, and deeply reassuring.',
+    vice: 'Sloth (inertia in priorities and self-forgetting).',
+    viceDesc: 'Under strain, avoidance and postponement replace decisive self-expression.',
+    worldview: 'Peace is preserved through inclusion, patience, and non-reactivity.',
+    focus: 'Attention goes to harmony, comfort, and minimizing tension.',
+    motivation1: 'Key motivations: to maintain peace, to avoid conflict, and to keep connection.',
+    motivation2: 'Growth comes through prioritizing one own agenda with clear and timely action.',
+    deepTitle: 'Type 9 Core Pattern',
+    deep: ['Nines seek wholeness and stability by reducing conflict.', 'They naturally hold multiple perspectives and mediate tension.', 'Their gift is calm presence that helps others regulate.', 'Their growth edge is active engagement and strong personal priorities.'],
+    meta: 'Let us keep this calm, connected, and workable.'
+  }
+};
+
+let REPORT = REPORT_EXAMPLES['8'];
+let profileChart;
+let strainChart;
+let reflectionDeck = {};
+let REPORT_MODULES = [];
+const PROFILE_TYPE_ORDER = ['8', '9', '1', '2', '3', '4', '5', '6', '7'];
+let focusRequestCounter = 0;
+const FOCUS_AI_API_ROUTE = '/api/focus-rank';
+const FOCUS_AI_ENABLED = true;
+
+function iconSvg(name, size = 14, color = 'currentColor') {
+  const common = `width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"`;
+  const icons = {
+    overview: `<svg ${common}><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></svg>`,
+    centers: `<svg ${common}><path d="M12 4v16"/><path d="M4 12h16"/><circle cx="12" cy="12" r="2.8"/></svg>`,
+    strengths: `<svg ${common}><path d="M12 3l2.4 4.8 5.3.8-3.8 3.7.9 5.2L12 15l-4.8 2.5.9-5.2L4.3 8.6l5.3-.8L12 3z"/></svg>`,
+    leadership: `<svg ${common}><path d="M8 18h8"/><path d="M12 3v9"/><path d="M9 7h6"/><path d="M6 18c0-2.2 1.8-4 4-4h4c2.2 0 4 1.8 4 4"/></svg>`,
+    communication: `<svg ${common}><path d="M5 6h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-8l-4 3v-3H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/></svg>`,
+    strain: `<svg ${common}><path d="M12 3v4"/><path d="M12 17v4"/><path d="M3 12h4"/><path d="M17 12h4"/><path d="M6.2 6.2l2.8 2.8"/><path d="M15 15l2.8 2.8"/><path d="M17.8 6.2L15 9"/><path d="M9 15l-2.8 2.8"/><circle cx="12" cy="12" r="3.4"/></svg>`,
+    integration: `<svg ${common}><path d="M4 18h16"/><path d="M7 14l3-4 3 2 4-5"/></svg>`,
+    growth: `<svg ${common}><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>`,
+    card: `<svg ${common}><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18"/></svg>`,
+    chart: `<svg ${common}><path d="M5 19V9"/><path d="M12 19V5"/><path d="M19 19v-7"/></svg>`,
+    target: `<svg ${common}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1.4"/></svg>`,
+    pulse: `<svg ${common}><path d="M3 12h4l2-4 3 8 2-4h7"/></svg>`,
+    shield: `<svg ${common}><path d="M12 3l7 3v6c0 4.4-2.9 7.6-7 9-4.1-1.4-7-4.6-7-9V6l7-3z"/></svg>`,
+    users: `<svg ${common}><circle cx="9" cy="9" r="3"/><circle cx="17" cy="11" r="2.2"/><path d="M3.5 19c.9-2.7 3-4 5.5-4s4.6 1.3 5.5 4"/><path d="M14.5 19c.5-1.8 1.8-2.9 3.5-3.2"/></svg>`,
+    spark: `<svg ${common}><path d="M12 3l1.8 4.4L18 9l-4.2 1.6L12 15l-1.8-4.4L6 9l4.2-1.6L12 3z"/></svg>`,
+    reflection: `<svg ${common}><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.8 10.6c.7.6 1.2 1.3 1.5 2.1h4.6c.3-.8.8-1.5 1.5-2.1A6 6 0 0 0 12 3Z"/></svg>`
+  };
+
+  return icons[name] || icons.card;
+}
+
+function decorateInterfaceIcons() {
+  const navIconMap = {
+    'Focus View': 'spark',
+    Overview: 'overview',
+    'Centers & Instincts': 'centers',
+    'Strengths & Gaps': 'strengths',
+    Leadership: 'leadership',
+    Communication: 'communication',
+    'Strain Profile': 'strain',
+    Integration: 'integration',
+    'Growth Path': 'growth'
+  };
+
+  const sectionIconMap = {
+    'Personalized Focus View': 'spark',
+    'Core Identity': 'card',
+    'Enneagram Profile — All 9 Types': 'chart',
+    'Basic Fear': 'target',
+    'Basic Desire': 'spark',
+    'Passion (Habit Energy)': 'shield',
+    'Core Belief & Attention Pattern': 'centers',
+    'Basic Desire & Key Motivations': 'pulse',
+    'A Deeper Understanding of the SX — 8': 'users',
+    'Centers of Expression': 'centers',
+    '27 Subtypes & Instincts': 'users',
+    'Typical Patterns': 'card',
+    'Strengths & Positive Qualities': 'spark',
+    'Weaknesses & Challenges': 'shield',
+    'Blind Spots': 'target',
+    'Conflict — What Triggers You': 'pulse',
+    'Goal Setting': 'target',
+    'Planning & Task Completion': 'card',
+    'Delegation': 'users',
+    'Decision Making': 'leadership',
+    'Type Communication Pattern': 'communication',
+    'Verbal & Written Communication': 'communication',
+    'Listening': 'users',
+    'Giving & Receiving Feedback': 'pulse',
+    'Strain Radar': 'strain',
+    'Strain Area Breakdown': 'chart',
+    'Happiness — Low': 'pulse',
+    'Vocational — Medium': 'target',
+    'Interpersonal — Medium': 'users',
+    'Levels of Health and Integration': 'integration',
+    'Levels of Health — Example': 'chart',
+    'Wing Influence — Types 7 & 9': 'growth',
+    'Connected Line A — Type 2': 'spark',
+    'Connected Line B — Type 5': 'shield'
+  };
+
+  document.querySelectorAll('.nav button').forEach(button => {
+    if (button.dataset.iconized === 'true') return;
+    const rawLabel = button.textContent.trim();
+    const iconName = navIconMap[rawLabel] || 'card';
+    button.innerHTML = `<span class="nav-icon">${iconSvg(iconName, 13)}</span>${rawLabel}`;
+    button.dataset.iconized = 'true';
+  });
+
+  document.querySelectorAll('.ct').forEach(title => {
+    if (title.dataset.iconized === 'true') return;
+    const rawLabel = title.textContent.trim();
+    const iconName = sectionIconMap[rawLabel] || 'card';
+    title.innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg(iconName, 12, 'var(--blue)')}</span></span>${rawLabel}`;
+    title.dataset.iconized = 'true';
+  });
+
+  const sidebarTitle = document.querySelector('.sb-title');
+  if (sidebarTitle && sidebarTitle.dataset.iconized !== 'true') {
+    const label = sidebarTitle.textContent.trim();
+    sidebarTitle.innerHTML = `<span class="title-icon" style="margin-right:6px">${iconSvg('reflection', 12, 'var(--blue)')}</span>${label}`;
+    sidebarTitle.dataset.iconized = 'true';
+  }
+}
+
+function showSec(id) {
+  document.querySelectorAll('.sec').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav button,.mobile-menu-item').forEach(b => b.classList.remove('active'));
+  const targetSection = document.getElementById('sec-' + id);
+  if (!targetSection) {
+    console.log('[nav] section not found', id);
+    return;
+  }
+  targetSection.classList.add('active');
+  const navButton = document.querySelector(`.nav button[data-sec="${id}"]`);
+  const mobileButton = document.querySelector(`.mobile-menu-item[data-sec="${id}"]`);
+  if (navButton) navButton.classList.add('active');
+  if (mobileButton) mobileButton.classList.add('active');
+  console.log('[nav] switched section', id);
+}
+
+function toggleMobileMenu(open) {
+  const drawer = document.getElementById('mobileMenu');
+  const overlay = document.getElementById('mobileMenuOverlay');
+  if (!drawer || !overlay) return;
+
+  drawer.classList.toggle('open', open);
+  overlay.classList.toggle('show', open);
+  drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
+  document.body.style.overflow = open ? 'hidden' : '';
+}
+
+function tokenize(text) {
+  return (text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(token => token.length > 2);
+}
+
+function buildReportModuleIndex() {
+  const sectionNameMap = {
+    overview: 'Overview',
+    centers: 'Centers & Instincts',
+    strengths: 'Strengths & Gaps',
+    leadership: 'Leadership',
+    communication: 'Communication',
+    strain: 'Strain Profile',
+    integration: 'Integration',
+    growth: 'Growth Path'
+  };
+
+  const modules = [];
+  document.querySelectorAll('.sec').forEach(section => {
+    const sectionId = section.id.replace('sec-', '');
+    if (!sectionId || sectionId === 'focus') return;
+
+    section.querySelectorAll('.card').forEach((card, index) => {
+      const titleNode = card.querySelector('.ct');
+      const title = (titleNode ? titleNode.textContent : `Module ${index + 1}`).trim();
+      const rawText = card.innerText.replace(title, '').replace(/\s+/g, ' ').trim();
+      if (!rawText) return;
+
+      modules.push({
+        id: `${sectionId}-${index + 1}`,
+        sectionId,
+        sectionLabel: sectionNameMap[sectionId] || sectionId,
+        title,
+        element: card,
+        text: rawText,
+        tokens: tokenize(`${title} ${rawText}`)
+      });
+    });
+  });
+
+  REPORT_MODULES = modules;
+  console.log('[focus] built report module index', { count: REPORT_MODULES.length });
+}
+
+function cloneCardForFocus(card) {
+  const clone = card.cloneNode(true);
+
+  // Avoid duplicate IDs in focus view clones.
+  clone.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'));
+
+  // Snapshot chart canvases so visual content stays visible in cloned cards.
+  const sourceCanvases = card.querySelectorAll('canvas');
+  const clonedCanvases = clone.querySelectorAll('canvas');
+  sourceCanvases.forEach((sourceCanvas, index) => {
+    const clonedCanvas = clonedCanvases[index];
+    if (!clonedCanvas) return;
+
+    try {
+      const dataUrl = sourceCanvas.toDataURL('image/png');
+      const image = document.createElement('img');
+      image.src = dataUrl;
+      image.alt = 'Chart snapshot';
+      image.style.width = '100%';
+      image.style.height = '100%';
+      image.style.objectFit = 'contain';
+      clonedCanvas.replaceWith(image);
+    } catch (error) {
+      console.log('[focus] canvas snapshot failed', error);
+    }
+  });
+
+  return clone;
+}
+
+function scoreModule(module, queryText, queryTokens) {
+  let score = 0;
+  const moduleTokenSet = new Set(module.tokens);
+  queryTokens.forEach(token => {
+    if (moduleTokenSet.has(token)) score += 1;
+  });
+
+  const lowerQuery = queryText.toLowerCase();
+  const boostPairs = [
+    { keywords: ['stress', 'anxious', 'burnout', 'overwhelmed'], module: ['strain', 'health', 'integration'] },
+    { keywords: ['conflict', 'communication', 'feedback'], module: ['communication', 'triggers', 'conflict'] },
+    { keywords: ['leadership', 'team', 'decision', 'delegate'], module: ['leadership', 'delegation', 'decision'] },
+    { keywords: ['growth', 'develop', 'habit'], module: ['growth', 'line', 'integration'] }
+  ];
+
+  boostPairs.forEach(pair => {
+    const queryMatch = pair.keywords.some(key => lowerQuery.includes(key));
+    const moduleMatch = pair.module.some(key => module.text.toLowerCase().includes(key) || module.title.toLowerCase().includes(key));
+    if (queryMatch && moduleMatch) score += 3;
+  });
+
+  return score;
+}
+
+function classifyFocusError(error) {
+  if (!error) return 'unknown';
+  if (typeof error.status === 'number') return `http_${error.status}`;
+  const message = String(error.message || error).toLowerCase();
+  if (message.includes('aborted') || message.includes('timeout')) return 'timeout';
+  if (message.includes('stream disconnected before completion')) return 'stream_disconnected';
+  if (message.includes('failed to fetch') || message.includes('network')) return 'network';
+  return 'unknown';
+}
+
+function isTransientFocusError(error) {
+  const status = Number(error && error.status);
+  if ([408, 409, 429].includes(status)) return true;
+  if (status >= 500 && status < 600) return true;
+  const message = String(error && error.message ? error.message : error).toLowerCase();
+  return (
+    message.includes('stream disconnected before completion') ||
+    message.includes('failed to fetch') ||
+    message.includes('network') ||
+    message.includes('timeout') ||
+    message.includes('aborted')
+  );
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function requestFocusRerankFromAI(promptText, candidates) {
+  const url = FOCUS_AI_API_ROUTE;
+  const attempts = 5;
+  const backoffMs = [500, 1000, 2000, 4000, 8000];
+  const shortCandidates = candidates.map(item => ({
+    id: item.id,
+    sectionLabel: item.sectionLabel,
+    title: item.title,
+    excerpt: item.text.slice(0, 600)
+  }));
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            promptText,
+            candidates: shortCandidates
+          })
+        },
+        60 * 1000
+      );
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        const error = new Error(`Focus AI route error ${response.status}: ${errorBody.slice(0, 240)}`);
+        error.status = response.status;
+        throw error;
+      }
+
+      const data = await response.json();
+      const rankedIds = Array.isArray(data.rankedIds) ? data.rankedIds : [];
+      const rationales = data.rationales && typeof data.rationales === 'object' ? data.rationales : {};
+      return { rankedIds, rationales };
+    } catch (error) {
+      const errorClass = classifyFocusError(error);
+      const transient = isTransientFocusError(error);
+      const delay = backoffMs[Math.min(attempt - 1, backoffMs.length - 1)];
+      const jitterFactor = 1 + ((Math.random() * 0.4) - 0.2);
+      const jitteredDelay = Math.max(50, Math.round(delay * jitterFactor));
+
+      console.log('[focus][ai] retry decision', {
+        attempt,
+        maxAttempts: attempts,
+        transient,
+        errorClass,
+        delayMs: transient && attempt < attempts ? jitteredDelay : 0
+      });
+
+      if (!transient || attempt >= attempts) {
+        throw error;
+      }
+
+      await sleep(jitteredDelay);
+    }
+  }
+
+  return { rankedIds: [], rationales: {} };
+}
+
+async function rankFocusModules(promptText, queryTokens) {
+  const keywordRanked = REPORT_MODULES
+    .map(module => ({ ...module, score: scoreModule(module, promptText, queryTokens) }))
+    .sort((a, b) => b.score - a.score)
+    .filter(module => module.score > 0);
+
+  if (!keywordRanked.length) {
+    return { results: [], aiUsed: false };
+  }
+
+  const candidatePool = keywordRanked.slice(0, 12);
+  if (!FOCUS_AI_ENABLED) {
+    return { results: candidatePool.slice(0, 6), aiUsed: false };
+  }
+
+  const aiResponse = await requestFocusRerankFromAI(promptText, candidatePool);
+  const candidateMap = new Map(candidatePool.map(item => [item.id, item]));
+  const reranked = [];
+
+  aiResponse.rankedIds.forEach(id => {
+    if (!candidateMap.has(id)) return;
+    const module = candidateMap.get(id);
+    reranked.push({
+      ...module,
+      aiReason: typeof aiResponse.rationales[id] === 'string' ? aiResponse.rationales[id] : ''
+    });
+  });
+
+  if (!reranked.length) {
+    return { results: candidatePool.slice(0, 6), aiUsed: false };
+  }
+
+  return { results: reranked.slice(0, 6), aiUsed: true };
+}
+
+function renderFocusResults(results, queryText) {
+  const focusResults = document.getElementById('focusResults');
+  const focusIntro = document.getElementById('focusIntro');
+  if (!focusResults || !focusIntro) return;
+
+  if (!queryText.trim()) {
+    focusIntro.textContent = 'Add your context in the prompt to generate a focused report view.';
+    focusResults.innerHTML = '';
+    return;
+  }
+
+  if (!results.length) {
+    focusIntro.textContent = 'No direct matches found. Try adding more context or keywords.';
+    focusResults.innerHTML = '';
+    return;
+  }
+
+  focusIntro.textContent = `Showing ${results.length} most relevant modules for your prompt.`;
+  focusResults.innerHTML = '';
+
+  results.forEach(result => {
+    const item = document.createElement('article');
+    item.className = 'focus-result-item';
+    const clonedCard = cloneCardForFocus(result.element);
+    const titleNode = clonedCard.querySelector('.ct');
+
+    const jumpButton = document.createElement('button');
+    jumpButton.className = 'focus-jump';
+    jumpButton.type = 'button';
+    jumpButton.textContent = 'Full Section';
+    jumpButton.setAttribute('data-testid', `focus-jump-${result.id}`);
+    jumpButton.setAttribute('aria-label', `Go to ${result.sectionLabel}`);
+    jumpButton.title = `${result.sectionLabel}`;
+    jumpButton.addEventListener('click', () => {
+      console.log('[focus] jump to source', { sectionId: result.sectionId, moduleId: result.id, title: result.title });
+      showSec(result.sectionId);
+      window.requestAnimationFrame(() => {
+        if (result.element) {
+          result.element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
+    if (titleNode) {
+      const titleGroup = document.createElement('span');
+      titleGroup.className = 'focus-card-title';
+
+      while (titleNode.firstChild) {
+        titleGroup.appendChild(titleNode.firstChild);
+      }
+
+      titleNode.appendChild(titleGroup);
+      titleNode.appendChild(jumpButton);
+    } else {
+      clonedCard.prepend(jumpButton);
+    }
+
+    item.appendChild(clonedCard);
+    focusResults.appendChild(item);
+  });
+}
+
+async function runFocusFilter() {
+  const promptText = document.getElementById('focusPromptText')?.value || '';
+  const status = document.getElementById('focusStatus');
+  const submitButton = document.getElementById('focusSubmit');
+  const requestId = ++focusRequestCounter;
+
+  const combined = promptText;
+  const queryTokens = tokenize(combined);
+
+  if (!combined.trim()) {
+    if (status) status.textContent = 'Add at least one response to filter relevant modules.';
+    renderFocusResults([], '');
+    showSec('focus');
+    return;
+  }
+
+  if (!REPORT_MODULES.length) buildReportModuleIndex();
+  if (submitButton) submitButton.disabled = true;
+
+  if (status) {
+    status.textContent = FOCUS_AI_ENABLED
+      ? 'Analyzing your prompt and ranking with AI...'
+      : 'AI not configured. Using keyword ranking...';
+  }
+
+  try {
+    const ranked = await rankFocusModules(combined, queryTokens);
+    if (requestId !== focusRequestCounter) return;
+
+    console.log('[focus] run filter', {
+      queryLength: combined.length,
+      tokenCount: queryTokens.length,
+      matched: ranked.results.length,
+      aiUsed: ranked.aiUsed
+    });
+
+    if (status) {
+      if (!ranked.results.length) {
+        status.textContent = 'No strong matches. Try adding more specifics.';
+      } else if (ranked.aiUsed) {
+        status.textContent = `Found ${ranked.results.length} relevant modules (AI ranked).`;
+      } else {
+        status.textContent = `Found ${ranked.results.length} relevant modules.`;
+      }
+    }
+
+    renderFocusResults(ranked.results, combined);
+    showSec('focus');
+  } catch (error) {
+    const errorClass = classifyFocusError(error);
+    console.log('[focus][ai] ranking failed, falling back to keyword ranking', { errorClass, error });
+    const fallback = REPORT_MODULES
+      .map(module => ({ ...module, score: scoreModule(module, combined, queryTokens) }))
+      .sort((a, b) => b.score - a.score)
+      .filter(module => module.score > 0)
+      .slice(0, 6);
+    if (status) {
+      status.textContent = fallback.length
+        ? `Found ${fallback.length} relevant modules (AI error: ${errorClass}; fallback used).`
+        : 'No strong matches. Try adding more specifics.';
+    }
+    renderFocusResults(fallback, combined);
+    showSec('focus');
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+  }
+}
+
+function resetFocusPrompt() {
+  focusRequestCounter += 1;
+  ['focusPromptText'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
+  });
+  const status = document.getElementById('focusStatus');
+  if (status) status.textContent = 'Uses your report content to surface the most relevant modules.';
+  renderFocusResults([], '');
+  console.log('[focus] prompt reset');
+}
+
+let refCat = 'leadership';
+const refCatLabels = {leadership:'Leadership',relationships:'Relationships',regulation:'Self-Regulation',growth:'Growth',wellbeing:'Wellbeing'};
+
+function currentCoreTypeLabel() {
+  return `Type ${REPORT.typeNumber} — ${REPORT.typeName}`;
+}
+
+function getLineTypeNumber(line) {
+  const match = line.match(/Type (\d)/);
+  return match ? match[1] : '';
+}
+
+function formatTypeLine(line) {
+  const typeNumber = getLineTypeNumber(line);
+  return typeNumber ? `Type ${typeNumber}` : line;
+}
+
+function setText(id, value) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.textContent = value;
+}
+
+function buildReflectionDeck(report) {
+  return {
+    leadership: [
+      `As a Type ${report.typeNumber}, your leadership edge is balancing your ${report.typeName.toLowerCase()} strengths with deliberate pacing and inclusion.`,
+      `In your next high-stakes meeting, pair your Type ${report.typeNumber} strengths with one explicit check-in question before deciding.`
+    ],
+    relationships: [
+      `Your ${report.instinct} pattern is likely to shape how quickly you seek closeness and trust. Notice whether that pace works for others.`,
+      `Today, practice communicating your need directly instead of expecting people to infer it from your style.`
+    ],
+    regulation: [
+      `When pressure rises, your Type ${report.typeNumber} strategy can overfire. Pause, name the signal in your body, and choose your response.`,
+      `A 90-second reset can prevent a full reactivity cycle and preserve connection.`
+    ],
+    growth: [
+      `Your growth work includes lessons from ${formatTypeLine(report.release)} while staying conscious of pressure patterns connected with ${formatTypeLine(report.stretch)}.`,
+      `Pick one small behavior this week that reflects your high-integration Type ${report.typeNumber} self.`
+    ],
+    wellbeing: [
+      `Your system works best when recovery is planned, not optional. Add one non-negotiable reset block to your calendar.`,
+      `Sustainable performance for Type ${report.typeNumber} means rhythm: effort, pause, reflect, then re-engage.`
+    ]
+  };
+}
+
+function updateCharts() {
+  if (profileChart) {
+    profileChart.data.datasets[0].data = REPORT.profile;
+    profileChart.data.datasets[0].backgroundColor = ['#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8'];
+    const mainIndex = PROFILE_TYPE_ORDER.indexOf(REPORT.typeNumber);
+    const releaseIndex = PROFILE_TYPE_ORDER.indexOf(getLineTypeNumber(REPORT.release));
+    const stretchIndex = PROFILE_TYPE_ORDER.indexOf(getLineTypeNumber(REPORT.stretch));
+    if (mainIndex >= 0) profileChart.data.datasets[0].backgroundColor[mainIndex] = '#b02c34';
+    if (releaseIndex >= 0) profileChart.data.datasets[0].backgroundColor[releaseIndex] = '#9a6e1a';
+    if (stretchIndex >= 0) profileChart.data.datasets[0].backgroundColor[stretchIndex] = '#295c87';
+    profileChart.update();
+  }
+
+  if (strainChart) {
+    strainChart.data.datasets[0].data = REPORT.strain;
+    strainChart.update();
+  }
+}
+
+function applyReport(typeId) {
+  try {
+    REPORT = {
+      ...(REPORT_EXAMPLES[typeId] || REPORT_EXAMPLES['8']),
+      ...(MASTER_SOURCE_COPY[typeId] || MASTER_SOURCE_COPY['8'])
+    };
+    reflectionDeck = buildReflectionDeck(REPORT);
+    console.log('[report-switch] applying', REPORT.typeNumber, REPORT.typeName);
+
+    setText('typeBadge', REPORT.typeNumber);
+    setText('headerSubtitle', `Type ${REPORT.typeNumber} · ${REPORT.instinct} · Keyword: ${REPORT.keyword}`);
+    setText('reportTitle', `Type ${REPORT.typeNumber} Example Report`);
+    setText('mainTypeValue', currentCoreTypeLabel());
+    setText('instinctValue', REPORT.instinct);
+    setText('keywordValue', REPORT.keyword);
+    setText('releaseValue', formatTypeLine(REPORT.release));
+    setText('stretchValue', formatTypeLine(REPORT.stretch));
+    setText('integrationValue', REPORT.integration);
+    setText('metaQuote', `"${REPORT.meta}"`);
+    setText('profileFooter', `Main — ${REPORT.typeNumber} (${REPORT.mainValue}) · Line A — ${getLineTypeNumber(REPORT.release)} (${REPORT.releaseValue}) · Line B — ${getLineTypeNumber(REPORT.stretch)} (${REPORT.stretchValue})`);
+    setText('coreFearValue', REPORT.coreFear);
+    setText('giftsTitle', REPORT.gifts);
+    setText('giftsDesc', REPORT.giftsDesc);
+    setText('viceTitle', REPORT.vice);
+    setText('viceDesc', REPORT.viceDesc);
+    document.getElementById('worldviewValue').innerHTML = `<strong style="color:var(--text)">Worldview:</strong> ${REPORT.worldview}`;
+    document.getElementById('focusValue').innerHTML = `<strong style="color:var(--text)">Focus of Attention:</strong> ${REPORT.focus}`;
+    setText('selfTalkValue', REPORT.selfTalk);
+    setText('motivationLine1', REPORT.motivation1);
+    setText('motivationLine2', REPORT.motivation2);
+    document.getElementById('deepTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('users', 12, 'var(--blue)')}</span></span>${REPORT.deepTitle}`;
+    setText('deepP1', REPORT.deep[0]);
+    setText('deepP2', REPORT.deep[1]);
+    setText('deepP3', REPORT.deep[2]);
+    setText('deepP4', REPORT.deep[3]);
+    document.getElementById('languageTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('communication', 12, 'var(--blue)')}</span></span>Type ${REPORT.typeNumber} Communication Pattern`;
+    setText('languageMeta', REPORT.meta);
+    setText('refTypeTag', `Type ${REPORT.typeNumber} · ${REPORT.instinct.split(' — ')[0]}`);
+
+    const traitChips = document.getElementById('traitChips');
+    traitChips.innerHTML = REPORT.traits.map(trait => `<span class="chip cgn">${trait}</span>`).join('');
+
+    updateCharts();
+    buildReportModuleIndex();
+    genReflection();
+  } catch (error) {
+    console.log('[report-switch] failed', error);
+  }
+}
+
+function genReflection() {
+  const options = reflectionDeck[refCat];
+  const choice = options[Math.floor(Math.random() * options.length)];
+  console.log('[reflection] category', refCat, 'choice', choice);
+  document.getElementById('refCatTag').textContent = refCatLabels[refCat];
+  document.getElementById('refCard').innerHTML = `<p class="sb-tip">${choice}</p>`;
+}
+
+function setRef(cat, btn) {
+  refCat = cat;
+  console.log('[reflection] switching category', cat);
+  document.querySelectorAll('.sb-cat').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  genReflection();
+}
+
+function toggleReflections(minimize) {
+  const widget = document.getElementById('reflectionWidget');
+  if (!widget) return;
+  widget.classList.toggle('minimized', minimize);
+}
+
+window.addEventListener('load', () => {
+  decorateInterfaceIcons();
+  buildReportModuleIndex();
+
+  const focusSubmit = document.getElementById('focusSubmit');
+  if (focusSubmit) focusSubmit.addEventListener('click', runFocusFilter);
+  const focusReset = document.getElementById('focusReset');
+  if (focusReset) focusReset.addEventListener('click', resetFocusPrompt);
+
+  const pCtx = document.getElementById('profileChart');
+  if (pCtx) {
+    profileChart = new Chart(pCtx, {
+      type: 'bar',
+      data: {
+        labels: ['8','9','1','2','3','4','5','6','7'],
+        datasets: [{
+          data: REPORT.profile,
+          backgroundColor:['#b02c34','#d4d0c8','#d4d0c8','#9a6e1a','#d4d0c8','#d4d0c8','#295c87','#d4d0c8','#d4d0c8'],
+          borderRadius: 3,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color:'#7b8ea4', font: { size: 11 } } },
+          y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color:'#7b8ea4', font: { size: 11 } }, min: 0, max: 90 }
+        }
+      }
+    });
+  }
+
+  const sCtx = document.getElementById('strainChart');
+  if (sCtx) {
+    strainChart = new Chart(sCtx, {
+      type: 'radar',
+      data: {
+        labels: ['Happiness','Vocational','Interpersonal','Physical','Environmental','Psychological'],
+        datasets: [{
+          data: REPORT.strain,
+          backgroundColor: 'rgba(176,44,52,0.08)',
+          borderColor: '#b02c34',
+          borderWidth: 2,
+          pointBackgroundColor: '#b02c34',
+          pointRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          r: {
+            min: 0, max: 55,
+            grid: { color: 'rgba(0,0,0,0.07)' },
+            angleLines: { color: 'rgba(0,0,0,0.07)' },
+            ticks: { display: false },
+            pointLabels: { color: '#4f647e', font: { size: 11 } }
+          }
+        }
+      }
+    });
+  }
+
+  const reportSelector = document.getElementById('reportSelector');
+  reportSelector.addEventListener('change', event => {
+    const selectedType = event.target.value;
+    console.log('[report-switch] selector changed to', selectedType);
+    applyReport(selectedType);
+  });
+
+  applyReport(reportSelector.value);
+});
+</script>
+</body>
+</html>

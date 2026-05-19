@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 100, "column": 0}, "map": {"version":3,"sources":["file:///Users/brussell/Downloads/Code/enneagram-main/app/api/auth/%5B...nextauth%5D/route.js"],"sourcesContent":["import NextAuth from \"next-auth\";\nimport GoogleProvider from \"next-auth/providers/google\";\n\nconst env = process.env;\n\nexport const authOptions = {\n  providers: [\n    GoogleProvider({\n      clientId: env.GOOGLE_CLIENT_ID,\n      clientSecret: env.GOOGLE_CLIENT_SECRET,\n    }),\n  ],\n};\n\nconst handler = NextAuth(authOptions);\n\nexport { handler as GET, handler as POST };\n"],"names":["env","process","authOptions","providers","clientId","GOOGLE_CLIENT_ID","clientSecret","GOOGLE_CLIENT_SECRET","handler"],"mappings":";;;;;;;;AAAA;AACA;;;AAEA,MAAMA,MAAMC,QAAQD,GAAG;AAEhB,MAAME,cAAc;IACzBC,WAAW;QACT,IAAA,gKAAc,EAAC;YACbC,UAAUJ,IAAIK,gBAAgB;YAC9BC,cAAcN,IAAIO,oBAAoB;QACxC;KACD;AACH;AAEA,MAAMC,UAAU,IAAA,kJAAQ,EAACN"}}]
+}

@@ -1,0 +1,9 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/auth/[...nextauth]/route": "/api/auth/[...nextauth]",
+  "/api/save-report/route": "/api/save-report",
+  "/auth/popup-done/page": "/auth/popup-done",
+  "/dashboard/page": "/dashboard",
+  "/page": "/"
+}

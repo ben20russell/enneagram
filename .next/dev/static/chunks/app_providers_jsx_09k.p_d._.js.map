@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///Users/brussell/Downloads/Code/enneagram-main/app/providers.jsx"],"sourcesContent":["\"use client\";\n\nimport { SessionProvider } from \"next-auth/react\";\n\nexport default function Providers({ children }) {\n  console.log(\"[auth] rendering SessionProvider\");\n  return <SessionProvider>{children}</SessionProvider>;\n}\n"],"names":["Providers","children","console","log"],"mappings":";;;;;AAEA;AAFA;;;AAIe,SAASA,UAAU,EAAEC,QAAQ,EAAE;IAC5CC,QAAQC,GAAG,CAAC;IACZ,qBAAO,6LAAC,oKAAe;kBAAEF;;;;;;AAC3B;KAHwBD"}}]
+}
