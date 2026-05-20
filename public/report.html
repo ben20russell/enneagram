@@ -687,17 +687,23 @@ function normalizeExtractedText(rawText) {
   return String(rawText || "").replace(/\s+/g, " ").trim();
 }
 
-function inferTypeFromPdfText(pdfText, fileName) {
-  const normalizedFileName = String(fileName || "");
-  const fileMatch = normalizedFileName.match(/iEQ\s*([1-9])\b/i);
-  if (fileMatch?.[1]) {
-    return { type: String(fileMatch[1]), confidence: "high", source: "fileName" };
-  }
-
+function inferTypeFromPdfText(pdfText) {
   const normalized = normalizeExtractedText(pdfText);
+  const compact = normalized.replace(/\s+/g, "");
+
   const explicitMainTypeMatch = normalized.match(/Main\s*Type\s*[:\-]?\s*Type\s*([1-9])\b/i);
   if (explicitMainTypeMatch?.[1]) {
     return { type: String(explicitMainTypeMatch[1]), confidence: "high", source: "mainType" };
+  }
+
+  const headerTypeMatch = normalized.match(/\bTYPE\s*([1-9])\b/i);
+  if (headerTypeMatch?.[1]) {
+    return { type: String(headerTypeMatch[1]), confidence: "high", source: "headerType" };
+  }
+
+  const compactTypeMatch = compact.match(/TYPE([1-9])/i);
+  if (compactTypeMatch?.[1]) {
+    return { type: String(compactTypeMatch[1]), confidence: "medium", source: "compactType" };
   }
 
   const candidates = [
@@ -713,6 +719,71 @@ function inferTypeFromPdfText(pdfText, fileName) {
     }
   }
   return { type: null, confidence: "none", source: "none" };
+}
+
+function extractTypeNameFromPdfText(pdfText, detectedType) {
+  const normalized = normalizeExtractedText(pdfText);
+  const typeHint = detectedType ? String(detectedType) : "[1-9]";
+  const patterns = [
+    new RegExp(`Main\\s*Type\\s*[:\\-]?\\s*Type\\s*${typeHint}\\s*[—-]\\s*([^\\.;\\n]{3,80})`, "i"),
+    new RegExp(`Type\\s*${typeHint}\\s*[—-]\\s*([^\\.;\\n]{3,80})`, "i"),
+  ];
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) return String(match[1]).trim();
+  }
+  return null;
+}
+
+function extractInstinctFromPdfText(pdfText) {
+  const normalized = normalizeExtractedText(pdfText);
+  const patterns = [
+    /Dominant\s*Instinct\s*[:\-]?\s*([A-Za-z]{2,4}\s*[—-]\s*[A-Za-z][A-Za-z\s-]{2,40})/i,
+    /\b(SO|SP|SX)\s*[—-]\s*(Social|Self[\s-]?Preservation|One[\s-]?on[\s-]?One)\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) return String(match[1]).replace(/\s+/g, " ").trim();
+    if (match?.[0]) return String(match[0]).replace(/\s+/g, " ").trim();
+  }
+  return null;
+}
+
+function extractConnectedLineType(pdfText, label) {
+  const normalized = normalizeExtractedText(pdfText);
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = normalized.match(new RegExp(`${escapedLabel}\\s*[:\\-]?\\s*Type\\s*([1-9])\\b`, "i"));
+  return match?.[1] ? `Type ${match[1]}` : null;
+}
+
+function extractEnneagramProfileScores(pdfText) {
+  const normalized = normalizeExtractedText(pdfText);
+  const profile = { "1": null, "2": null, "3": null, "4": null, "5": null, "6": null, "7": null, "8": null, "9": null };
+  const pattern = /\b([1-9])\s*[\):\-]\s*(\d{1,3})\b/g;
+  let match;
+  while ((match = pattern.exec(normalized)) !== null) {
+    const type = String(match[1]);
+    const score = Number(match[2]);
+    if (!Number.isFinite(score) || score < 0 || score > 100) continue;
+    if (profile[type] == null || score > profile[type]) {
+      profile[type] = score;
+    }
+  }
+  return profile;
+}
+
+function extractSnippetFromLabels(pdfText, labels) {
+  for (const label of labels) {
+    const value = extractSnippet(pdfText, label);
+    if (value) return value;
+  }
+  return null;
+}
+
+function sanitizeSnippet(value, fallback) {
+  const cleaned = String(value || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return fallback;
+  return cleaned;
 }
 
 function extractSnippet(pdfText, label) {
@@ -744,6 +815,11 @@ function renderAssignedIngestCard(payload) {
   card.style.display = "block";
 }
 
+function hideAssignedIngestCard() {
+  const card = document.getElementById("assignedIngestCard");
+  if (card) card.style.display = "none";
+}
+
 async function extractPdfTextFromSignedUrl(signedUrl) {
   if (!signedUrl || !window.pdfjsLib) return "";
 
@@ -754,8 +830,12 @@ async function extractPdfTextFromSignedUrl(signedUrl) {
 
   const loadingTask = window.pdfjsLib.getDocument({ url: signedUrl });
   const pdfDoc = await loadingTask.promise;
-  const pageLimit = Math.min(pdfDoc.numPages, 8);
+  const pageLimit = pdfDoc.numPages;
   const chunks = [];
+
+  console.log("[report-ingest] Parsing assigned PDF pages", {
+    totalPages: pdfDoc.numPages,
+  });
 
   for (let page = 1; page <= pageLimit; page += 1) {
     const pageDoc = await pdfDoc.getPage(page);
@@ -773,30 +853,79 @@ async function ingestAssignedReportIntoDashboard(data) {
 
   try {
     const serverContext = data?.ingestedDashboardContext || null;
+    let pdfText = "";
     let detectedType = serverContext?.detectedType || null;
     let detectedTypeSource = serverContext?.detectedTypeSource || null;
     let basicFear = serverContext?.basicFear || null;
     let basicDesire = serverContext?.basicDesire || null;
     let passion = serverContext?.passion || null;
+    let typeName = null;
+    let instinct = null;
+    let subtypeKeyword = null;
+    let connectedLineA = null;
+    let connectedLineB = null;
+    let profileScores = null;
+    let integrationLevel = null;
+    let metaQuote = null;
+    let worldview = null;
+    let focus = null;
 
     if (!detectedType || !basicFear || !basicDesire || !passion) {
-      const pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
-      const detectedTypeResult = inferTypeFromPdfText(pdfText, data.reportFileName);
-      detectedType = detectedType || detectedTypeResult?.type || null;
-      detectedTypeSource = detectedTypeSource || detectedTypeResult?.source || null;
+      pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
+      const detectedTypeResult = inferTypeFromPdfText(pdfText);
+      const shouldOverrideTypeFromPdf =
+        Boolean(detectedTypeResult?.type) &&
+        (detectedTypeResult.confidence === "high" ||
+          !detectedType ||
+          String(detectedTypeSource || "").startsWith("fileName"));
+
+      if (shouldOverrideTypeFromPdf) {
+        detectedType = detectedTypeResult.type;
+        detectedTypeSource = detectedTypeResult.source;
+      } else if (!detectedTypeSource) {
+        detectedTypeSource = detectedTypeResult?.source || null;
+      }
+
       basicFear = basicFear || extractSnippet(pdfText, "Basic Fear");
       basicDesire = basicDesire || extractSnippet(pdfText, "Basic Desire");
       passion = passion || extractSnippet(pdfText, "Passion");
     }
 
-    if (detectedType && REPORT_EXAMPLES[detectedType]) {
-      const selector = document.getElementById("reportSelector");
-      if (selector) selector.value = detectedType;
-      applyReport(detectedType);
-      console.log("[report-ingest] Applied detected type from assigned PDF", detectedType);
-    } else {
-      console.log("[report-ingest] Unable to infer type from assigned PDF text");
+    if (!pdfText) {
+      pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
     }
+    typeName = extractTypeNameFromPdfText(pdfText, detectedType);
+    instinct = extractInstinctFromPdfText(pdfText);
+    subtypeKeyword = extractSnippetFromLabels(pdfText, ["Subtype Keyword", "Subtype"]);
+    connectedLineA = extractConnectedLineType(pdfText, "Connected Line A");
+    connectedLineB = extractConnectedLineType(pdfText, "Connected Line B");
+    profileScores = extractEnneagramProfileScores(pdfText);
+    integrationLevel = extractSnippet(pdfText, "Integration Level");
+    metaQuote = extractSnippetFromLabels(pdfText, ["Meta message", "Meta Message", "Self Talk"]);
+    worldview = extractSnippetFromLabels(pdfText, ["Worldview", "Core Belief"]);
+    focus = extractSnippetFromLabels(pdfText, ["Focus of Attention", "Focus"]);
+
+    applyAssignedPdfReport({
+      typeNumber: detectedType,
+      typeName,
+      instinct,
+      subtypeKeyword,
+      connectedLineA,
+      connectedLineB,
+      integrationLevel,
+      profileScores,
+      basicFear,
+      basicDesire,
+      passion,
+      metaQuote,
+      worldview,
+      focus,
+    });
+    console.log("[report-ingest] Applied PDF-only assigned report context", {
+      detectedType,
+      detectedTypeSource,
+      hasProfileScores: Boolean(profileScores),
+    });
 
     renderAssignedIngestCard({
       fileName: data.reportFileName,
@@ -868,6 +997,8 @@ function setSignedOutAuthUi() {
   updateAdminPageLink(null);
   setReportReadyChipVisible(false);
   setReportSwitchVisible(true);
+  hideAssignedIngestCard();
+  assignedReportIngested = false;
   button.classList.remove("avatar");
   button.classList.add("google");
   button.textContent = "Sign In";
@@ -1870,45 +2001,125 @@ function applyReport(typeId) {
     };
     reflectionDeck = buildReflectionDeck(REPORT);
     console.log('[report-switch] applying', REPORT.typeNumber, REPORT.typeName);
-
-    setText('typeBadge', REPORT.typeNumber);
-    setText('headerSubtitle', `Type ${REPORT.typeNumber} · ${REPORT.instinct}`);
-    setText('reportTitle', `Type ${REPORT.typeNumber} Example Report`);
-    setText('mainTypeValue', currentCoreTypeLabel());
-    setText('instinctValue', REPORT.instinct);
-    setText('keywordValue', REPORT.keyword);
-    setText('releaseValue', formatTypeLine(REPORT.release));
-    setText('stretchValue', formatTypeLine(REPORT.stretch));
-    setText('integrationValue', REPORT.integration);
-    setText('metaQuote', `"${REPORT.meta}"`);
-    setText('profileFooter', `Main — ${REPORT.typeNumber} (${REPORT.mainValue}) · Line A — ${getLineTypeNumber(REPORT.release)} (${REPORT.releaseValue}) · Line B — ${getLineTypeNumber(REPORT.stretch)} (${REPORT.stretchValue})`);
-    setText('coreFearValue', REPORT.coreFear);
-    setText('giftsTitle', REPORT.gifts);
-    setText('giftsDesc', REPORT.giftsDesc);
-    setText('viceTitle', REPORT.vice);
-    setText('viceDesc', REPORT.viceDesc);
-    document.getElementById('worldviewValue').innerHTML = `<strong style="color:var(--text)">Worldview:</strong> ${REPORT.worldview}`;
-    document.getElementById('focusValue').innerHTML = `<strong style="color:var(--text)">Focus of Attention:</strong> ${REPORT.focus}`;
-    setText('selfTalkValue', REPORT.selfTalk);
-    setText('motivationLine1', REPORT.motivation1);
-    setText('motivationLine2', REPORT.motivation2);
-    document.getElementById('deepTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('users', 12, 'var(--blue)')}</span></span>${REPORT.deepTitle}`;
-    setText('deepP1', REPORT.deep[0]);
-    setText('deepP2', REPORT.deep[1]);
-    setText('deepP3', REPORT.deep[2]);
-    setText('deepP4', REPORT.deep[3]);
-    document.getElementById('languageTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('communication', 12, 'var(--blue)')}</span></span>Type ${REPORT.typeNumber} Communication Pattern`;
-    setText('languageMeta', REPORT.meta);
-    setText('refTypeTag', `Type ${REPORT.typeNumber} · ${REPORT.instinct.split(' — ')[0]}`);
-
-    const traitChips = document.getElementById('traitChips');
-    traitChips.innerHTML = REPORT.traits.map(trait => `<span class="chip cgn">${trait}</span>`).join('');
-
-    updateCharts();
-    buildReportModuleIndex();
-    genReflection();
+    renderReportFromState(true);
   } catch (error) {
     console.log('[report-switch] failed', error);
+  }
+}
+
+function buildPdfOnlyProfile(typeNumber, extractedScores) {
+  const order = ["8", "9", "1", "2", "3", "4", "5", "6", "7"];
+  const fallback = order.map(() => 40);
+  const hasExtractedScores = extractedScores && order.some((type) => Number.isFinite(extractedScores[type]));
+  if (hasExtractedScores) {
+    return order.map((type) => {
+      const value = Number(extractedScores[type]);
+      if (!Number.isFinite(value) || value < 0 || value > 100) return 40;
+      return value;
+    });
+  }
+  const idx = order.indexOf(String(typeNumber || ""));
+  if (idx >= 0) fallback[idx] = 78;
+  return fallback;
+}
+
+function buildPdfOnlyReport(payload) {
+  const fallbackText = "Not detected in assigned PDF.";
+  const typeNumber = String(payload?.typeNumber || "").match(/^[1-9]$/)?.[0] || "?";
+  const typeName = sanitizeSnippet(payload?.typeName, "Assigned Profile");
+  const instinct = sanitizeSnippet(payload?.instinct, "Unknown Instinct");
+  const keyword = sanitizeSnippet(payload?.subtypeKeyword, "Not detected");
+  const release = sanitizeSnippet(payload?.connectedLineA, "Type ?");
+  const stretch = sanitizeSnippet(payload?.connectedLineB, "Type ?");
+  const integration = sanitizeSnippet(payload?.integrationLevel, "Not detected");
+  const profile = buildPdfOnlyProfile(typeNumber, payload?.profileScores);
+  const releaseType = getLineTypeNumber(release);
+  const stretchType = getLineTypeNumber(stretch);
+  const releaseIndex = PROFILE_TYPE_ORDER.indexOf(releaseType);
+  const stretchIndex = PROFILE_TYPE_ORDER.indexOf(stretchType);
+  const mainIndex = PROFILE_TYPE_ORDER.indexOf(typeNumber);
+
+  return {
+    typeNumber,
+    typeName,
+    instinct,
+    keyword,
+    release,
+    stretch,
+    integration,
+    coreFear: sanitizeSnippet(payload?.basicFear, fallbackText),
+    gifts: sanitizeSnippet(payload?.basicDesire, fallbackText),
+    giftsDesc: "Loaded from assigned PDF report.",
+    vice: sanitizeSnippet(payload?.passion, fallbackText),
+    viceDesc: "Loaded from assigned PDF report.",
+    worldview: sanitizeSnippet(payload?.worldview, fallbackText),
+    focus: sanitizeSnippet(payload?.focus, fallbackText),
+    selfTalk: sanitizeSnippet(payload?.metaQuote, fallbackText),
+    motivation1: "This dashboard is populated from your assigned PDF report.",
+    motivation2: "If any field is missing, update the PDF content and re-import.",
+    traits: ["Assigned", "PDF", "Ingested"],
+    deepTitle: `Assigned PDF Summary · Type ${typeNumber}`,
+    deep: [
+      `Type: ${typeNumber} — ${typeName}`,
+      `Dominant instinct: ${instinct}`,
+      `Connected Line A: ${release}`,
+      `Connected Line B: ${stretch}`,
+    ],
+    meta: sanitizeSnippet(payload?.metaQuote, "Assigned report loaded from PDF."),
+    profile,
+    strain: [20, 20, 20, 20, 20, 20],
+    mainValue: mainIndex >= 0 ? profile[mainIndex] : 0,
+    releaseValue: releaseIndex >= 0 ? profile[releaseIndex] : 0,
+    stretchValue: stretchIndex >= 0 ? profile[stretchIndex] : 0,
+  };
+}
+
+function renderReportFromState(isExampleMode) {
+  setText('typeBadge', REPORT.typeNumber);
+  setText('headerSubtitle', `Type ${REPORT.typeNumber} · ${REPORT.instinct}`);
+  setText('reportTitle', isExampleMode ? `Type ${REPORT.typeNumber} Example Report` : `Type ${REPORT.typeNumber} Assigned PDF Report`);
+  setText('mainTypeValue', currentCoreTypeLabel());
+  setText('instinctValue', REPORT.instinct);
+  setText('keywordValue', REPORT.keyword);
+  setText('releaseValue', formatTypeLine(REPORT.release));
+  setText('stretchValue', formatTypeLine(REPORT.stretch));
+  setText('integrationValue', REPORT.integration);
+  setText('metaQuote', `"${REPORT.meta}"`);
+  setText('profileFooter', `Main — ${REPORT.typeNumber} (${REPORT.mainValue}) · Line A — ${getLineTypeNumber(REPORT.release)} (${REPORT.releaseValue}) · Line B — ${getLineTypeNumber(REPORT.stretch)} (${REPORT.stretchValue})`);
+  setText('coreFearValue', REPORT.coreFear);
+  setText('giftsTitle', REPORT.gifts);
+  setText('giftsDesc', REPORT.giftsDesc);
+  setText('viceTitle', REPORT.vice);
+  setText('viceDesc', REPORT.viceDesc);
+  document.getElementById('worldviewValue').innerHTML = `<strong style="color:var(--text)">Worldview:</strong> ${REPORT.worldview}`;
+  document.getElementById('focusValue').innerHTML = `<strong style="color:var(--text)">Focus of Attention:</strong> ${REPORT.focus}`;
+  setText('selfTalkValue', REPORT.selfTalk);
+  setText('motivationLine1', REPORT.motivation1);
+  setText('motivationLine2', REPORT.motivation2);
+  document.getElementById('deepTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('users', 12, 'var(--blue)')}</span></span>${REPORT.deepTitle}`;
+  setText('deepP1', REPORT.deep[0]);
+  setText('deepP2', REPORT.deep[1]);
+  setText('deepP3', REPORT.deep[2]);
+  setText('deepP4', REPORT.deep[3]);
+  document.getElementById('languageTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('communication', 12, 'var(--blue)')}</span></span>Type ${REPORT.typeNumber} Communication Pattern`;
+  setText('languageMeta', REPORT.meta);
+  setText('refTypeTag', `Type ${REPORT.typeNumber} · ${String(REPORT.instinct || "").split(' — ')[0]}`);
+
+  const traitChips = document.getElementById('traitChips');
+  traitChips.innerHTML = (REPORT.traits || []).map(trait => `<span class="chip cgn">${trait}</span>`).join('');
+
+  updateCharts();
+  buildReportModuleIndex();
+  genReflection();
+}
+
+function applyAssignedPdfReport(payload) {
+  try {
+    REPORT = buildPdfOnlyReport(payload);
+    reflectionDeck = buildReflectionDeck(REPORT);
+    renderReportFromState(false);
+  } catch (error) {
+    console.log("[report-ingest] Failed to apply assigned PDF dashboard content", error);
   }
 }
 
