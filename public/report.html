@@ -682,6 +682,17 @@ function setReportSwitchVisible(visible) {
 }
 
 let assignedReportIngested = false;
+let exampleReportInitialized = false;
+
+function applyRandomExampleReport() {
+  const reportSelector = document.getElementById("reportSelector");
+  if (!reportSelector) return;
+  const randomizedType = String(Math.floor(Math.random() * 9) + 1);
+  reportSelector.value = randomizedType;
+  console.log("[report-switch] randomized initial example report to", randomizedType);
+  applyReport(randomizedType);
+  exampleReportInitialized = true;
+}
 
 function normalizeExtractedText(rawText) {
   return String(rawText || "").replace(/\s+/g, " ").trim();
@@ -689,54 +700,101 @@ function normalizeExtractedText(rawText) {
 
 function inferTypeFromPdfText(pdfText) {
   const normalized = normalizeExtractedText(pdfText);
-  const compact = normalized.replace(/\s+/g, "");
-
-  const explicitMainTypeMatch = normalized.match(/Main\s*Type\s*[:\-]?\s*Type\s*([1-9])\b/i);
-  if (explicitMainTypeMatch?.[1]) {
-    return { type: String(explicitMainTypeMatch[1]), confidence: "high", source: "mainType" };
-  }
-
-  const headerTypeMatch = normalized.match(/\bTYPE\s*([1-9])\b/i);
-  if (headerTypeMatch?.[1]) {
-    return { type: String(headerTypeMatch[1]), confidence: "high", source: "headerType" };
-  }
-
-  const compactTypeMatch = compact.match(/TYPE([1-9])/i);
-  if (compactTypeMatch?.[1]) {
-    return { type: String(compactTypeMatch[1]), confidence: "medium", source: "compactType" };
-  }
-
-  const candidates = [
-    /Your\s*Type\s*[:\-]?\s*([1-9])\b/i,
-    /Type\s*([1-9])\s*[—-]\s*[A-Za-z]+/i,
-    /Type\s*([1-9])\b/i,
-    /\b([1-9])\s*[—-]\s*The\s+[A-Za-z]+/i,
+  const score = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0 };
+  const weightedPatterns = [
+    { regex: /Main\s*Type\s*[:\-]?\s*Type\s*([1-9])\b/gi, weight: 18, source: "mainType" },
+    {
+      regex: /you\s+resonate\s+with\s+the\s+Enneagram\s+type\s*([1-9])\b/gi,
+      weight: 16,
+      source: "resonanceSentence",
+    },
+    {
+      regex: /main\s+type\s+as\s+an\s+Ennea\s*([1-9])\b/gi,
+      weight: 14,
+      source: "mainTypeAsEnnea",
+    },
+    { regex: /Enneagram\s+type\s*([1-9])\b/gi, weight: 10, source: "enneagramType" },
+    { regex: /type\s*([1-9])\s+which\s+is\s+also\s+known\s+as/gi, weight: 10, source: "typeKnownAs" },
+    { regex: /Your\s*Type\s*[:\-]?\s*([1-9])\b/gi, weight: 8, source: "yourType" },
+    { regex: /\bTYPE\s*([1-9])\s*(?:\||[—-])/gi, weight: 6, source: "headerType" },
+    { regex: /\bEnnea\s*([1-9])\b/gi, weight: 3, source: "ennea" },
+    { regex: /Type\s*([1-9])\b/gi, weight: 1, source: "genericType" },
   ];
-  for (const pattern of candidates) {
-    const match = normalized.match(pattern);
-    if (match?.[1]) {
-      return { type: String(match[1]), confidence: "medium", source: "pdfText" };
+
+  let strongestSource = "none";
+  let strongestWeight = 0;
+  const blacklistedContext = /(all\s+9\s+types?|9\s+Enneagram\s+styles?)/i;
+
+  for (const entry of weightedPatterns) {
+    let match;
+    while ((match = entry.regex.exec(normalized)) !== null) {
+      const type = String(match[1] || "");
+      if (!score[type]) continue;
+      const contextStart = Math.max(0, match.index - 36);
+      const contextEnd = Math.min(normalized.length, match.index + 54);
+      const contextWindow = normalized.slice(contextStart, contextEnd);
+      if (blacklistedContext.test(contextWindow)) continue;
+      score[type] += entry.weight;
+      if (entry.weight > strongestWeight) {
+        strongestWeight = entry.weight;
+        strongestSource = entry.source;
+      }
     }
   }
-  return { type: null, confidence: "none", source: "none" };
+
+  let winningType = null;
+  let winningScore = -1;
+  for (const type of Object.keys(score)) {
+    if (score[type] > winningScore) {
+      winningType = type;
+      winningScore = score[type];
+    }
+  }
+
+  if (!winningType || winningScore <= 0) {
+    return { type: null, confidence: "none", source: "none" };
+  }
+
+  const confidence = winningScore >= 16 ? "high" : winningScore >= 8 ? "medium" : "low";
+  return { type: winningType, confidence, source: strongestSource || "scoredPdfText" };
 }
 
 function extractTypeNameFromPdfText(pdfText, detectedType) {
   const normalized = normalizeExtractedText(pdfText);
   const typeHint = detectedType ? String(detectedType) : "[1-9]";
   const patterns = [
+    new RegExp(`you\\s+resonate\\s+with\\s+the\\s+Enneagram\\s+type\\s*${typeHint}\\s+which\\s+is\\s+also\\s+known\\s+as\\s*the\\s*([A-Za-z][A-Za-z\\s-]{2,40})`, "i"),
     new RegExp(`Main\\s*Type\\s*[:\\-]?\\s*Type\\s*${typeHint}\\s*[—-]\\s*([^\\.;\\n]{3,80})`, "i"),
     new RegExp(`Type\\s*${typeHint}\\s*[—-]\\s*([^\\.;\\n]{3,80})`, "i"),
+    new RegExp(`([A-Z][A-Z\\s]{6,40})\\s+[^\\n]{0,120}Enneagram\\s+type\\s*${typeHint}\\b`, "i"),
   ];
   for (const pattern of patterns) {
     const match = normalized.match(pattern);
-    if (match?.[1]) return String(match[1]).trim();
+    if (match?.[1]) {
+      return String(match[1])
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
   }
+  return null;
+}
+
+function instinctCodeToLabel(code) {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (normalized === "SX") return "SX — One-on-One";
+  if (normalized === "SO") return "SO — Social";
+  if (normalized === "SP") return "SP — Self-Preservation";
   return null;
 }
 
 function extractInstinctFromPdfText(pdfText) {
   const normalized = normalizeExtractedText(pdfText);
+  const codedMatch = normalized.match(/\bwith\s+a\s+(SO|SP|SX)\s+Instinct(?:\b|[A-Z])/i);
+  if (codedMatch?.[1]) {
+    return instinctCodeToLabel(codedMatch[1]) || codedMatch[1].toUpperCase();
+  }
+
   const patterns = [
     /Dominant\s*Instinct\s*[:\-]?\s*([A-Za-z]{2,4}\s*[—-]\s*[A-Za-z][A-Za-z\s-]{2,40})/i,
     /\b(SO|SP|SX)\s*[—-]\s*(Social|Self[\s-]?Preservation|One[\s-]?on[\s-]?One)\b/i,
@@ -780,10 +838,35 @@ function extractSnippetFromLabels(pdfText, labels) {
   return null;
 }
 
+function extractIntegrationFromPdfText(pdfText) {
+  const normalized = normalizeExtractedText(pdfText);
+  const patterns = [
+    /Integration\s*Level\s*[:\-]?\s*(High|Moderate|Low)\b/i,
+    /\b(High|Moderate|Low)\s+Integration\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) {
+      const value = String(match[1]).toLowerCase();
+      return value.charAt(0).toUpperCase() + value.slice(1);
+    }
+  }
+  return null;
+}
+
 function sanitizeSnippet(value, fallback) {
   const cleaned = String(value || "").replace(/\s+/g, " ").trim();
   if (!cleaned) return fallback;
   return cleaned;
+}
+
+function cleanupTypeName(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  return text
+    .replace(/\b(Assertive|Decisive|Protective|Independent|Influential)\b.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function extractSnippet(pdfText, label) {
@@ -894,13 +977,13 @@ async function ingestAssignedReportIntoDashboard(data) {
     if (!pdfText) {
       pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
     }
-    typeName = extractTypeNameFromPdfText(pdfText, detectedType);
+    typeName = cleanupTypeName(extractTypeNameFromPdfText(pdfText, detectedType));
     instinct = extractInstinctFromPdfText(pdfText);
     subtypeKeyword = extractSnippetFromLabels(pdfText, ["Subtype Keyword", "Subtype"]);
     connectedLineA = extractConnectedLineType(pdfText, "Connected Line A");
     connectedLineB = extractConnectedLineType(pdfText, "Connected Line B");
     profileScores = extractEnneagramProfileScores(pdfText);
-    integrationLevel = extractSnippet(pdfText, "Integration Level");
+    integrationLevel = extractIntegrationFromPdfText(pdfText) || extractSnippet(pdfText, "Integration Level");
     metaQuote = extractSnippetFromLabels(pdfText, ["Meta message", "Meta Message", "Self Talk"]);
     worldview = extractSnippetFromLabels(pdfText, ["Worldview", "Core Belief"]);
     focus = extractSnippetFromLabels(pdfText, ["Focus of Attention", "Focus"]);
@@ -999,6 +1082,9 @@ function setSignedOutAuthUi() {
   setReportSwitchVisible(true);
   hideAssignedIngestCard();
   assignedReportIngested = false;
+  if (!exampleReportInitialized) {
+    applyRandomExampleReport();
+  }
   button.classList.remove("avatar");
   button.classList.add("google");
   button.textContent = "Sign In";
@@ -2217,11 +2303,6 @@ window.addEventListener('load', () => {
     console.log('[report-switch] selector changed to', selectedType);
     applyReport(selectedType);
   });
-
-  const randomizedType = String(Math.floor(Math.random() * 9) + 1);
-  reportSelector.value = randomizedType;
-  console.log('[report-switch] randomized initial example report to', randomizedType);
-  applyReport(randomizedType);
 });
 </script>
 </body>
