@@ -1,14 +1,23 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { adminDb } from "../../../lib/firebaseAdmin";
+import { adminBucket, adminDb } from "../../../lib/firebaseAdmin";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 
-function parseOptionalInt(value) {
-  if (value === undefined || value === null || value === "") return null;
-  const parsed = Number.parseInt(String(value), 10);
-  return Number.isNaN(parsed) ? null : parsed;
+const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024;
+
+function sanitizeFileName(name) {
+  return String(name || "report.pdf")
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-");
+}
+
+function isPdfFile(file) {
+  if (!file) return false;
+  const name = String(file.name || "").toLowerCase();
+  const type = String(file.type || "").toLowerCase();
+  return type === "application/pdf" || name.endsWith(".pdf");
 }
 
 export async function POST(req) {
@@ -25,70 +34,91 @@ export async function POST(req) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const adminSecret = process.env.ADMIN_IMPORT_SECRET;
-  const requestSecret = req.headers.get("x-admin-secret");
-
-  if (!adminSecret) {
-    console.log("[admin-import] Missing ADMIN_IMPORT_SECRET env var");
-    return NextResponse.json(
-      { error: "Admin import is not configured." },
-      { status: 500 },
-    );
-  }
-
-  if (!requestSecret || requestSecret !== adminSecret) {
-    console.log("[admin-import] Unauthorized import attempt");
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  let body;
+  let formData;
   try {
-    body = await req.json();
-    console.log("[admin-import] Parsed request body");
+    formData = await req.formData();
+    console.log("[admin-import] Parsed multipart form data");
   } catch (error) {
-    console.log("[admin-import] Failed to parse JSON body:", error);
-    return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
+    console.log("[admin-import] Failed to parse multipart form data:", error);
+    return NextResponse.json({ error: "Invalid form payload" }, { status: 400 });
   }
 
-  const userEmail = normalizeEmail(body?.userEmail);
-  const enneagramType = Number.parseInt(String(body?.enneagramType ?? ""), 10);
-  const wing = parseOptionalInt(body?.wing);
+  const userEmail = normalizeEmail(formData.get("userEmail"));
+  const reportPdf = formData.get("reportPdf");
 
-  if (!userEmail || Number.isNaN(enneagramType)) {
-    console.log("[admin-import] Missing or invalid fields", {
+  if (!userEmail || !reportPdf) {
+    console.log("[admin-import] Missing required fields", {
       hasUserEmail: !!userEmail,
-      enneagramType,
+      hasReportPdf: !!reportPdf,
     });
     return NextResponse.json(
-      { error: "Missing or invalid email/type" },
+      { error: "Missing user email or PDF upload" },
       { status: 400 },
     );
   }
 
-  if (enneagramType < 1 || enneagramType > 9) {
-    console.log("[admin-import] Enneagram type out of range", { enneagramType });
-    return NextResponse.json(
-      { error: "Enneagram type must be between 1 and 9" },
-      { status: 400 },
-    );
+  if (!(reportPdf instanceof File)) {
+    console.log("[admin-import] Uploaded report is not a File");
+    return NextResponse.json({ error: "Invalid PDF upload" }, { status: 400 });
   }
 
-  if (wing !== null && (wing < 1 || wing > 9)) {
-    console.log("[admin-import] Wing out of range", { wing });
+  if (!isPdfFile(reportPdf)) {
+    console.log("[admin-import] Non-PDF file upload attempted", {
+      fileName: reportPdf.name,
+      fileType: reportPdf.type,
+    });
+    return NextResponse.json({ error: "Only PDF files are allowed" }, { status: 400 });
+  }
+
+  if (reportPdf.size > MAX_PDF_SIZE_BYTES) {
+    console.log("[admin-import] PDF file exceeds size limit", {
+      size: reportPdf.size,
+      max: MAX_PDF_SIZE_BYTES,
+    });
     return NextResponse.json(
-      { error: "Wing must be between 1 and 9 when provided" },
+      { error: "PDF is too large. Max size is 10MB." },
       { status: 400 },
     );
   }
 
   try {
     const reportRef = adminDb.collection("reports").doc();
+    const safeFileName = sanitizeFileName(reportPdf.name || "report.pdf");
+    const storagePath = `admin-import-reports/${reportRef.id}/${safeFileName}`;
+    const pdfBuffer = Buffer.from(await reportPdf.arrayBuffer());
+
+    console.log("[admin-import] Uploading PDF to Firebase Storage", {
+      reportId: reportRef.id,
+      storagePath,
+      size: reportPdf.size,
+      uploadedBy: requesterEmail,
+      assignedTo: userEmail,
+    });
+
+    await adminBucket.file(storagePath).save(pdfBuffer, {
+      resumable: false,
+      contentType: "application/pdf",
+      metadata: {
+        metadata: {
+          assignedTo: userEmail,
+          uploadedBy: requesterEmail,
+          source: "admin-import",
+        },
+      },
+    });
 
     await reportRef.set({
       userEmail,
-      enneagramType,
-      wing,
-      resultsData: body?.resultsData || "Manually Imported",
+      enneagramType: null,
+      wing: null,
+      resultsData: "PDF uploaded via admin import",
+      reportPdf: {
+        fileName: safeFileName,
+        mimeType: "application/pdf",
+        sizeBytes: reportPdf.size,
+        storagePath,
+        uploadedBy: requesterEmail,
+      },
       createdAt: FieldValue.serverTimestamp(),
       source: "admin-import",
     });
