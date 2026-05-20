@@ -687,18 +687,32 @@ function normalizeExtractedText(rawText) {
   return String(rawText || "").replace(/\s+/g, " ").trim();
 }
 
-function inferTypeFromPdfText(pdfText) {
+function inferTypeFromPdfText(pdfText, fileName) {
+  const normalizedFileName = String(fileName || "");
+  const fileMatch = normalizedFileName.match(/iEQ\s*([1-9])\b/i);
+  if (fileMatch?.[1]) {
+    return { type: String(fileMatch[1]), confidence: "high", source: "fileName" };
+  }
+
   const normalized = normalizeExtractedText(pdfText);
+  const explicitMainTypeMatch = normalized.match(/Main\s*Type\s*[:\-]?\s*Type\s*([1-9])\b/i);
+  if (explicitMainTypeMatch?.[1]) {
+    return { type: String(explicitMainTypeMatch[1]), confidence: "high", source: "mainType" };
+  }
+
   const candidates = [
-    /Type\s*([1-9])\s*[—-]/i,
+    /Your\s*Type\s*[:\-]?\s*([1-9])\b/i,
+    /Type\s*([1-9])\s*[—-]\s*[A-Za-z]+/i,
     /Type\s*([1-9])\b/i,
     /\b([1-9])\s*[—-]\s*The\s+[A-Za-z]+/i,
   ];
   for (const pattern of candidates) {
     const match = normalized.match(pattern);
-    if (match?.[1]) return String(match[1]);
+    if (match?.[1]) {
+      return { type: String(match[1]), confidence: "medium", source: "pdfText" };
+    }
   }
-  return null;
+  return { type: null, confidence: "none", source: "none" };
 }
 
 function extractSnippet(pdfText, label) {
@@ -716,7 +730,10 @@ function renderAssignedIngestCard(payload) {
 
   const lines = [];
   if (payload?.fileName) lines.push(`Source file: ${payload.fileName}`);
-  if (payload?.detectedType) lines.push(`Detected Enneagram type: ${payload.detectedType}`);
+  if (payload?.detectedType) {
+    lines.push(`Detected Enneagram type: ${payload.detectedType}`);
+    lines.push(`Detection source: ${payload.detectedTypeSource || "unknown"}`);
+  }
   if (payload?.basicFear) lines.push(`Basic Fear: ${payload.basicFear}`);
   if (payload?.basicDesire) lines.push(`Basic Desire: ${payload.basicDesire}`);
   if (payload?.passion) lines.push(`Passion: ${payload.passion}`);
@@ -751,15 +768,26 @@ async function extractPdfTextFromSignedUrl(signedUrl) {
 }
 
 async function ingestAssignedReportIntoDashboard(data) {
-  if (assignedReportIngested || !data?.reportSignedUrl) return;
+  if (assignedReportIngested || !data) return;
   assignedReportIngested = true;
 
   try {
-    const pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
-    const detectedType = inferTypeFromPdfText(pdfText);
-    const basicFear = extractSnippet(pdfText, "Basic Fear");
-    const basicDesire = extractSnippet(pdfText, "Basic Desire");
-    const passion = extractSnippet(pdfText, "Passion");
+    const serverContext = data?.ingestedDashboardContext || null;
+    let detectedType = serverContext?.detectedType || null;
+    let detectedTypeSource = serverContext?.detectedTypeSource || null;
+    let basicFear = serverContext?.basicFear || null;
+    let basicDesire = serverContext?.basicDesire || null;
+    let passion = serverContext?.passion || null;
+
+    if (!detectedType || !basicFear || !basicDesire || !passion) {
+      const pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
+      const detectedTypeResult = inferTypeFromPdfText(pdfText, data.reportFileName);
+      detectedType = detectedType || detectedTypeResult?.type || null;
+      detectedTypeSource = detectedTypeSource || detectedTypeResult?.source || null;
+      basicFear = basicFear || extractSnippet(pdfText, "Basic Fear");
+      basicDesire = basicDesire || extractSnippet(pdfText, "Basic Desire");
+      passion = passion || extractSnippet(pdfText, "Passion");
+    }
 
     if (detectedType && REPORT_EXAMPLES[detectedType]) {
       const selector = document.getElementById("reportSelector");
@@ -773,6 +801,7 @@ async function ingestAssignedReportIntoDashboard(data) {
     renderAssignedIngestCard({
       fileName: data.reportFileName,
       detectedType,
+      detectedTypeSource,
       basicFear,
       basicDesire,
       passion,

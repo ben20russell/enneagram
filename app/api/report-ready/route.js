@@ -4,6 +4,14 @@ import { getAssignedReportByUserEmail } from "../../../lib/reportsStore";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabaseAdmin";
 import { authOptions } from "../auth/[...nextauth]/route";
 
+function getIngestedDashboardContext(resultsData) {
+  if (!resultsData) return null;
+  if (typeof resultsData === "object" && resultsData.dashboardContext) {
+    return resultsData.dashboardContext;
+  }
+  return null;
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   const userEmail = session?.user?.email || null;
@@ -64,6 +72,7 @@ export async function GET() {
         isPdfRenderable,
         reportFileName: assignedReport?.reportPdf?.fileName || null,
         reportSignedUrl: data?.signedUrl || null,
+        ingestedDashboardContext: getIngestedDashboardContext(assignedReport?.resultsData),
         reportReadyErrorDetails: error
           ? {
               bucket,

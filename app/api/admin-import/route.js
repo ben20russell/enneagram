@@ -29,6 +29,49 @@ function splitStoragePath(storagePath) {
   return { folder, fileName };
 }
 
+function inferTypeFromFileName(fileName) {
+  const normalized = String(fileName || "");
+  const ieqMatch = normalized.match(/iEQ\s*([1-9])\b/i);
+  if (ieqMatch?.[1]) {
+    return { detectedType: ieqMatch[1], detectionSource: "fileName:iEQ" };
+  }
+
+  const typeMatch = normalized.match(/Type[\s_-]*([1-9])\b/i);
+  if (typeMatch?.[1]) {
+    return { detectedType: typeMatch[1], detectionSource: "fileName:type" };
+  }
+
+  return { detectedType: null, detectionSource: "none" };
+}
+
+function buildIngestedResultsData({ reportId, safeFileName, storagePath, bucket, sizeBytes, mimeType }) {
+  const { detectedType, detectionSource } = inferTypeFromFileName(safeFileName);
+
+  return {
+    ingestion: {
+      status: "ready",
+      mode: "admin-import-auto",
+      ingestedAt: new Date().toISOString(),
+      reportId,
+    },
+    dashboardContext: {
+      detectedType,
+      detectedTypeSource: detectionSource,
+      sourceFileName: safeFileName,
+      basicFear: null,
+      basicDesire: null,
+      passion: null,
+    },
+    file: {
+      bucket,
+      storagePath,
+      fileName: safeFileName,
+      sizeBytes,
+      mimeType: mimeType || "application/pdf",
+    },
+  };
+}
+
 async function assertAdminRequest() {
   const session = await getServerSession(authOptions);
   const requesterEmail = normalizeEmail(session?.user?.email);
@@ -96,9 +139,16 @@ async function finalizeImport({
   const report = await createReport({
     id: reportId,
     userEmail,
-    enneagramType: null,
+    enneagramType: inferTypeFromFileName(safeFileName).detectedType,
     wing: null,
-    resultsData: "PDF uploaded via admin import",
+    resultsData: buildIngestedResultsData({
+      reportId,
+      safeFileName,
+      storagePath,
+      bucket,
+      sizeBytes,
+      mimeType,
+    }),
     reportPdf: {
       fileName: safeFileName,
       mimeType: mimeType || "application/pdf",
