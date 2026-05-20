@@ -814,18 +814,148 @@ function extractConnectedLineType(pdfText, label) {
   return match?.[1] ? `Type ${match[1]}` : null;
 }
 
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractLabeledSectionValue(pdfText, label, nextLabels) {
+  const normalized = normalizeExtractedText(pdfText);
+  const escapedLabel = escapeRegex(label);
+  const nextGroup = (nextLabels || [])
+    .map((nextLabel) => escapeRegex(nextLabel))
+    .join("|");
+  if (!nextGroup) return null;
+  const pattern = new RegExp(
+    `${escapedLabel}\\s*[:\\-]?\\s*(.+?)(?=\\s*(?:${nextGroup})\\b)`,
+    "i",
+  );
+  const match = normalized.match(pattern);
+  if (!match?.[1]) return null;
+  return sanitizeSnippet(match[1], null);
+}
+
+function cleanPdfExtractedValue(value) {
+  return sanitizeSnippet(
+    String(value || "")
+      .replace(/\u0000/g, "")
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/\s+([.,;:!?])/g, "$1"),
+    null,
+  );
+}
+
+function extractBetweenMarkers(pdfText, startLabel, endLabel) {
+  const normalized = normalizeExtractedText(pdfText);
+  const pattern = new RegExp(
+    `${escapeRegex(startLabel)}\\s*[:\\-]?\\s*([\\s\\S]{2,420}?)\\s*${escapeRegex(endLabel)}\\b`,
+    "i",
+  );
+  const match = normalized.match(pattern);
+  if (!match?.[1]) return null;
+  return cleanPdfExtractedValue(match[1]);
+}
+
+function extractGiftsFromCoreBlock(pdfText) {
+  const normalized = normalizeExtractedText(pdfText);
+  const patterns = [
+    /Gifts\s*[:\-]?\s*(.+?)\s*Vices\b/i,
+    /Gi\S*s\s*[:\-]?\s*(.+?)\s*Vices\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) return cleanPdfExtractedValue(match[1]);
+  }
+  return null;
+}
+
+function extractCoreIdentityBlock(pdfText) {
+  const normalized = normalizeExtractedText(pdfText);
+  const corePattern =
+    /Worldview\s*([\s\S]{5,240}?)\s*Focus\s*of\s*Attention\s*([\s\S]{5,260}?)\s*Core\s*Fear\s*([\s\S]{5,220}?)\s*Self[-\s]*Talk\s*([\s\S]{5,200}?)\s*(?:Gi[\s\S]{0,3}s|Gifts)\s*([\s\S]{3,220}?)\s*Vices\s*([\s\S]{3,280}?)(?=\s*DEVELOPMENT\s*EXERCISE)/i;
+  const match = normalized.match(corePattern);
+  if (!match) return null;
+  return {
+    worldview: cleanPdfExtractedValue(match[1]),
+    focus: cleanPdfExtractedValue(match[2]),
+    coreFear: cleanPdfExtractedValue(match[3]),
+    selfTalk: cleanPdfExtractedValue(match[4]),
+    gifts: cleanPdfExtractedValue(match[5]),
+    vices: cleanPdfExtractedValue(match[6]),
+  };
+}
+
+function extractSubtypeKeywordFromPdfText(pdfText, detectedType) {
+  const normalized = normalizeExtractedText(pdfText);
+  const hint = detectedType ? String(detectedType) : "[1-9]";
+  const subtypeMatch = normalized.match(
+    new RegExp(`A\\s+deeper\\s+understanding\\s+of\\s+the\\s+(SX|SO|SP)\\s*[—-]\\s*${hint}\\b`, "i"),
+  );
+  if (subtypeMatch?.[1]) {
+    return `${String(subtypeMatch[1]).toUpperCase()} - ${detectedType || "?"}`;
+  }
+  const instinctMatch = normalized.match(/\bwith\s+a\s+(SO|SP|SX)\s+Instinct(?:\b|[A-Z])/i);
+  if (instinctMatch?.[1]) {
+    const instinctCode = String(instinctMatch[1]).toUpperCase();
+    if (detectedType) return `${instinctCode} - ${detectedType}`;
+    return instinctCode;
+  }
+  return null;
+}
+
+function extractLineTypeFromFlowSection(pdfText, kind) {
+  const normalized = normalizeExtractedText(pdfText);
+  const kindPatterns =
+    kind === "release"
+      ? [
+          /point\s*of\s*release\s*is\s*likely\s*to\s*be\s*at\s*Ennea\s*([1-9])\b/i,
+          /Release\s*Point[^.]{0,320}at\s*Ennea\s*([1-9])\b/i,
+        ]
+      : [
+          /point\s*of\s*(?:stress|tension)\s*is\s*likely\s*to\s*be\s*at\s*Ennea\s*([1-9])\b/i,
+          /Stretch\s*Point[^.]{0,320}at\s*Ennea\s*([1-9])\b/i,
+        ];
+  for (const pattern of kindPatterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) return `Type ${match[1]}`;
+  }
+  return null;
+}
+
 function extractEnneagramProfileScores(pdfText) {
   const normalized = normalizeExtractedText(pdfText);
-  const profile = { "1": null, "2": null, "3": null, "4": null, "5": null, "6": null, "7": null, "8": null, "9": null };
+  const emptyProfile = {
+    "1": null,
+    "2": null,
+    "3": null,
+    "4": null,
+    "5": null,
+    "6": null,
+    "7": null,
+    "8": null,
+    "9": null,
+  };
+  const anchorMatch = normalized.match(
+    /Enneagram\s*Profile[^]{0,2200}|all\s*9\s*types[^]{0,2200}/i,
+  );
+  if (!anchorMatch?.[0]) {
+    return emptyProfile;
+  }
+
+  const windowText = anchorMatch[0];
+  const profile = { ...emptyProfile };
   const pattern = /\b([1-9])\s*[\):\-]\s*(\d{1,3})\b/g;
   let match;
-  while ((match = pattern.exec(normalized)) !== null) {
+  while ((match = pattern.exec(windowText)) !== null) {
     const type = String(match[1]);
     const score = Number(match[2]);
-    if (!Number.isFinite(score) || score < 0 || score > 100) continue;
-    if (profile[type] == null || score > profile[type]) {
+    if (!Number.isFinite(score) || score < 10 || score > 99) continue;
+    if (profile[type] == null) {
       profile[type] = score;
     }
+  }
+  const filledTypes = Object.values(profile).filter((value) => Number.isFinite(value)).length;
+  if (filledTypes < 6) {
+    return emptyProfile;
   }
   return profile;
 }
@@ -867,6 +997,13 @@ function cleanupTypeName(value) {
     .replace(/\b(Assertive|Decisive|Protective|Independent|Influential)\b.*$/i, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function cleanupMetaQuote(value) {
+  const cleaned = String(value || "")
+    .replace(/^YOUR\s+META-MESSAGE\s*[:\-]?\s*/i, "")
+    .replace(/\s+Communication\s*$/i, "");
+  return sanitizeSnippet(cleaned, null);
 }
 
 function extractSnippet(pdfText, label) {
@@ -979,14 +1116,91 @@ async function ingestAssignedReportIntoDashboard(data) {
     }
     typeName = cleanupTypeName(extractTypeNameFromPdfText(pdfText, detectedType));
     instinct = extractInstinctFromPdfText(pdfText);
-    subtypeKeyword = extractSnippetFromLabels(pdfText, ["Subtype Keyword", "Subtype"]);
-    connectedLineA = extractConnectedLineType(pdfText, "Connected Line A");
-    connectedLineB = extractConnectedLineType(pdfText, "Connected Line B");
+    subtypeKeyword =
+      extractSubtypeKeywordFromPdfText(pdfText, detectedType) ||
+      extractSnippetFromLabels(pdfText, ["Subtype Keyword", "Subtype"]);
+    connectedLineA =
+      extractLineTypeFromFlowSection(pdfText, "release") ||
+      extractConnectedLineType(pdfText, "Connected Line A");
+    connectedLineB =
+      extractLineTypeFromFlowSection(pdfText, "stress") ||
+      extractConnectedLineType(pdfText, "Connected Line B");
     profileScores = extractEnneagramProfileScores(pdfText);
     integrationLevel = extractIntegrationFromPdfText(pdfText) || extractSnippet(pdfText, "Integration Level");
-    metaQuote = extractSnippetFromLabels(pdfText, ["Meta message", "Meta Message", "Self Talk"]);
-    worldview = extractSnippetFromLabels(pdfText, ["Worldview", "Core Belief"]);
-    focus = extractSnippetFromLabels(pdfText, ["Focus of Attention", "Focus"]);
+    const coreIdentityBlock = extractCoreIdentityBlock(pdfText);
+    const worldviewFromCoreBlock =
+      coreIdentityBlock?.worldview ||
+      extractBetweenMarkers(pdfText, "Worldview", "Focus of Attention") ||
+      extractBetweenMarkers(pdfText, "Worldview", "Core Fear");
+    const focusFromCoreBlock =
+      coreIdentityBlock?.focus ||
+      extractBetweenMarkers(pdfText, "Focus of Attention", "Core Fear") ||
+      extractBetweenMarkers(pdfText, "Focus of Attention", "Self-Talk") ||
+      extractBetweenMarkers(pdfText, "Focus of Attention", "Self Talk");
+    const fearFromCoreBlock =
+      coreIdentityBlock?.coreFear ||
+      extractBetweenMarkers(pdfText, "Core Fear", "Self-Talk") ||
+      extractBetweenMarkers(pdfText, "Core Fear", "Self Talk");
+    const giftsFromCoreBlock =
+      coreIdentityBlock?.gifts ||
+      extractGiftsFromCoreBlock(pdfText) || extractBetweenMarkers(pdfText, "Gifts", "Vices");
+    const vicesFromCoreBlock =
+      coreIdentityBlock?.vices ||
+      extractBetweenMarkers(pdfText, "Vices", "DEVELOPMENT EXERCISE") ||
+      extractBetweenMarkers(pdfText, "Vices", "Development Exercise");
+    const selfTalkFromCoreBlock =
+      coreIdentityBlock?.selfTalk ||
+      extractBetweenMarkers(pdfText, "Self-Talk", "Gifts") ||
+      extractBetweenMarkers(pdfText, "Self Talk", "Gifts") ||
+      extractBetweenMarkers(pdfText, "Self-Talk", "Vices") ||
+      extractBetweenMarkers(pdfText, "Self Talk", "Vices");
+
+    basicFear =
+      basicFear ||
+      fearFromCoreBlock ||
+      extractLabeledSectionValue(pdfText, "Core Fear", [
+        "Self-Talk",
+        "Self Talk",
+        "Gifts",
+        "Vices",
+        "DEVELOPMENT EXERCISE",
+      ]) ||
+      extractSnippet(pdfText, "Basic Fear");
+    basicDesire =
+      basicDesire ||
+      giftsFromCoreBlock ||
+      extractLabeledSectionValue(pdfText, "Gifts", ["Vices", "DEVELOPMENT EXERCISE", "Strengths"]) ||
+      extractSnippet(pdfText, "Basic Desire");
+    passion =
+      passion ||
+      vicesFromCoreBlock ||
+      extractLabeledSectionValue(pdfText, "Vices", ["DEVELOPMENT EXERCISE", "Strengths", "This section helps"]) ||
+      extractSnippet(pdfText, "Passion");
+    metaQuote =
+      cleanupMetaQuote(
+        extractLabeledSectionValue(pdfText, "YOUR META-MESSAGE", [
+          "Communication",
+          "The ability to communicate",
+        ]) || extractSnippetFromLabels(pdfText, ["Meta message", "Meta Message", "Self Talk"]),
+      ) ||
+      selfTalkFromCoreBlock ||
+      extractLabeledSectionValue(pdfText, "Self-Talk", ["Gifts", "Vices", "DEVELOPMENT EXERCISE"]);
+    worldview =
+      worldviewFromCoreBlock ||
+      extractLabeledSectionValue(pdfText, "Worldview", [
+        "Focus of Attention",
+        "Core Fear",
+        "Self-Talk",
+        "Self Talk",
+      ]) || extractSnippetFromLabels(pdfText, ["Worldview", "Core Belief"]);
+    focus =
+      focusFromCoreBlock ||
+      extractLabeledSectionValue(pdfText, "Focus of Attention", [
+        "Core Fear",
+        "Self-Talk",
+        "Self Talk",
+        "Gifts",
+      ]) || extractSnippetFromLabels(pdfText, ["Focus of Attention", "Focus"]);
 
     applyAssignedPdfReport({
       typeNumber: detectedType,
