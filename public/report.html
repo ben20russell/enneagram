@@ -190,7 +190,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
       </div>
     </div>
     <div class="header-controls">
-      <div class="report-switch">
+      <div class="report-switch" id="reportSwitchControl">
         <label class="report-switch-label" for="reportSelector">Example Report</label>
         <select class="report-switch-select" id="reportSelector" data-testid="report-selector">
           <option value="1">Type 1</option>
@@ -639,6 +639,10 @@ function getReportReadyChip() {
   return document.getElementById("reportReadyChip");
 }
 
+function getReportSwitchControl() {
+  return document.getElementById("reportSwitchControl");
+}
+
 const ADMIN_EMAILS = new Set([
   "ben20russell@gmail.com",
   "corinne.aparis@gmail.com",
@@ -666,6 +670,12 @@ function setReportReadyChipVisible(visible) {
   chip.style.display = visible ? "inline-flex" : "none";
 }
 
+function setReportSwitchVisible(visible) {
+  const control = getReportSwitchControl();
+  if (!control) return;
+  control.style.display = visible ? "flex" : "none";
+}
+
 async function refreshReportReadyUi() {
   try {
     const response = await fetch("/api/report-ready", {
@@ -677,14 +687,18 @@ async function refreshReportReadyUi() {
 
     if (!response.ok) {
       setReportReadyChipVisible(false);
+      setReportSwitchVisible(true);
       return;
     }
 
     const data = await response.json().catch(() => ({}));
-    setReportReadyChipVisible(Boolean(data?.isAuthenticated) && Boolean(data?.isReportReady));
+    const isReady = Boolean(data?.isAuthenticated) && Boolean(data?.isReportReady);
+    setReportReadyChipVisible(isReady);
+    setReportSwitchVisible(!isReady);
   } catch (error) {
     console.log("[auth] Failed to refresh report-ready status:", error);
     setReportReadyChipVisible(false);
+    setReportSwitchVisible(true);
   }
 }
 
@@ -714,6 +728,7 @@ function setSignedOutAuthUi() {
   closeAuthMenu();
   updateAdminPageLink(null);
   setReportReadyChipVisible(false);
+  setReportSwitchVisible(true);
   button.classList.remove("avatar");
   button.classList.add("google");
   button.textContent = "Sign In";
