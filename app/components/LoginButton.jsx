@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { hasAdminAccess, normalizeEmail } from "../../lib/adminAccess";
 
 export default function LoginButton() {
   const { data: session, status } = useSession();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const userEmail = normalizeEmail(session?.user?.email);
+  const isAdmin = useMemo(() => hasAdminAccess(userEmail), [userEmail]);
   console.log("[auth] session state", session ? "authenticated" : "anonymous");
 
   if (status === "loading") {
@@ -31,6 +36,7 @@ export default function LoginButton() {
       <div
         data-testid="auth-session"
         style={{
+          position: "relative",
           display: "flex",
           alignItems: "center",
           gap: "10px",
@@ -44,21 +50,9 @@ export default function LoginButton() {
         <p style={{ margin: 0, color: "#36506f", fontSize: "12px" }}>
           Welcome, {session.user?.name ?? session.user?.email}
         </p>
-        <Link
-          data-testid="dashboard-link"
-          href="/dashboard"
-          style={{
-            textDecoration: "none",
-            color: "#0a66d8",
-            fontSize: "12px",
-            fontWeight: 600,
-          }}
-        >
-          Dashboard
-        </Link>
         <button
-          data-testid="sign-out"
-          onClick={() => signOut()}
+          data-testid="account-menu-toggle"
+          onClick={() => setIsMenuOpen((prev) => !prev)}
           style={{
             border: "1px solid #b8cae0",
             borderRadius: "10px",
@@ -70,8 +64,78 @@ export default function LoginButton() {
             cursor: "pointer",
           }}
         >
-          Sign out
+          Account
         </button>
+        {isMenuOpen ? (
+          <div
+            data-testid="account-dropdown-menu"
+            style={{
+              position: "absolute",
+              top: "100%",
+              right: 0,
+              marginTop: "8px",
+              minWidth: "170px",
+              background: "#ffffff",
+              border: "1px solid #d6e2ef",
+              borderRadius: "10px",
+              boxShadow: "0 12px 24px rgba(16, 34, 61, 0.12)",
+              padding: "8px",
+              display: "grid",
+              gap: "6px",
+              zIndex: 10,
+            }}
+          >
+            <Link
+              data-testid="dashboard-link"
+              href="/dashboard"
+              onClick={() => setIsMenuOpen(false)}
+              style={{
+                textDecoration: "none",
+                color: "#0a66d8",
+                fontSize: "12px",
+                fontWeight: 600,
+                padding: "6px 8px",
+                borderRadius: "8px",
+              }}
+            >
+              Dashboard
+            </Link>
+            {isAdmin ? (
+              <Link
+                data-testid="admin-import-link"
+                href="/admin-import"
+                onClick={() => setIsMenuOpen(false)}
+                style={{
+                  textDecoration: "none",
+                  color: "#0a66d8",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  padding: "6px 8px",
+                  borderRadius: "8px",
+                }}
+              >
+                Admin Page
+              </Link>
+            ) : null}
+            <button
+              data-testid="sign-out"
+              onClick={() => signOut()}
+              style={{
+                border: "1px solid #b8cae0",
+                borderRadius: "8px",
+                background: "#ffffff",
+                color: "#10223d",
+                fontSize: "12px",
+                fontWeight: 600,
+                padding: "6px 8px",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        ) : null}
       </div>
     );
   }

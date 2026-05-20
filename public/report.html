@@ -182,6 +182,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
       <div class="header-auth" data-testid="auth-top-right">
         <a class="auth-btn google" id="authSignInButton" data-testid="sign-in-google" href="#" onclick="openGoogleSignInPopup(event)">Sign In</a>
         <div class="auth-menu" id="authMenu" data-testid="auth-menu">
+          <a class="auth-menu-item" id="authAdminPageLink" data-testid="admin-page-link" href="/admin-import" target="_top" style="display:none">Admin Page</a>
           <button class="auth-menu-item" type="button" id="authSignOutButton">Sign out</button>
         </div>
       </div>
@@ -628,6 +629,31 @@ function getAuthMenu() {
   return document.getElementById("authMenu");
 }
 
+function getAdminPageLink() {
+  return document.getElementById("authAdminPageLink");
+}
+
+const ADMIN_EMAILS = new Set([
+  "ben20russell@gmail.com",
+  "corinne.aparis@gmail.com",
+  "corinne@corinneaparis.com",
+]);
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function hasAdminAccess(email) {
+  return ADMIN_EMAILS.has(normalizeEmail(email));
+}
+
+function updateAdminPageLink(email) {
+  const adminLink = getAdminPageLink();
+  if (!adminLink) return;
+  const allowed = hasAdminAccess(email);
+  adminLink.style.display = allowed ? "block" : "none";
+}
+
 function closeAuthMenu() {
   const menu = getAuthMenu();
   if (!menu) return;
@@ -652,6 +678,7 @@ function setSignedOutAuthUi() {
   if (!button) return;
 
   closeAuthMenu();
+  updateAdminPageLink(null);
   button.classList.remove("avatar");
   button.classList.add("google");
   button.textContent = "Sign In";
@@ -666,6 +693,7 @@ function setSignedInAuthUi(user) {
   if (!button) return;
 
   closeAuthMenu();
+  updateAdminPageLink(user?.email);
   button.classList.remove("google");
   button.classList.add("avatar");
   button.setAttribute("href", "#");
