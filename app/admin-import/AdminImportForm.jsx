@@ -1,7 +1,7 @@
 "use client";
 
 import { createClient } from "@supabase/supabase-js";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const API_REQUEST_TIMEOUT_MS = 90_000;
 const UPLOAD_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
@@ -13,8 +13,16 @@ function getSupabaseBrowserClient() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    if (!url || !anonKey) {
-      throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
+    const missingEnvVars = [];
+    if (!url) missingEnvVars.push("NEXT_PUBLIC_SUPABASE_URL");
+    if (!anonKey) missingEnvVars.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+
+    if (missingEnvVars.length) {
+      throw new Error(
+        `Missing public Supabase env vars: ${missingEnvVars.join(
+          ", ",
+        )}. Add them in Vercel Project Settings > Environment Variables, then redeploy so NEXT_PUBLIC values are included in the browser bundle.`,
+      );
     }
 
     supabaseBrowserClient = createClient(url, anonKey);
@@ -42,6 +50,23 @@ export default function AdminImportForm() {
   const isFormValid = useMemo(() => {
     return !!email.trim() && !!reportPdf;
   }, [email, reportPdf]);
+
+  const missingPublicEnvVars = useMemo(() => {
+    const missing = [];
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) missing.push("NEXT_PUBLIC_SUPABASE_URL");
+    if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) missing.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+    return missing;
+  }, []);
+
+  useEffect(() => {
+    console.log("[admin-import-page] Public env status", {
+      hasNextPublicSupabaseUrl: !missingPublicEnvVars.includes("NEXT_PUBLIC_SUPABASE_URL"),
+      hasNextPublicSupabaseAnonKey: !missingPublicEnvVars.includes(
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      ),
+      missingPublicEnvVars,
+    });
+  }, [missingPublicEnvVars]);
 
   async function handleImport(e) {
     e.preventDefault();
@@ -188,6 +213,8 @@ export default function AdminImportForm() {
       console.log("[admin-import-page] Import failed", error);
       if (error?.name === "AbortError") {
         setStatus("Upload request timed out. Please retry.");
+      } else if (String(error?.message || "").includes("Missing public Supabase env vars")) {
+        setStatus(error.message);
       } else {
         setStatus("Network error while importing. Please try again.");
       }
@@ -201,6 +228,13 @@ export default function AdminImportForm() {
       <h1 data-testid="admin-import-title">Manual Report Importer</h1>
       <p data-testid="admin-import-description">
         Use this hidden page to upload a PDF report and assign it to a specific user email.
+      </p>
+      <p data-testid="admin-import-env-status" style={{ color: "#334155" }}>
+        {missingPublicEnvVars.length
+          ? `Env check: Missing ${missingPublicEnvVars.join(
+              ", ",
+            )}. Add in Vercel and redeploy.`
+          : "Env check: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY detected."}
       </p>
 
       <div
