@@ -46,12 +46,32 @@ export async function GET() {
     const isPdfRenderable = Boolean(data?.signedUrl) && !error;
     const isReportReady = hasAssignedPdfMetadata && isPdfRenderable;
 
+    if (error) {
+      console.log("[report-ready] Signed URL creation failed", {
+        userEmail,
+        bucket,
+        storagePath,
+        supabaseErrorMessage: error?.message || null,
+        supabaseErrorName: error?.name || null,
+        supabaseErrorStatusCode: error?.statusCode || null,
+      });
+    }
+
     return NextResponse.json(
       {
         isAuthenticated: true,
         isReportReady,
         isPdfRenderable,
         reportFileName: assignedReport?.reportPdf?.fileName || null,
+        reportReadyErrorDetails: error
+          ? {
+              bucket,
+              storagePath,
+              supabaseErrorMessage: error?.message || null,
+              supabaseErrorName: error?.name || null,
+              supabaseErrorStatusCode: error?.statusCode || null,
+            }
+          : null,
       },
       { status: 200 },
     );
