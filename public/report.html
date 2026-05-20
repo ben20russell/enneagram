@@ -912,6 +912,18 @@ window.addEventListener("message", (event) => {
   if (event.data && event.data.type === "auth-success") {
     console.log("[auth] Received auth-success message from popup");
     refreshAuthUi();
+    const homeUrl = `${window.location.origin}/`;
+    console.log("[auth] Redirecting authenticated user to main page:", homeUrl);
+    try {
+      if (window.top && window.top !== window) {
+        window.top.location.href = homeUrl;
+      } else {
+        window.location.href = homeUrl;
+      }
+    } catch (error) {
+      console.log("[auth] Top-level redirect failed, using current window redirect:", error);
+      window.location.href = homeUrl;
+    }
   }
 });
 
