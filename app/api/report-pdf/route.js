@@ -30,16 +30,34 @@ export async function GET() {
       .createSignedUrl(storagePath, 60 * 10);
 
     if (error || !data?.signedUrl) {
+      const details = {
+        userEmail,
+        bucket,
+        storagePath,
+        supabaseErrorMessage: error?.message || null,
+        supabaseErrorName: error?.name || null,
+        supabaseErrorStatusCode: error?.statusCode || null,
+      };
+      console.log("[report-pdf] Failed to create signed URL", details);
       return NextResponse.json(
-        { error: "Failed to create signed URL for assigned report PDF." },
+        {
+          error: "Failed to create signed URL for assigned report PDF.",
+          details,
+        },
         { status: 500 },
       );
     }
 
     return NextResponse.redirect(data.signedUrl, 302);
   } catch (error) {
+    const details = String(error?.message || "Unknown report PDF error");
+    console.log("[report-pdf] Unexpected exception", {
+      userEmail,
+      details,
+      stack: error?.stack,
+    });
     return NextResponse.json(
-      { error: String(error?.message || "Unknown report PDF error") },
+      { error: details },
       { status: 500 },
     );
   }
