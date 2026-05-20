@@ -31,11 +31,11 @@ export default async function ReportPage() {
     Boolean(assignedReport?.reportPdf?.storagePath);
 
   if (hasAssignedPdf) {
-    console.log("[report] Assigned PDF found. Redirecting to /api/report", {
+    console.log("[report] Assigned PDF found. Redirecting to /api/report-pdf", {
       userEmail,
       storagePath: assignedReport.reportPdf.storagePath,
     });
-    redirect("/api/report");
+    redirect("/api/report-pdf");
   }
 
   return (
