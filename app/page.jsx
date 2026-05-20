@@ -1,42 +1,49 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { hasAdminImportedReports } from "../lib/reportsStore";
 import { authOptions } from "./api/auth/[...nextauth]/route";
-import PopupAuthBridge from "./components/PopupAuthBridge";
+import LoginButton from "./components/LoginButton";
 
 export default async function HomePage() {
-  console.log("[home] Rendering embedded report page");
+  console.log("[home] Rendering sign-in landing page");
 
   const session = await getServerSession(authOptions);
-  const userEmail = session?.user?.email || null;
-
-  if (userEmail) {
-    try {
-      const hasAssignedImportedReport = await hasAdminImportedReports(userEmail);
-      console.log("[home] Assigned import report check", {
-        userEmail,
-        hasAssignedImportedReport,
-      });
-      if (hasAssignedImportedReport) {
-        console.log("[home] Redirecting assigned user to dashboard to hide example reports");
-        redirect("/dashboard");
-      }
-    } catch (error) {
-      console.log("[home] Failed assigned report check; showing embedded report", {
-        details: String(error?.message || "Unknown assigned report check error"),
-        stack: error?.stack,
-      });
-    }
+  if (session?.user?.email) {
+    console.log("[home] Authenticated user detected, redirecting to /dashboard");
+    redirect("/dashboard");
   }
 
   return (
-    <main style={{ width: "100vw", minHeight: "100vh", margin: 0, padding: 0 }}>
-      <PopupAuthBridge />
-      <iframe
-        title="Enneagram Report"
-        src="/report.html"
-        style={{ width: "100%", minHeight: "100vh", border: 0 }}
-      />
+    <main
+      style={{
+        width: "100vw",
+        minHeight: "100vh",
+        margin: 0,
+        padding: "24px",
+        display: "grid",
+        placeItems: "center",
+        background: "#f8fbff",
+      }}
+      data-testid="home-root"
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "540px",
+          background: "#ffffff",
+          border: "1px solid #d6e2ef",
+          borderRadius: "16px",
+          padding: "28px",
+          textAlign: "center",
+        }}
+      >
+        <h1 style={{ margin: "0 0 10px 0", color: "#10223d" }}>Enneagram Dashboard</h1>
+        <p style={{ margin: "0 0 18px 0", color: "#36506f" }}>
+          Sign in to access your assigned report.
+        </p>
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <LoginButton />
+        </div>
+      </div>
     </main>
   );
 }
