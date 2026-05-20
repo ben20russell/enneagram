@@ -37,6 +37,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .header-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text3);font-family:var(--font-mono)}
 .hdot{color:var(--surface3)}
 .header-auth{display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative}
+.report-ready-chip{display:none;align-items:center;border:1px solid #86efac;background:#dcfce7;color:#166534;border-radius:999px;padding:4px 10px;font:700 11px var(--font-sans);line-height:1}
 .auth-btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:8px 12px;font:700 12px var(--font-sans);text-decoration:none;line-height:1}
 .auth-btn.google{border:1px solid #0a66d8;background:#0a66d8;color:#fff}
 .auth-btn.avatar{border:1px solid var(--border2);background:#fff;color:var(--text2);padding:2px;box-shadow:none}
@@ -180,6 +181,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
         <span class="eyebrow-text" id="headerSubtitle" data-testid="header-subtitle">Active Controller · SX Subtype</span>
       </div>
       <div class="header-auth" data-testid="auth-top-right">
+        <span class="report-ready-chip" id="reportReadyChip" data-testid="report-ready-chip">Report Ready</span>
         <a class="auth-btn google" id="authSignInButton" data-testid="sign-in-google" href="#" onclick="openGoogleSignInPopup(event)">Sign In</a>
         <div class="auth-menu" id="authMenu" data-testid="auth-menu">
           <a class="auth-menu-item" id="authAdminPageLink" data-testid="admin-page-link" href="/admin-import" target="_top" style="display:none">Admin Page</a>
@@ -633,6 +635,10 @@ function getAdminPageLink() {
   return document.getElementById("authAdminPageLink");
 }
 
+function getReportReadyChip() {
+  return document.getElementById("reportReadyChip");
+}
+
 const ADMIN_EMAILS = new Set([
   "ben20russell@gmail.com",
   "corinne.aparis@gmail.com",
@@ -652,6 +658,34 @@ function updateAdminPageLink(email) {
   if (!adminLink) return;
   const allowed = hasAdminAccess(email);
   adminLink.style.display = allowed ? "block" : "none";
+}
+
+function setReportReadyChipVisible(visible) {
+  const chip = getReportReadyChip();
+  if (!chip) return;
+  chip.style.display = visible ? "inline-flex" : "none";
+}
+
+async function refreshReportReadyUi() {
+  try {
+    const response = await fetch("/api/report-ready", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "include",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      setReportReadyChipVisible(false);
+      return;
+    }
+
+    const data = await response.json().catch(() => ({}));
+    setReportReadyChipVisible(Boolean(data?.isAuthenticated) && Boolean(data?.isReportReady));
+  } catch (error) {
+    console.log("[auth] Failed to refresh report-ready status:", error);
+    setReportReadyChipVisible(false);
+  }
 }
 
 function closeAuthMenu() {
@@ -679,6 +713,7 @@ function setSignedOutAuthUi() {
 
   closeAuthMenu();
   updateAdminPageLink(null);
+  setReportReadyChipVisible(false);
   button.classList.remove("avatar");
   button.classList.add("google");
   button.textContent = "Sign In";
@@ -718,6 +753,7 @@ function setSignedInAuthUi(user) {
   }
 
   button.title = user?.name ? `Signed in as ${user.name}` : "Signed in";
+  refreshReportReadyUi();
 }
 
 async function signOutUser() {
