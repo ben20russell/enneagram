@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -250,6 +251,10 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
       </div>
 
       <div id="sec-overview" class="sec active">
+        <div class="card mb24" id="assignedIngestCard" data-testid="assigned-ingest-card" style="display:none">
+          <div class="ct">Assigned Report Ingest</div>
+          <p id="assignedIngestSummary" style="font-size:14px;color:var(--text2);line-height:1.65;margin:0"></p>
+        </div>
         <div class="g2 mb24">
           <div class="card">
             <div class="ct">Core Identity</div>
@@ -676,6 +681,108 @@ function setReportSwitchVisible(visible) {
   control.style.display = visible ? "flex" : "none";
 }
 
+let assignedReportIngested = false;
+
+function normalizeExtractedText(rawText) {
+  return String(rawText || "").replace(/\s+/g, " ").trim();
+}
+
+function inferTypeFromPdfText(pdfText) {
+  const normalized = normalizeExtractedText(pdfText);
+  const candidates = [
+    /Type\s*([1-9])\s*[—-]/i,
+    /Type\s*([1-9])\b/i,
+    /\b([1-9])\s*[—-]\s*The\s+[A-Za-z]+/i,
+  ];
+  for (const pattern of candidates) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) return String(match[1]);
+  }
+  return null;
+}
+
+function extractSnippet(pdfText, label) {
+  const normalized = normalizeExtractedText(pdfText);
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`${escapedLabel}\\s*[:\\-]\\s*([^\\.\\n]{8,220})`, "i");
+  const match = normalized.match(pattern);
+  return match?.[1]?.trim() || null;
+}
+
+function renderAssignedIngestCard(payload) {
+  const card = document.getElementById("assignedIngestCard");
+  const summary = document.getElementById("assignedIngestSummary");
+  if (!card || !summary) return;
+
+  const lines = [];
+  if (payload?.fileName) lines.push(`Source file: ${payload.fileName}`);
+  if (payload?.detectedType) lines.push(`Detected Enneagram type: ${payload.detectedType}`);
+  if (payload?.basicFear) lines.push(`Basic Fear: ${payload.basicFear}`);
+  if (payload?.basicDesire) lines.push(`Basic Desire: ${payload.basicDesire}`);
+  if (payload?.passion) lines.push(`Passion: ${payload.passion}`);
+
+  summary.textContent = lines.length
+    ? lines.join(" | ")
+    : "Assigned PDF ingested successfully. Dashboard is now using your uploaded report context.";
+  card.style.display = "block";
+}
+
+async function extractPdfTextFromSignedUrl(signedUrl) {
+  if (!signedUrl || !window.pdfjsLib) return "";
+
+  if (window.pdfjsLib.GlobalWorkerOptions) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  const loadingTask = window.pdfjsLib.getDocument({ url: signedUrl });
+  const pdfDoc = await loadingTask.promise;
+  const pageLimit = Math.min(pdfDoc.numPages, 8);
+  const chunks = [];
+
+  for (let page = 1; page <= pageLimit; page += 1) {
+    const pageDoc = await pdfDoc.getPage(page);
+    const content = await pageDoc.getTextContent();
+    const pageText = content.items.map(item => item.str).join(" ");
+    chunks.push(pageText);
+  }
+
+  return chunks.join("\n");
+}
+
+async function ingestAssignedReportIntoDashboard(data) {
+  if (assignedReportIngested || !data?.reportSignedUrl) return;
+  assignedReportIngested = true;
+
+  try {
+    const pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
+    const detectedType = inferTypeFromPdfText(pdfText);
+    const basicFear = extractSnippet(pdfText, "Basic Fear");
+    const basicDesire = extractSnippet(pdfText, "Basic Desire");
+    const passion = extractSnippet(pdfText, "Passion");
+
+    if (detectedType && REPORT_EXAMPLES[detectedType]) {
+      const selector = document.getElementById("reportSelector");
+      if (selector) selector.value = detectedType;
+      applyReport(detectedType);
+      console.log("[report-ingest] Applied detected type from assigned PDF", detectedType);
+    } else {
+      console.log("[report-ingest] Unable to infer type from assigned PDF text");
+    }
+
+    renderAssignedIngestCard({
+      fileName: data.reportFileName,
+      detectedType,
+      basicFear,
+      basicDesire,
+      passion,
+    });
+  } catch (error) {
+    assignedReportIngested = false;
+    console.log("[report-ingest] Assigned PDF ingestion failed", error);
+  }
+}
+
 async function refreshReportReadyUi() {
   try {
     const response = await fetch("/api/report-ready", {
@@ -695,6 +802,9 @@ async function refreshReportReadyUi() {
     const isReady = Boolean(data?.isAuthenticated) && Boolean(data?.isReportReady);
     setReportReadyChipVisible(isReady);
     setReportSwitchVisible(!isReady);
+    if (isReady) {
+      ingestAssignedReportIntoDashboard(data);
+    }
   } catch (error) {
     console.log("[auth] Failed to refresh report-ready status:", error);
     setReportReadyChipVisible(false);
@@ -839,21 +949,6 @@ async function refreshAuthUi() {
   }
 }
 
-function redirectToReportPage() {
-  const reportUrl = `${window.location.origin}/report`;
-  console.log("[auth] Redirecting authenticated user to report page:", reportUrl);
-  try {
-    if (window.top && window.top !== window) {
-      window.top.location.href = reportUrl;
-    } else {
-      window.location.href = reportUrl;
-    }
-  } catch (error) {
-    console.log("[auth] Top-level redirect failed, using current window redirect:", error);
-    window.location.href = reportUrl;
-  }
-}
-
 async function hasWorkingAuthBackend(baseUrl) {
   const providersUrl = `${baseUrl.replace(/\/$/, "")}/api/auth/providers`;
   console.log("[auth] Checking NextAuth providers endpoint:", providersUrl);
@@ -969,11 +1064,7 @@ async function openGoogleSignInPopup(event) {
   const popupWatcher = window.setInterval(() => {
     if (popup.closed) {
       window.clearInterval(popupWatcher);
-      refreshAuthUi().then((state) => {
-        if (state?.isAuthenticated) {
-          redirectToReportPage();
-        }
-      });
+      refreshAuthUi();
     }
   }, 500);
 
@@ -985,7 +1076,6 @@ window.addEventListener("message", (event) => {
   if (event.data && event.data.type === "auth-success") {
     console.log("[auth] Received auth-success message from popup");
     refreshAuthUi();
-    redirectToReportPage();
   }
 });
 

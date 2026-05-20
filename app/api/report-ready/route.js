@@ -63,6 +63,7 @@ export async function GET() {
         isReportReady,
         isPdfRenderable,
         reportFileName: assignedReport?.reportPdf?.fileName || null,
+        reportSignedUrl: data?.signedUrl || null,
         reportReadyErrorDetails: error
           ? {
               bucket,
