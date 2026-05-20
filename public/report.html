@@ -821,18 +821,36 @@ async function refreshAuthUi() {
     const contentType = response.headers.get("content-type") || "";
     if (!response.ok || !contentType.includes("application/json")) {
       setSignedOutAuthUi();
-      return;
+      return { isAuthenticated: false };
     }
 
     const session = await response.json();
     if (session?.user) {
       setSignedInAuthUi(session.user);
+      return { isAuthenticated: true, user: session.user };
     } else {
       setSignedOutAuthUi();
+      return { isAuthenticated: false };
     }
   } catch (error) {
     console.log("[auth] Session check failed:", error);
     setSignedOutAuthUi();
+    return { isAuthenticated: false };
+  }
+}
+
+function redirectToReportPage() {
+  const reportUrl = `${window.location.origin}/report`;
+  console.log("[auth] Redirecting authenticated user to report page:", reportUrl);
+  try {
+    if (window.top && window.top !== window) {
+      window.top.location.href = reportUrl;
+    } else {
+      window.location.href = reportUrl;
+    }
+  } catch (error) {
+    console.log("[auth] Top-level redirect failed, using current window redirect:", error);
+    window.location.href = reportUrl;
   }
 }
 
@@ -951,7 +969,11 @@ async function openGoogleSignInPopup(event) {
   const popupWatcher = window.setInterval(() => {
     if (popup.closed) {
       window.clearInterval(popupWatcher);
-      refreshAuthUi();
+      refreshAuthUi().then((state) => {
+        if (state?.isAuthenticated) {
+          redirectToReportPage();
+        }
+      });
     }
   }, 500);
 
@@ -963,18 +985,7 @@ window.addEventListener("message", (event) => {
   if (event.data && event.data.type === "auth-success") {
     console.log("[auth] Received auth-success message from popup");
     refreshAuthUi();
-    const reportUrl = `${window.location.origin}/report`;
-    console.log("[auth] Redirecting authenticated user to report page:", reportUrl);
-    try {
-      if (window.top && window.top !== window) {
-        window.top.location.href = reportUrl;
-      } else {
-        window.location.href = reportUrl;
-      }
-    } catch (error) {
-      console.log("[auth] Top-level redirect failed, using current window redirect:", error);
-      window.location.href = reportUrl;
-    }
+    redirectToReportPage();
   }
 });
 
