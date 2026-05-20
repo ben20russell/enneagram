@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { getAssignedReportByUserEmail } from "../../../lib/reportsStore";
+import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabaseAdmin";
 import { authOptions } from "../auth/[...nextauth]/route";
 
 export async function GET() {
@@ -19,15 +20,37 @@ export async function GET() {
 
   try {
     const assignedReport = await getAssignedReportByUserEmail(userEmail);
-    const isReportReady =
+    const hasAssignedPdfMetadata =
       Boolean(assignedReport?.id) &&
       Boolean(assignedReport?.reportPdf?.fileName) &&
       Boolean(assignedReport?.reportPdf?.storagePath);
+
+    if (!hasAssignedPdfMetadata) {
+      return NextResponse.json(
+        {
+          isAuthenticated: true,
+          isReportReady: false,
+          isPdfRenderable: false,
+          reportFileName: assignedReport?.reportPdf?.fileName || null,
+        },
+        { status: 200 },
+      );
+    }
+
+    const storagePath = assignedReport.reportPdf.storagePath;
+    const bucket = assignedReport?.reportPdf?.bucket || getSupabaseStorageBucket();
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data, error } = await supabaseAdmin.storage
+      .from(bucket)
+      .createSignedUrl(storagePath, 60);
+    const isPdfRenderable = Boolean(data?.signedUrl) && !error;
+    const isReportReady = hasAssignedPdfMetadata && isPdfRenderable;
 
     return NextResponse.json(
       {
         isAuthenticated: true,
         isReportReady,
+        isPdfRenderable,
         reportFileName: assignedReport?.reportPdf?.fileName || null,
       },
       { status: 200 },
