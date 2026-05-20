@@ -249,20 +249,20 @@ export default function AdminImportForm() {
       <p data-testid="admin-import-description" style={{ color: "#475569", marginTop: "8px" }}>
         Use this hidden page to upload a PDF report and assign it to a specific user email.
       </p>
-      <p
-        data-testid="admin-import-env-status"
-        style={{
-          color: missingPublicEnvVars.length ? "#b91c1c" : "#0f766e",
-          marginTop: "8px",
-          fontWeight: 600,
-        }}
-      >
-        {missingPublicEnvVars.length
-          ? `Env check: Missing ${missingPublicEnvVars.join(
-              ", ",
-            )}. Add in Vercel and redeploy.`
-          : "Env check: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY detected."}
-      </p>
+      {missingPublicEnvVars.length ? (
+        <p
+          data-testid="admin-import-env-status"
+          style={{
+            color: "#b91c1c",
+            marginTop: "8px",
+            fontWeight: 600,
+          }}
+        >
+          {`Env check: Missing ${missingPublicEnvVars.join(
+            ", ",
+          )}. Add in Vercel and redeploy.`}
+        </p>
+      ) : null}
 
       <div
         data-testid="admin-import-card"
