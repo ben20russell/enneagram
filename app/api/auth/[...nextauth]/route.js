@@ -1,53 +1,22 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-
-const env = process.env;
+import { FirestoreAdapter } from "@auth/firebase-adapter";
+import { cert } from "firebase-admin/app";
 
 export const authOptions = {
-  secret: env.NEXTAUTH_SECRET,
-  trustHost: true,
-  session: {
-    strategy: "jwt",
-  },
   providers: [
     GoogleProvider({
-      clientId: env.GOOGLE_CLIENT_ID,
-      clientSecret: env.GOOGLE_CLIENT_SECRET,
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     }),
   ],
-  callbacks: {
-    async signIn({ user, account, profile }) {
-      console.log("[auth] signIn callback", {
-        provider: account?.provider,
-        hasEmail: !!user?.email,
-        profileEmail: profile?.email,
-      });
-      return true;
-    },
-    async jwt({ token, user }) {
-      if (user?.email) {
-        token.email = user.email;
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (session.user && token?.email) {
-        session.user.email = token.email;
-      }
-      return session;
-    },
-  },
-  logger: {
-    error(code, metadata) {
-      console.log("[auth] NextAuth error", code, metadata);
-    },
-    warn(code) {
-      console.log("[auth] NextAuth warning", code);
-    },
-    debug(code, metadata) {
-      console.log("[auth] NextAuth debug", code, metadata);
-    },
-  },
+  adapter: FirestoreAdapter({
+    credential: cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    }),
+  }),
 };
 
 const handler = NextAuth(authOptions);

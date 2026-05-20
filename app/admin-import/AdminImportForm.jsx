@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 
+const REQUEST_TIMEOUT_MS = 90_000;
+
 export default function AdminImportForm() {
   const [email, setEmail] = useState("");
   const [reportPdf, setReportPdf] = useState(null);
@@ -33,10 +35,14 @@ export default function AdminImportForm() {
       fileType: reportPdf?.type,
     });
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
     try {
       const res = await fetch("/api/admin-import", {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
 
       const data = await res.json().catch(() => ({}));
@@ -59,8 +65,13 @@ export default function AdminImportForm() {
       }
     } catch (error) {
       console.log("[admin-import-page] Import failed", error);
-      setStatus("Network error while importing. Try again.");
+      if (error?.name === "AbortError") {
+        setStatus("Upload timed out. Please try again and check your network.");
+      } else {
+        setStatus("Network error while importing. Please try again.");
+      }
     } finally {
+      clearTimeout(timeoutId);
       setIsSubmitting(false);
     }
   }
@@ -99,6 +110,13 @@ export default function AdminImportForm() {
             onChange={(e) => {
               const nextFile = e.target.files?.[0] || null;
               setReportPdf(nextFile);
+              if (nextFile) {
+                console.log("[admin-import-page] File selected", {
+                  fileName: nextFile.name,
+                  fileSize: nextFile.size,
+                  fileType: nextFile.type,
+                });
+              }
             }}
             required
             style={{ padding: "10px", border: "1px solid #ccc" }}

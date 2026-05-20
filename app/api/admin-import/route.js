@@ -5,7 +5,7 @@ import { adminBucket, adminDb } from "../../../lib/firebaseAdmin";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 
-const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024;
+export const maxDuration = 60;
 
 function sanitizeFileName(name) {
   return String(name || "report.pdf")
@@ -68,17 +68,6 @@ export async function POST(req) {
       fileType: reportPdf.type,
     });
     return NextResponse.json({ error: "Only PDF files are allowed" }, { status: 400 });
-  }
-
-  if (reportPdf.size > MAX_PDF_SIZE_BYTES) {
-    console.log("[admin-import] PDF file exceeds size limit", {
-      size: reportPdf.size,
-      max: MAX_PDF_SIZE_BYTES,
-    });
-    return NextResponse.json(
-      { error: "PDF is too large. Max size is 10MB." },
-      { status: 400 },
-    );
   }
 
   try {
