@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "./api/auth/[...nextauth]/route";
 import LoginButton from "./components/LoginButton";
+import RandomExampleReportPreview from "./components/RandomExampleReportPreview";
 
 export default async function HomePage() {
   console.log("[home] Rendering sign-in landing page");
@@ -43,6 +44,7 @@ export default async function HomePage() {
         <div style={{ display: "flex", justifyContent: "center" }}>
           <LoginButton />
         </div>
+        <RandomExampleReportPreview />
       </div>
     </main>
   );

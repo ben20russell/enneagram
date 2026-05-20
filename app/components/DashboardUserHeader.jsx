@@ -20,7 +20,8 @@ export default function DashboardUserHeader({
   userImage,
   showReportActiveFlash,
 }) {
-  const [isFlashVisible, setIsFlashVisible] = useState(Boolean(showReportActiveFlash));
+  const [isFlashMounted, setIsFlashMounted] = useState(Boolean(showReportActiveFlash));
+  const [isFlashVisible, setIsFlashVisible] = useState(false);
   const displayName = userName || userEmail || "User";
   const avatarFallback = useMemo(
     () => getInitials(userName || userEmail),
@@ -33,18 +34,29 @@ export default function DashboardUserHeader({
     });
 
     if (!showReportActiveFlash) {
+      setIsFlashMounted(false);
       setIsFlashVisible(false);
       return undefined;
     }
 
-    setIsFlashVisible(true);
-    const timer = window.setTimeout(() => {
-      console.log("[dashboard-user-header] report active flash hidden after timeout");
+    setIsFlashMounted(true);
+    const fadeInFrame = window.requestAnimationFrame(() => {
+      setIsFlashVisible(true);
+    });
+
+    const fadeOutTimer = window.setTimeout(() => {
       setIsFlashVisible(false);
+    }, 2600);
+
+    const unmountTimer = window.setTimeout(() => {
+      console.log("[dashboard-user-header] report active flash hidden after timeout");
+      setIsFlashMounted(false);
     }, 3000);
 
     return () => {
-      window.clearTimeout(timer);
+      window.cancelAnimationFrame(fadeInFrame);
+      window.clearTimeout(fadeOutTimer);
+      window.clearTimeout(unmountTimer);
     };
   }, [showReportActiveFlash]);
 
@@ -64,7 +76,7 @@ export default function DashboardUserHeader({
       </p>
 
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        {isFlashVisible ? (
+        {isFlashMounted ? (
           <span
             data-testid="report-active-flash"
             style={{
@@ -76,6 +88,8 @@ export default function DashboardUserHeader({
               fontSize: "12px",
               fontWeight: 700,
               lineHeight: 1.2,
+              opacity: isFlashVisible ? 1 : 0,
+              transition: "opacity 350ms ease",
             }}
           >
             Report Active
