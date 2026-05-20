@@ -1,6 +1,7 @@
 import Providers from "./providers";
 
 export const metadata = {
+  title: "Enneagram Dashboard",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

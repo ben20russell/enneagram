@@ -1,6 +1,6 @@
+import { randomUUID } from "crypto";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { getAdminDb } from "../../../../lib/firebaseAdmin";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../../lib/supabaseAdmin";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../../lib/adminAccess";
@@ -68,13 +68,12 @@ export async function POST(req) {
   }
 
   try {
-    const adminDb = getAdminDb();
     const supabaseAdmin = getSupabaseAdmin();
     const bucket = getSupabaseStorageBucket();
 
-    const reportRef = adminDb.collection("reports").doc();
+    const reportId = randomUUID();
     const safeFileName = sanitizeFileName(rawFileName);
-    const storagePath = `${reportRef.id}/${safeFileName}`;
+    const storagePath = `${reportId}/${safeFileName}`;
 
     const { data, error } = await supabaseAdmin.storage
       .from(bucket)
@@ -90,7 +89,7 @@ export async function POST(req) {
     }
 
     console.log("[admin-import:init] Prepared Supabase signed upload", {
-      reportId: reportRef.id,
+      reportId,
       bucket,
       storagePath,
       assignedTo: userEmail,
@@ -100,7 +99,7 @@ export async function POST(req) {
 
     return NextResponse.json(
       {
-        reportId: reportRef.id,
+        reportId,
         userEmail,
         safeFileName,
         storagePath,

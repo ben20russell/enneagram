@@ -46,6 +46,8 @@ export default function AdminImportForm() {
   const [reportPdf, setReportPdf] = useState(null);
   const [status, setStatus] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [didUploadSucceed, setDidUploadSucceed] = useState(false);
+  const [closeHint, setCloseHint] = useState("");
 
   const isFormValid = useMemo(() => {
     return !!email.trim() && !!reportPdf;
@@ -70,6 +72,8 @@ export default function AdminImportForm() {
 
   async function handleImport(e) {
     e.preventDefault();
+    setDidUploadSucceed(false);
+    setCloseHint("");
     if (!isFormValid) {
       setStatus("Please provide a valid email and a PDF report.");
       return;
@@ -200,6 +204,7 @@ export default function AdminImportForm() {
 
       if (finalizeRes.ok) {
         setStatus(`Success! Report assigned to ${normalizedEmail}.`);
+        setDidUploadSucceed(true);
         setEmail("");
         setReportPdf(null);
         const fileInput = document.getElementById("admin-import-pdf");
@@ -223,13 +228,35 @@ export default function AdminImportForm() {
     }
   }
 
+  function handleCloseWindow() {
+    console.log("[admin-import-page] Close window requested");
+    window.close();
+    setTimeout(() => {
+      if (!window.closed) {
+        setCloseHint(
+          "Your browser blocked automatic closing. You can close this tab manually.",
+        );
+      }
+    }, 200);
+  }
+
   return (
-    <div data-testid="admin-import-page" style={{ padding: "24px" }}>
+    <div
+      data-testid="admin-import-page"
+      style={{ maxWidth: "900px", margin: "0 auto", padding: "24px", textAlign: "center" }}
+    >
       <h1 data-testid="admin-import-title">Manual Report Importer</h1>
-      <p data-testid="admin-import-description">
+      <p data-testid="admin-import-description" style={{ color: "#475569", marginTop: "8px" }}>
         Use this hidden page to upload a PDF report and assign it to a specific user email.
       </p>
-      <p data-testid="admin-import-env-status" style={{ color: "#334155" }}>
+      <p
+        data-testid="admin-import-env-status"
+        style={{
+          color: missingPublicEnvVars.length ? "#b91c1c" : "#0f766e",
+          marginTop: "8px",
+          fontWeight: 600,
+        }}
+      >
         {missingPublicEnvVars.length
           ? `Env check: Missing ${missingPublicEnvVars.join(
               ", ",
@@ -239,12 +266,20 @@ export default function AdminImportForm() {
 
       <div
         data-testid="admin-import-card"
-        style={{ border: "1px solid #ccc", margin: "10px 0", padding: "10px" }}
+        style={{
+          border: "1px solid #cbd5e1",
+          borderRadius: "14px",
+          margin: "20px auto 0",
+          padding: "22px",
+          maxWidth: "620px",
+          background: "#ffffff",
+          boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
+        }}
       >
         <form
           data-testid="admin-import-form"
           onSubmit={handleImport}
-          style={{ display: "grid", gap: "12px" }}
+          style={{ display: "grid", gap: "12px", justifyItems: "center" }}
         >
           <input
             data-testid="admin-import-email"
@@ -253,7 +288,14 @@ export default function AdminImportForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            style={{ padding: "10px", border: "1px solid #ccc" }}
+            style={{
+              width: "100%",
+              maxWidth: "420px",
+              padding: "10px 12px",
+              border: "1px solid #cbd5e1",
+              borderRadius: "10px",
+              textAlign: "center",
+            }}
           />
 
           <input
@@ -273,21 +315,65 @@ export default function AdminImportForm() {
               }
             }}
             required
-            style={{ padding: "10px", border: "1px solid #ccc" }}
+            style={{
+              width: "100%",
+              maxWidth: "420px",
+              padding: "10px 12px",
+              border: "1px solid #cbd5e1",
+              borderRadius: "10px",
+            }}
           />
 
           <button
             data-testid="admin-import-submit"
             type="submit"
             disabled={!isFormValid || isSubmitting}
-            style={{ border: "1px solid #ccc", padding: "10px", cursor: "pointer" }}
+            style={{
+              width: "100%",
+              maxWidth: "420px",
+              border: "1px solid #0a66d8",
+              borderRadius: "10px",
+              background: isSubmitting ? "#93c5fd" : "#0a66d8",
+              color: "#ffffff",
+              padding: "10px",
+              cursor: isSubmitting ? "not-allowed" : "pointer",
+              fontWeight: 700,
+            }}
           >
             {isSubmitting ? "Assigning..." : "Assign Report"}
           </button>
         </form>
       </div>
 
-      <p data-testid="admin-import-status">{status}</p>
+      <p data-testid="admin-import-status" style={{ marginTop: "14px", fontWeight: 600 }}>
+        {status}
+      </p>
+
+      {didUploadSucceed ? (
+        <div style={{ marginTop: "18px" }}>
+          <button
+            data-testid="admin-import-close-window"
+            type="button"
+            onClick={handleCloseWindow}
+            style={{
+              border: "1px solid #94a3b8",
+              borderRadius: "10px",
+              background: "#ffffff",
+              color: "#0f172a",
+              padding: "10px 16px",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            Close Window
+          </button>
+          {closeHint ? (
+            <p style={{ marginTop: "10px", color: "#334155" }} data-testid="admin-import-close-hint">
+              {closeHint}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

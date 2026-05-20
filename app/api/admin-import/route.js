@@ -1,7 +1,7 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { randomUUID } from "crypto";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { getAdminDb } from "../../../lib/firebaseAdmin";
+import { createReport, getReportById } from "../../../lib/reportsStore";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabaseAdmin";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
@@ -67,7 +67,6 @@ async function finalizeImport({
 }) {
   const supabaseAdmin = getSupabaseAdmin();
   const bucket = getSupabaseStorageBucket();
-  const adminDb = getAdminDb();
 
   const exists = await ensureSupabaseFileExists({
     supabaseAdmin,
@@ -87,15 +86,15 @@ async function finalizeImport({
     );
   }
 
-  const reportRef = adminDb.collection("reports").doc(reportId);
-  const existingReport = await reportRef.get();
+  const existingReport = await getReportById(reportId);
 
-  if (existingReport.exists) {
+  if (existingReport) {
     console.log("[admin-import] Finalize rejected, report already exists", { reportId });
     return NextResponse.json({ error: "Report already imported" }, { status: 409 });
   }
 
-  await reportRef.set({
+  const report = await createReport({
+    id: reportId,
     userEmail,
     enneagramType: null,
     wing: null,
@@ -109,12 +108,11 @@ async function finalizeImport({
       storagePath,
       uploadedBy: requesterEmail,
     },
-    createdAt: FieldValue.serverTimestamp(),
     source: "admin-import",
   });
 
   console.log("[admin-import] Report imported successfully", {
-    id: reportId,
+    id: report.id,
     storageProvider: "supabase",
     bucket,
     storagePath,
@@ -123,7 +121,7 @@ async function finalizeImport({
 
   return NextResponse.json(
     {
-      id: reportId,
+      id: report.id,
       message: `Successfully imported and assigned report to ${userEmail}`,
     },
     { status: 200 },
@@ -180,7 +178,6 @@ async function handleFinalizeJson(req, requesterEmail) {
 }
 
 async function handleLegacyMultipart(req, requesterEmail) {
-  const adminDb = getAdminDb();
   const supabaseAdmin = getSupabaseAdmin();
   const bucket = getSupabaseStorageBucket();
 
@@ -220,9 +217,9 @@ async function handleLegacyMultipart(req, requesterEmail) {
     return NextResponse.json({ error: "Only PDF files are allowed" }, { status: 400 });
   }
 
-  const reportRef = adminDb.collection("reports").doc();
+  const reportId = randomUUID();
   const safeFileName = sanitizeFileName(reportPdf.name || "report.pdf");
-  const storagePath = `${reportRef.id}/${safeFileName}`;
+  const storagePath = `${reportId}/${safeFileName}`;
 
   try {
     const { error } = await supabaseAdmin.storage.from(bucket).upload(storagePath, reportPdf, {
@@ -236,7 +233,7 @@ async function handleLegacyMultipart(req, requesterEmail) {
 
     return finalizeImport({
       requesterEmail,
-      reportId: reportRef.id,
+      reportId,
       userEmail,
       safeFileName,
       storagePath,

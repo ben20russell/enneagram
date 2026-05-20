@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { getAdminDb } from "../../lib/firebaseAdmin";
+import { listVisibleReportsByUserEmail } from "../../lib/reportsStore";
 import { authOptions } from "../api/auth/[...nextauth]/route";
 
 export default async function Dashboard() {
@@ -14,24 +14,17 @@ export default async function Dashboard() {
     redirect("/");
   }
 
-  const adminDb = getAdminDb();
-  const reportsSnapshot = await adminDb
-    .collection("reports")
-    .where("userEmail", "==", session.user.email)
-    .orderBy("createdAt", "desc")
-    .get();
+  let userReports = [];
+  try {
+    userReports = await listVisibleReportsByUserEmail(session.user.email);
+  } catch (error) {
+    console.log("[dashboard] Failed to fetch user reports", {
+      details: String(error?.message || "Unknown dashboard query error"),
+      stack: error?.stack,
+    });
+  }
 
-  const userReports = reportsSnapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }));
-
-  console.log(
-    "[dashboard] Reports fetched for user:",
-    session.user.email,
-    "count:",
-    reportsSnapshot.size,
-  );
+  console.log("[dashboard] Reports fetched for user:", session.user.email, "count:", userReports.length);
 
   return (
     <div style={{ padding: "24px" }}>
@@ -46,8 +39,12 @@ export default async function Dashboard() {
             key={report.id}
             style={{ border: "1px solid #ccc", margin: "10px", padding: "10px" }}
           >
-            <h2>Type: {report.enneagramType ?? "Unknown"}</h2>
-            {report.wing && <p>Wing: {report.wing}</p>}
+            <h2>
+              {report.source === "admin-import"
+                ? `Imported PDF: ${report.reportPdf?.fileName || "Report"}`
+                : `Type: ${report.enneagramType ?? "Unknown"}`}
+            </h2>
+            {report.source !== "admin-import" && report.wing && <p>Wing: {report.wing}</p>}
           </div>
         ))
       )}

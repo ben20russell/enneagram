@@ -111,7 +111,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .sh{font-size:20px;font-weight:700;margin-bottom:14px}.subh{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:16px 0 8px}
 .tg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.tg-item{background:var(--red-lt);border-left:3px solid var(--red);border-radius:var(--r-sm);padding:12px}.tg-title{font-size:12px;font-weight:600;color:var(--red);margin-bottom:3px}.tg-desc{font-size:12px;color:var(--text3);line-height:1.5}
 .ibox{background:var(--blue-lt);border-left:3px solid var(--blue);border-radius:var(--r-sm);padding:13px 15px}.ibox p{font-size:13px;color:var(--blue);line-height:1.6}
-.devbox{background:var(--gold-lt);border:1px solid rgba(154,110,26,.15);border-radius:var(--r);padding:18px}.devbox-title{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);margin-bottom:12px}.dev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.dev-item{background:rgba(255,255,255,.75);border-radius:var(--r-sm);padding:12px}.dev-item-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.dev-item p{font-size:12px;color:var(--text2);line-height:1.6}
+.devbox{background:var(--gold-lt);border:1px solid rgba(154,110,26,.15);border-radius:var(--r);padding:18px}.devbox-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);margin-bottom:12px}.dev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.dev-item{background:rgba(255,255,255,.75);border-radius:var(--r-sm);padding:12px}.dev-item-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.dev-item p{font-size:12px;color:var(--text2);line-height:1.6}
 .int-segs{display:flex;gap:4px;height:28px;margin:10px 0}.int-seg{flex:1;border-radius:4px;background:var(--surface3)}.int-seg.act{background:var(--red)}.int-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);letter-spacing:.04em}
 .rdrow{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}.rdrow:last-child{border-bottom:none}.rdname{font-size:13px;color:var(--text2);min-width:100px}.rdbar{flex:1;height:4px;background:var(--surface3);border-radius:100px;overflow:hidden;margin:0 12px}.rdfil{height:100%;border-radius:100px;background:var(--gold)}.rdscore{font-size:13px;font-weight:600;color:var(--text)}
 .stage{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:8px}.stage-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.sdot{width:8px;height:8px;border-radius:50%}
@@ -177,7 +177,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
           <img class="ennea-logo" src="/enneagram-logo.svg" alt="Enneagram icon" />
           <span id="typeBadge" class="sr-only">8</span>
         </div>
-        <span class="eyebrow-text" id="headerSubtitle" data-testid="header-subtitle">Active Controller · SX Subtype · Keyword: Possession</span>
+        <span class="eyebrow-text" id="headerSubtitle" data-testid="header-subtitle">Active Controller · SX Subtype</span>
       </div>
       <div class="header-auth" data-testid="auth-top-right">
         <a class="auth-btn google" id="authSignInButton" data-testid="sign-in-google" href="#" onclick="openGoogleSignInPopup(event)">Sign In</a>
@@ -1679,7 +1679,7 @@ function applyReport(typeId) {
     console.log('[report-switch] applying', REPORT.typeNumber, REPORT.typeName);
 
     setText('typeBadge', REPORT.typeNumber);
-    setText('headerSubtitle', `Type ${REPORT.typeNumber} · ${REPORT.instinct} · Keyword: ${REPORT.keyword}`);
+    setText('headerSubtitle', `Type ${REPORT.typeNumber} · ${REPORT.instinct}`);
     setText('reportTitle', `Type ${REPORT.typeNumber} Example Report`);
     setText('mainTypeValue', currentCoreTypeLabel());
     setText('instinctValue', REPORT.instinct);

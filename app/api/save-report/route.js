@@ -1,8 +1,8 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { randomUUID } from "crypto";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "../auth/[...nextauth]/route";
-import { getAdminDb } from "../../../lib/firebaseAdmin";
+import { createReport } from "../../../lib/reportsStore";
 
 export async function POST(req) {
   console.log("[save-report] Incoming POST request");
@@ -36,22 +36,26 @@ export async function POST(req) {
   }
 
   try {
-    const adminDb = getAdminDb();
-    const reportRef = await adminDb.collection("reports").add({
+    const report = await createReport({
+      id: randomUUID(),
       userEmail: session.user.email,
       enneagramType: testData.type,
       wing: testData.wing || null,
       resultsData: testData.scores,
-      createdAt: FieldValue.serverTimestamp(),
+      source: "save-report",
     });
 
-    console.log("[save-report] Report saved successfully:", reportRef.id);
+    console.log("[save-report] Report saved successfully:", report.id);
     return NextResponse.json(
-      { id: reportRef.id, message: "Report saved!" },
+      { id: report.id, message: "Report saved!" },
       { status: 200 },
     );
   } catch (error) {
-    console.log("[save-report] Failed to save report:", error);
-    return NextResponse.json({ error: "Failed to save report" }, { status: 500 });
+    const details = String(error?.message || "Unknown save error");
+    console.log("[save-report] Failed to save report:", {
+      details,
+      stack: error?.stack,
+    });
+    return NextResponse.json({ error: "Failed to save report", details }, { status: 500 });
   }
 }
