@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "next dev -H 127.0.0.1 -p 3000",
+    "dev": "__NEXT_DEV_INDICATOR=false next dev -H 127.0.0.1 -p 3000",
     "lint": "node -e \"console.log('No lint configuration yet. Skipping.')\"",
     "test": "node -e \"console.log('No tests yet. Skipping.')\"",
     "build": "next build",
