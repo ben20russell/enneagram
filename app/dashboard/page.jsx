@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { adminDb } from "../../lib/firebaseAdmin";
+import { getAdminDb } from "../../lib/firebaseAdmin";
 import { authOptions } from "../api/auth/[...nextauth]/route";
 
 export default async function Dashboard() {
@@ -14,6 +14,7 @@ export default async function Dashboard() {
     redirect("/");
   }
 
+  const adminDb = getAdminDb();
   const reportsSnapshot = await adminDb
     .collection("reports")
     .where("userEmail", "==", session.user.email)

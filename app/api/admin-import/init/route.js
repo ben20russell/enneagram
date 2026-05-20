@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { adminBucket, adminDb } from "../../../../lib/firebaseAdmin";
+import { getAdminBucket, getAdminDb } from "../../../../lib/firebaseAdmin";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../../lib/adminAccess";
 
@@ -67,6 +67,8 @@ export async function POST(req) {
   }
 
   try {
+    const adminDb = getAdminDb();
+    const adminBucket = getAdminBucket();
     const reportRef = adminDb.collection("reports").doc();
     const safeFileName = sanitizeFileName(rawFileName);
     const storagePath = `admin-import-reports/${reportRef.id}/${safeFileName}`;

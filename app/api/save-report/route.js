@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "../auth/[...nextauth]/route";
-import { adminDb } from "../../../lib/firebaseAdmin";
+import { getAdminDb } from "../../../lib/firebaseAdmin";
 
 export async function POST(req) {
   console.log("[save-report] Incoming POST request");
@@ -36,6 +36,7 @@ export async function POST(req) {
   }
 
   try {
+    const adminDb = getAdminDb();
     const reportRef = await adminDb.collection("reports").add({
       userEmail: session.user.email,
       enneagramType: testData.type,

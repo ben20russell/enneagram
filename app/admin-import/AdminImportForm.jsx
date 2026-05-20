@@ -25,6 +25,54 @@ export default function AdminImportForm() {
     return !!email.trim() && !!reportPdf;
   }, [email, reportPdf]);
 
+  async function uploadViaLegacyApi(normalizedEmail, file) {
+    console.log("[admin-import-page] Falling back to legacy multipart upload", {
+      userEmail: normalizedEmail,
+      fileName: file?.name,
+      fileSize: file?.size,
+      fileType: file?.type,
+    });
+
+    const formData = new FormData();
+    formData.append("userEmail", normalizedEmail);
+    formData.append("reportPdf", file);
+
+    const fallbackTimeout = createTimeoutController(UPLOAD_REQUEST_TIMEOUT_MS);
+    let fallbackRes;
+    let fallbackData;
+
+    try {
+      fallbackRes = await fetch("/api/admin-import", {
+        method: "POST",
+        body: formData,
+        signal: fallbackTimeout.controller.signal,
+      });
+      fallbackData = await fallbackRes.json().catch(() => ({}));
+    } finally {
+      clearTimeoutController(fallbackTimeout.timeoutId);
+    }
+
+    console.log("[admin-import-page] Legacy upload response", {
+      ok: fallbackRes.ok,
+      status: fallbackRes.status,
+      data: fallbackData,
+    });
+
+    if (!fallbackRes.ok) {
+      setStatus(fallbackData?.error || "Fallback upload failed.");
+      return false;
+    }
+
+    setStatus(`Success! Report assigned to ${normalizedEmail}.`);
+    setEmail("");
+    setReportPdf(null);
+    const fileInput = document.getElementById("admin-import-pdf");
+    if (fileInput) {
+      fileInput.value = "";
+    }
+    return true;
+  }
+
   async function handleImport(e) {
     e.preventDefault();
     if (!isFormValid) {
@@ -90,6 +138,14 @@ export default function AdminImportForm() {
           body: reportPdf,
           signal: uploadTimeout.controller.signal,
         });
+      } catch (uploadError) {
+        console.log("[admin-import-page] Signed upload request failed", uploadError);
+        setStatus("Direct storage upload blocked. Trying fallback upload...");
+        const fallbackSuccess = await uploadViaLegacyApi(normalizedEmail, reportPdf);
+        if (fallbackSuccess) {
+          return;
+        }
+        return;
       } finally {
         clearTimeoutController(uploadTimeout.timeoutId);
       }

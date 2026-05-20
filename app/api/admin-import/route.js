@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { adminBucket, adminDb } from "../../../lib/firebaseAdmin";
+import { getAdminBucket, getAdminDb } from "../../../lib/firebaseAdmin";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 
@@ -40,6 +40,8 @@ async function finalizeImport({
   mimeType,
   sizeBytes,
 }) {
+  const adminBucket = getAdminBucket();
+  const adminDb = getAdminDb();
   const file = adminBucket.file(storagePath);
   const [exists] = await file.exists();
 
@@ -152,6 +154,8 @@ async function handleFinalizeJson(req, requesterEmail) {
 }
 
 async function handleLegacyMultipart(req, requesterEmail) {
+  const adminDb = getAdminDb();
+  const adminBucket = getAdminBucket();
   let formData;
   try {
     formData = await req.formData();
