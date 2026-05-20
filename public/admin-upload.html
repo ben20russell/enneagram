@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Upload Client Report · Enneagram Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Jost:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Jost', sans-serif;
+      background: #f7f0e8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 3rem 1.5rem;
+    }
+    .page-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 2rem;
+      font-weight: 600;
+      color: #1a0f0a;
+      margin-bottom: .35rem;
+    }
+    .page-sub {
+      font-size: .85rem;
+      color: #6b4f3a;
+      margin-bottom: 2.5rem;
+      letter-spacing: .04em;
+    }
+    #upload-container {
+      width: 100%;
+      max-width: 600px;
+    }
+  </style>
+</head>
+<body>
+  <h1 class="page-title">Upload Client Report</h1>
+  <p class="page-sub">iEQ9 PDF → Dashboard Profile</p>
+  <div id="upload-container"></div>
+
+  <script>
+    // Override API base if your backend runs on a different origin
+    window.API_BASE = window.location.origin + "/api";
+  </script>
+  <script src="/components/PdfUploader.js"></script>
+  <script>
+    PdfUploader.mount("#upload-container", function(data) {
+      console.log("Parsed report:", data);
+      // Wire to your existing client profile logic here, e.g.:
+      // loadClientProfile(data.clientId);
+      // or redirect: window.location.href = `/client/${data.clientId}`;
+    });
+  </script>
+</body>
+</html>
