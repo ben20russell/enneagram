@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { getAdminBucket, getAdminDb } from "../../../../lib/firebaseAdmin";
+import { getAdminDb } from "../../../../lib/firebaseAdmin";
+import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../../lib/supabaseAdmin";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../../lib/adminAccess";
 
@@ -68,21 +69,29 @@ export async function POST(req) {
 
   try {
     const adminDb = getAdminDb();
-    const adminBucket = getAdminBucket();
+    const supabaseAdmin = getSupabaseAdmin();
+    const bucket = getSupabaseStorageBucket();
+
     const reportRef = adminDb.collection("reports").doc();
     const safeFileName = sanitizeFileName(rawFileName);
-    const storagePath = `admin-import-reports/${reportRef.id}/${safeFileName}`;
-    const file = adminBucket.file(storagePath);
+    const storagePath = `${reportRef.id}/${safeFileName}`;
 
-    const [uploadUrl] = await file.getSignedUrl({
-      version: "v4",
-      action: "write",
-      expires: Date.now() + 15 * 60 * 1000,
-      contentType: "application/pdf",
-    });
+    const { data, error } = await supabaseAdmin.storage
+      .from(bucket)
+      .createSignedUploadUrl(storagePath);
 
-    console.log("[admin-import:init] Prepared signed upload URL", {
+    if (error || !data?.token) {
+      console.log("[admin-import:init] Failed to create signed upload URL", {
+        bucket,
+        storagePath,
+        error,
+      });
+      return NextResponse.json({ error: "Failed to prepare upload" }, { status: 500 });
+    }
+
+    console.log("[admin-import:init] Prepared Supabase signed upload", {
       reportId: reportRef.id,
+      bucket,
       storagePath,
       assignedTo: userEmail,
       uploadedBy: requesterEmail,
@@ -95,17 +104,22 @@ export async function POST(req) {
         userEmail,
         safeFileName,
         storagePath,
+        bucket,
         mimeType: "application/pdf",
         sizeBytes: fileSize,
-        uploadUrl,
-        uploadHeaders: {
-          "Content-Type": "application/pdf",
-        },
+        uploadToken: data.token,
       },
       { status: 200 },
     );
   } catch (error) {
-    console.log("[admin-import:init] Failed to prepare signed upload", error);
-    return NextResponse.json({ error: "Failed to prepare upload" }, { status: 500 });
+    const details = String(error?.message || "Unknown init upload error");
+    console.log("[admin-import:init] Failed to prepare signed upload", {
+      details,
+      stack: error?.stack,
+    });
+    return NextResponse.json(
+      { error: "Failed to prepare upload", details },
+      { status: 500 },
+    );
   }
 }

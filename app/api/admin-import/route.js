@@ -1,7 +1,8 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { getAdminBucket, getAdminDb } from "../../../lib/firebaseAdmin";
+import { getAdminDb } from "../../../lib/firebaseAdmin";
+import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabaseAdmin";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 
@@ -20,6 +21,14 @@ function isPdfFile(file) {
   return type === "application/pdf" || name.endsWith(".pdf");
 }
 
+function splitStoragePath(storagePath) {
+  const normalized = String(storagePath || "").replace(/^\/+|\/+$/g, "");
+  const parts = normalized.split("/").filter(Boolean);
+  const fileName = parts.pop() || "";
+  const folder = parts.join("/");
+  return { folder, fileName };
+}
+
 async function assertAdminRequest() {
   const session = await getServerSession(authOptions);
   const requesterEmail = normalizeEmail(session?.user?.email);
@@ -31,6 +40,22 @@ async function assertAdminRequest() {
   return { requesterEmail, isAuthorized: true };
 }
 
+async function ensureSupabaseFileExists({ supabaseAdmin, bucket, storagePath }) {
+  const { folder, fileName } = splitStoragePath(storagePath);
+  if (!fileName) return false;
+
+  const { data, error } = await supabaseAdmin.storage.from(bucket).list(folder || undefined, {
+    search: fileName,
+    limit: 10,
+  });
+
+  if (error) {
+    throw new Error(`Unable to verify uploaded PDF: ${error.message}`);
+  }
+
+  return (data || []).some((item) => item?.name === fileName);
+}
+
 async function finalizeImport({
   requesterEmail,
   reportId,
@@ -40,14 +65,20 @@ async function finalizeImport({
   mimeType,
   sizeBytes,
 }) {
-  const adminBucket = getAdminBucket();
+  const supabaseAdmin = getSupabaseAdmin();
+  const bucket = getSupabaseStorageBucket();
   const adminDb = getAdminDb();
-  const file = adminBucket.file(storagePath);
-  const [exists] = await file.exists();
+
+  const exists = await ensureSupabaseFileExists({
+    supabaseAdmin,
+    bucket,
+    storagePath,
+  });
 
   if (!exists) {
     console.log("[admin-import] Finalize failed, storage object missing", {
       reportId,
+      bucket,
       storagePath,
     });
     return NextResponse.json(
@@ -55,15 +86,6 @@ async function finalizeImport({
       { status: 400 },
     );
   }
-
-  await file.setMetadata({
-    contentType: "application/pdf",
-    metadata: {
-      assignedTo: userEmail,
-      uploadedBy: requesterEmail,
-      source: "admin-import",
-    },
-  });
 
   const reportRef = adminDb.collection("reports").doc(reportId);
   const existingReport = await reportRef.get();
@@ -82,6 +104,8 @@ async function finalizeImport({
       fileName: safeFileName,
       mimeType: mimeType || "application/pdf",
       sizeBytes,
+      storageProvider: "supabase",
+      bucket,
       storagePath,
       uploadedBy: requesterEmail,
     },
@@ -91,6 +115,8 @@ async function finalizeImport({
 
   console.log("[admin-import] Report imported successfully", {
     id: reportId,
+    storageProvider: "supabase",
+    bucket,
     storagePath,
     sizeBytes,
   });
@@ -155,7 +181,9 @@ async function handleFinalizeJson(req, requesterEmail) {
 
 async function handleLegacyMultipart(req, requesterEmail) {
   const adminDb = getAdminDb();
-  const adminBucket = getAdminBucket();
+  const supabaseAdmin = getSupabaseAdmin();
+  const bucket = getSupabaseStorageBucket();
+
   let formData;
   try {
     formData = await req.formData();
@@ -194,30 +222,17 @@ async function handleLegacyMultipart(req, requesterEmail) {
 
   const reportRef = adminDb.collection("reports").doc();
   const safeFileName = sanitizeFileName(reportPdf.name || "report.pdf");
-  const storagePath = `admin-import-reports/${reportRef.id}/${safeFileName}`;
+  const storagePath = `${reportRef.id}/${safeFileName}`;
 
   try {
-    const pdfBuffer = Buffer.from(await reportPdf.arrayBuffer());
-
-    console.log("[admin-import] Uploading PDF via legacy multipart path", {
-      reportId: reportRef.id,
-      storagePath,
-      size: reportPdf.size,
-      uploadedBy: requesterEmail,
-      assignedTo: userEmail,
-    });
-
-    await adminBucket.file(storagePath).save(pdfBuffer, {
-      resumable: false,
+    const { error } = await supabaseAdmin.storage.from(bucket).upload(storagePath, reportPdf, {
       contentType: "application/pdf",
-      metadata: {
-        metadata: {
-          assignedTo: userEmail,
-          uploadedBy: requesterEmail,
-          source: "admin-import",
-        },
-      },
+      upsert: false,
     });
+
+    if (error) {
+      throw new Error(error.message || "Supabase upload failed");
+    }
 
     return finalizeImport({
       requesterEmail,
@@ -229,8 +244,15 @@ async function handleLegacyMultipart(req, requesterEmail) {
       sizeBytes: reportPdf.size,
     });
   } catch (error) {
-    console.log("[admin-import] Failed legacy multipart import", error);
-    return NextResponse.json({ error: "Failed to import" }, { status: 500 });
+    const details = String(error?.message || "Unknown legacy upload error");
+    console.log("[admin-import] Failed legacy multipart import", {
+      details,
+      stack: error?.stack,
+    });
+    return NextResponse.json(
+      { error: "Failed to import", details },
+      { status: 500 },
+    );
   }
 }
 
@@ -254,7 +276,14 @@ export async function POST(req) {
 
     return await handleLegacyMultipart(req, requesterEmail);
   } catch (error) {
-    console.log("[admin-import] Failed to import report:", error);
-    return NextResponse.json({ error: "Failed to import" }, { status: 500 });
+    const details = String(error?.message || "Unknown import error");
+    console.log("[admin-import] Failed to import report:", {
+      details,
+      stack: error?.stack,
+    });
+    return NextResponse.json(
+      { error: "Failed to import", details },
+      { status: 500 },
+    );
   }
 }

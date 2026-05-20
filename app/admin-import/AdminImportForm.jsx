@@ -1,9 +1,27 @@
 "use client";
 
+import { createClient } from "@supabase/supabase-js";
 import { useMemo, useState } from "react";
 
 const API_REQUEST_TIMEOUT_MS = 90_000;
 const UPLOAD_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+
+let supabaseBrowserClient;
+
+function getSupabaseBrowserClient() {
+  if (!supabaseBrowserClient) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!url || !anonKey) {
+      throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
+    }
+
+    supabaseBrowserClient = createClient(url, anonKey);
+  }
+
+  return supabaseBrowserClient;
+}
 
 function createTimeoutController(timeoutMs) {
   const controller = new AbortController();
@@ -24,54 +42,6 @@ export default function AdminImportForm() {
   const isFormValid = useMemo(() => {
     return !!email.trim() && !!reportPdf;
   }, [email, reportPdf]);
-
-  async function uploadViaLegacyApi(normalizedEmail, file) {
-    console.log("[admin-import-page] Falling back to legacy multipart upload", {
-      userEmail: normalizedEmail,
-      fileName: file?.name,
-      fileSize: file?.size,
-      fileType: file?.type,
-    });
-
-    const formData = new FormData();
-    formData.append("userEmail", normalizedEmail);
-    formData.append("reportPdf", file);
-
-    const fallbackTimeout = createTimeoutController(UPLOAD_REQUEST_TIMEOUT_MS);
-    let fallbackRes;
-    let fallbackData;
-
-    try {
-      fallbackRes = await fetch("/api/admin-import", {
-        method: "POST",
-        body: formData,
-        signal: fallbackTimeout.controller.signal,
-      });
-      fallbackData = await fallbackRes.json().catch(() => ({}));
-    } finally {
-      clearTimeoutController(fallbackTimeout.timeoutId);
-    }
-
-    console.log("[admin-import-page] Legacy upload response", {
-      ok: fallbackRes.ok,
-      status: fallbackRes.status,
-      data: fallbackData,
-    });
-
-    if (!fallbackRes.ok) {
-      setStatus(fallbackData?.error || "Fallback upload failed.");
-      return false;
-    }
-
-    setStatus(`Success! Report assigned to ${normalizedEmail}.`);
-    setEmail("");
-    setReportPdf(null);
-    const fileInput = document.getElementById("admin-import-pdf");
-    if (fileInput) {
-      fileInput.value = "";
-    }
-    return true;
-  }
 
   async function handleImport(e) {
     e.preventDefault();
@@ -127,43 +97,48 @@ export default function AdminImportForm() {
         return;
       }
 
-      setStatus("Uploading PDF to storage...");
+      setStatus("Uploading PDF to Supabase storage...");
 
-      const uploadTimeout = createTimeoutController(UPLOAD_REQUEST_TIMEOUT_MS);
-      let uploadRes;
-      try {
-        uploadRes = await fetch(initData.uploadUrl, {
-          method: "PUT",
-          headers: initData.uploadHeaders || { "Content-Type": "application/pdf" },
-          body: reportPdf,
-          signal: uploadTimeout.controller.signal,
-        });
-      } catch (uploadError) {
-        console.log("[admin-import-page] Signed upload request failed", uploadError);
-        setStatus("Direct storage upload blocked. Trying fallback upload...");
-        const fallbackSuccess = await uploadViaLegacyApi(normalizedEmail, reportPdf);
-        if (fallbackSuccess) {
-          return;
-        }
+      const supabase = getSupabaseBrowserClient();
+      const bucket = initData.bucket;
+      const path = initData.storagePath;
+      const token = initData.uploadToken;
+
+      if (!bucket || !path || !token) {
+        setStatus("Upload token data is incomplete. Please retry.");
         return;
-      } finally {
-        clearTimeoutController(uploadTimeout.timeoutId);
       }
 
-      console.log("[admin-import-page] Signed upload response", {
-        ok: uploadRes.ok,
-        status: uploadRes.status,
+      let uploadTimeoutId;
+      const timeoutPromise = new Promise((_, reject) => {
+        uploadTimeoutId = setTimeout(
+          () => reject(new DOMException("Upload timed out", "AbortError")),
+          UPLOAD_REQUEST_TIMEOUT_MS,
+        );
       });
 
-      if (!uploadRes.ok) {
-        const uploadErrorText = await uploadRes.text().catch(() => "");
-        console.log("[admin-import-page] Signed upload failed", {
-          status: uploadRes.status,
-          errorText: uploadErrorText?.slice?.(0, 500),
+      const uploadPromise = supabase.storage.from(bucket).uploadToSignedUrl(path, token, reportPdf);
+      const { data: uploadData, error: uploadError } = await Promise.race([
+        uploadPromise,
+        timeoutPromise,
+      ]);
+      clearTimeout(uploadTimeoutId);
+
+      if (uploadError) {
+        console.log("[admin-import-page] Supabase signed upload failed", {
+          uploadError,
+          bucket,
+          path,
         });
-        setStatus("PDF upload failed while sending to storage. Please retry.");
+        setStatus(uploadError.message || "PDF upload failed while sending to storage.");
         return;
       }
+
+      console.log("[admin-import-page] Supabase signed upload response", {
+        uploadData,
+        bucket,
+        path,
+      });
 
       setStatus("Finalizing import...");
 

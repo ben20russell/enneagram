@@ -132,7 +132,7 @@ export default function LoginButton() {
                 textAlign: "left",
               }}
             >
-              Sign out
+              Sign Out
             </button>
           </div>
         ) : null}
