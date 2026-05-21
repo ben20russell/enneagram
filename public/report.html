@@ -142,6 +142,24 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .site-footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--border2);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);font-family:var(--font-mono);text-align:center}
 .site-footer a{color:var(--blue);text-decoration:none}
 .site-footer a:hover{text-decoration:underline}
+body.exporting-dashboard-pdf .sec{display:block!important}
+body.exporting-dashboard-pdf .sec:not(:last-of-type){margin-bottom:20px}
+body.exporting-dashboard-pdf #sec-focus{display:none!important}
+@media print{
+  @page{size:letter;margin:.5in}
+  body{background:#fff!important}
+  .mobile-menu-toggle,.mobile-menu-overlay,.mobile-menu,.header-auth,.report-switch,.nav-wrap,.sidebar-col,.reflection-launcher,.site-footer{display:none!important}
+  .page{max-width:100%!important;padding:0!important}
+  .header{border:none!important;border-radius:0!important;padding:0 0 16px!important;margin:0 0 12px!important;background:#fff!important}
+  .header-controls{display:none!important}
+  .body-grid{display:block!important}
+  .main-col{width:100%!important}
+  .sec{display:none!important}
+  body.exporting-dashboard-pdf .sec{display:block!important;break-before:page}
+  body.exporting-dashboard-pdf #sec-overview{break-before:auto}
+  body.exporting-dashboard-pdf #sec-focus{display:none!important}
+  .card,.sidebar-box{break-inside:avoid;box-shadow:none!important}
+}
 </style>
 </head>
 <body>
@@ -283,6 +301,36 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
           <div class="card"><div class="ct">Basic Fear</div><p style="font-size:14px;color:var(--text2)" id="coreFearValue">Helplessness or vulnerability. Total weakness. Being controlled by others.</p></div>
           <div class="card"><div class="ct">Basic Desire</div><p style="font-size:15px;color:var(--green);font-weight:600;margin-bottom:6px" id="giftsTitle">Strength, Direction, Aliveness</p><p style="font-size:13px;color:var(--text3)" id="giftsDesc">At your best others experience you as empowering and encouraging.</p></div>
           <div class="card"><div class="ct">Passion (Habit Energy)</div><p style="font-size:15px;color:var(--red);font-weight:600;margin-bottom:6px" id="viceTitle">Lust</p><p style="font-size:13px;color:var(--text3)" id="viceDesc">An insatiable push for control can lead to excess and make connection harder.</p></div>
+        </div>
+
+        <div class="g2 mb24">
+          <div class="card">
+            <div class="ct">Report Metadata</div>
+            <div class="kv-grid mb16">
+              <div><div class="kvl">Client Name</div><div class="kvv" id="clientNameValue">Ben Russell</div></div>
+              <div><div class="kvl">Report Date</div><div class="kvv" id="reportDateValue">26 Feb 2022</div></div>
+              <div><div class="kvl">Wing</div><div class="kvv" id="wingValue">Type 7</div></div>
+              <div><div class="kvl">Trifix</div><div class="kvv" id="trifixValue">Not detected</div></div>
+              <div><div class="kvl">Level of Development</div><div class="kvv" id="developmentLevelValue">Low</div></div>
+              <div><div class="kvl">Centre of Intelligence</div><div class="kvv" id="centerOfIntelligenceValue">Action Center</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="ct">Parsed Score Coverage</div>
+            <p style="font-size:13px;color:var(--text3);margin-bottom:12px">Raw parser score payload from your assigned PDF.</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="typeScoresValue">Type scores: Not detected</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="instinctScoresValue">Instinct scores: Not detected</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:0" id="centerScoresValue">Center scores: Not detected</p>
+          </div>
+        </div>
+
+        <div class="card mb24">
+          <div class="ct">Extracted Content Snapshot</div>
+          <p style="font-size:14px;color:var(--text2);margin-bottom:8px" id="extractedCountsValue">Pages: 0 · Sections: 0</p>
+          <p style="font-size:13px;color:var(--text3);margin-bottom:10px">First parsed section titles from report extraction:</p>
+          <div id="extractedSectionsList" style="display:flex;gap:7px;flex-wrap:wrap">
+            <span class="chip cgn">No parsed sections available</span>
+          </div>
         </div>
 
         <div class="g2 mb24">
@@ -1254,6 +1302,20 @@ async function ingestAssignedReportIntoDashboard(data) {
       worldview,
       focus,
       reportSummary: parsedProfile?.reportSummary || null,
+      clientName: parsedProfile?.clientName || null,
+      reportDate: parsedProfile?.reportDate || null,
+      wing: parsedProfile?.wing || null,
+      trifix: parsedProfile?.trifix || null,
+      levelOfDevelopment: parsedProfile?.levelOfDevelopment || null,
+      centreOfIntelligence: parsedProfile?.centreOfIntelligence || null,
+      typeScoresRaw: parsedProfile?.typeScores || null,
+      instinctScoresRaw: parsedProfile?.instinctScores || null,
+      centerScoresRaw: parsedProfile?.centerScores || null,
+      extractedPageCount: Array.isArray(parsedProfile?.reportContent?.pages) ? parsedProfile.reportContent.pages.length : 0,
+      extractedSectionCount: Array.isArray(parsedProfile?.reportContent?.sections) ? parsedProfile.reportContent.sections.length : 0,
+      extractedSectionTitles: Array.isArray(parsedProfile?.reportContent?.sections)
+        ? parsedProfile.reportContent.sections.map((section) => section?.sectionTitle || section?.title || "").filter(Boolean)
+        : [],
     });
     console.log("[report-ingest] Applied PDF-only assigned report context", {
       detectedType,
@@ -1387,39 +1449,113 @@ function setSignedInAuthUi(user) {
   refreshReportReadyUi();
 }
 
-async function exportAssignedPdf() {
+function sanitizeExportFileName(value) {
+  return String(value || "dashboard")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72) || "dashboard";
+}
+
+function buildDashboardExportTitle() {
+  const type = String(REPORT?.typeNumber || "").trim();
+  const label = sanitizeExportFileName(REPORT?.typeName || "dashboard");
+  const date = new Date().toISOString().slice(0, 10);
+  return `enneagram-dashboard-${type || "report"}-${label}-${date}`;
+}
+
+function snapshotChartsForExport() {
+  const snapshots = [];
+  document.querySelectorAll("canvas").forEach((canvas) => {
+    try {
+      const dataUrl = canvas.toDataURL("image/png");
+      if (!dataUrl) return;
+      const image = document.createElement("img");
+      image.src = dataUrl;
+      image.alt = "Chart snapshot for export";
+      image.style.width = `${canvas.clientWidth || canvas.width || 600}px`;
+      image.style.height = `${canvas.clientHeight || canvas.height || 300}px`;
+      image.style.maxWidth = "100%";
+      image.style.display = "block";
+      image.setAttribute("data-export-chart-snapshot", "true");
+      canvas.style.display = "none";
+      canvas.insertAdjacentElement("afterend", image);
+      snapshots.push({ canvas, image });
+    } catch (error) {
+      console.log("[report-export] Canvas snapshot failed", error);
+    }
+  });
+
+  return () => {
+    snapshots.forEach(({ canvas, image }) => {
+      image.remove();
+      canvas.style.removeProperty("display");
+    });
+  };
+}
+
+function waitForAnimationFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+async function exportDashboardPdf() {
   closeAuthMenu();
-  console.log("[report-export] Export PDF requested from account dropdown");
+  console.log("[report-export] Export dashboard PDF requested from account dropdown");
+  const exportButton = getExportPdfButton();
+  const previousButtonText = exportButton?.textContent || "Export PDF";
+  const exportTitle = buildDashboardExportTitle();
+  let cleanupSnapshots = null;
+  let exportFinalized = false;
+
+  const finalizeExport = () => {
+    if (exportFinalized) return;
+    exportFinalized = true;
+    if (typeof cleanupSnapshots === "function") {
+      cleanupSnapshots();
+    }
+    document.body.classList.remove("exporting-dashboard-pdf");
+    document.body.removeAttribute("data-export-title");
+    if (exportButton) {
+      exportButton.disabled = false;
+      exportButton.textContent = previousButtonText;
+    }
+    if (profileChart) profileChart.resize();
+    if (strainChart) strainChart.resize();
+    console.log("[report-export] Dashboard PDF export cleanup complete");
+  };
+
+  const onAfterPrint = () => {
+    window.removeEventListener("afterprint", onAfterPrint);
+    finalizeExport();
+  };
 
   try {
-    const response = await fetch("/api/report-ready", {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "include",
-      cache: "no-store",
-    });
-    const data = await response.json().catch(() => ({}));
-    const signedUrl = data?.reportSignedUrl || latestReportReadyData?.reportSignedUrl || null;
-    const fileName = data?.reportFileName || latestReportReadyData?.reportFileName || "assigned-report.pdf";
-
-    if (signedUrl) {
-      console.log("[report-export] Opening signed URL for PDF export", { fileName });
-      const link = document.createElement("a");
-      link.href = signedUrl;
-      link.download = fileName;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      return;
+    if (exportButton) {
+      exportButton.disabled = true;
+      exportButton.textContent = "Preparing PDF...";
     }
 
-    console.log("[report-export] Signed URL missing, using /api/report-pdf fallback route");
-    window.open("/api/report-pdf", "_blank", "noopener,noreferrer");
+    document.body.setAttribute("data-export-title", exportTitle);
+    document.body.classList.add("exporting-dashboard-pdf");
+
+    await waitForAnimationFrame();
+    await waitForAnimationFrame();
+    if (profileChart) profileChart.resize();
+    if (strainChart) strainChart.resize();
+    cleanupSnapshots = snapshotChartsForExport();
+    await waitForAnimationFrame();
+
+    console.log("[report-export] Opening print dialog for dashboard PDF", { exportTitle });
+    window.addEventListener("afterprint", onAfterPrint, { once: true });
+    window.print();
+
+    window.setTimeout(() => {
+      finalizeExport();
+    }, 2000);
   } catch (error) {
-    console.log("[report-export] Export failed, falling back to /api/report-pdf", error);
-    window.open("/api/report-pdf", "_blank", "noopener,noreferrer");
+    console.log("[report-export] Dashboard export failed", error);
+    finalizeExport();
+    alert("Unable to export dashboard PDF right now. Please try again.");
   }
 }
 
@@ -1632,7 +1768,7 @@ window.addEventListener("DOMContentLoaded", () => {
   }
   if (exportPdfButton) {
     exportPdfButton.addEventListener("click", () => {
-      exportAssignedPdf();
+      exportDashboardPdf();
     });
   }
 
@@ -2337,6 +2473,25 @@ function setText(id, value) {
   node.textContent = value;
 }
 
+function setHtml(id, value) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.innerHTML = value;
+}
+
+function formatScoreObject(labelMap, scores) {
+  if (!scores || typeof scores !== 'object') return "Not detected";
+  const entries = Object.entries(scores)
+    .filter(([, value]) => Number.isFinite(Number(value)))
+    .map(([key, value]) => `${labelMap[key] || key}: ${Number(value)}`);
+  return entries.length ? entries.join(" · ") : "Not detected";
+}
+
+function formatOptionalText(value, fallback = "Not detected") {
+  const normalized = String(value == null ? "" : value).trim();
+  return normalized || fallback;
+}
+
 function buildReflectionDeck(report) {
   return {
     leadership: [
@@ -2455,6 +2610,18 @@ function buildPdfOnlyReport(payload) {
       `Connected Line B: ${stretch}`,
     ],
     meta: sanitizeSnippet(payload?.metaQuote, "Assigned report loaded from PDF."),
+    clientName: sanitizeSnippet(payload?.clientName, "Not detected"),
+    reportDate: sanitizeSnippet(payload?.reportDate, "Not detected"),
+    wing: sanitizeSnippet(payload?.wing, "Not detected"),
+    trifix: sanitizeSnippet(payload?.trifix, "Not detected"),
+    levelOfDevelopment: sanitizeSnippet(payload?.levelOfDevelopment, "Not detected"),
+    centreOfIntelligence: sanitizeSnippet(payload?.centreOfIntelligence, "Not detected"),
+    typeScoresRaw: payload?.typeScoresRaw || null,
+    instinctScoresRaw: payload?.instinctScoresRaw || null,
+    centerScoresRaw: payload?.centerScoresRaw || null,
+    extractedPageCount: Number(payload?.extractedPageCount || 0),
+    extractedSectionCount: Number(payload?.extractedSectionCount || 0),
+    extractedSectionTitles: Array.isArray(payload?.extractedSectionTitles) ? payload.extractedSectionTitles : [],
     profile,
     strain: [20, 20, 20, 20, 20, 20],
     mainValue: mainIndex >= 0 ? profile[mainIndex] : 0,
@@ -2480,6 +2647,35 @@ function renderReportFromState(isExampleMode) {
   setText('giftsDesc', REPORT.giftsDesc);
   setText('viceTitle', REPORT.vice);
   setText('viceDesc', REPORT.viceDesc);
+  setText('clientNameValue', formatOptionalText(REPORT.clientName, 'Not detected'));
+  setText('reportDateValue', formatOptionalText(REPORT.reportDate, 'Not detected'));
+  setText('wingValue', formatOptionalText(REPORT.wing, 'Not detected'));
+  setText('trifixValue', formatOptionalText(REPORT.trifix, 'Not detected'));
+  setText('developmentLevelValue', formatOptionalText(REPORT.levelOfDevelopment, 'Not detected'));
+  setText('centerOfIntelligenceValue', formatOptionalText(REPORT.centreOfIntelligence, 'Not detected'));
+  setText('typeScoresValue', `Type scores: ${formatScoreObject({
+    type1: '1', type2: '2', type3: '3', type4: '4', type5: '5', type6: '6', type7: '7', type8: '8', type9: '9'
+  }, REPORT.typeScoresRaw)}`);
+  setText('instinctScoresValue', `Instinct scores: ${formatScoreObject({
+    sexual: 'SX',
+    social: 'SO',
+    selfPreservation: 'SP'
+  }, REPORT.instinctScoresRaw)}`);
+  setText('centerScoresValue', `Center scores: ${formatScoreObject({
+    body: 'Body',
+    heart: 'Heart',
+    head: 'Head'
+  }, REPORT.centerScoresRaw)}`);
+  setText('extractedCountsValue', `Pages: ${Number(REPORT.extractedPageCount || 0)} · Sections: ${Number(REPORT.extractedSectionCount || 0)}`);
+  const sectionTags = Array.isArray(REPORT.extractedSectionTitles)
+    ? REPORT.extractedSectionTitles.filter(Boolean).slice(0, 10)
+    : [];
+  setHtml(
+    'extractedSectionsList',
+    sectionTags.length
+      ? sectionTags.map((title) => `<span class="chip cgn">${title}</span>`).join('')
+      : '<span class="chip cgn">No parsed sections available</span>',
+  );
   document.getElementById('worldviewValue').innerHTML = `<strong style="color:var(--text)">Worldview:</strong> ${REPORT.worldview}`;
   document.getElementById('focusValue').innerHTML = `<strong style="color:var(--text)">Focus of Attention:</strong> ${REPORT.focus}`;
   setText('selfTalkValue', REPORT.selfTalk);
