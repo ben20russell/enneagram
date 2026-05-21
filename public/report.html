@@ -1107,18 +1107,23 @@ function hasInformativeScoreMap(scoreMap, minPositive = 2) {
 
 function normalizeScoreScale(scoreMap) {
   if (!scoreMap || typeof scoreMap !== "object") return null;
-  const values = Object.values(scoreMap).map((value) => Number(value)).filter((value) => Number.isFinite(value));
-  if (!values.length) return scoreMap;
+  const cleaned = {};
+  Object.entries(scoreMap).forEach(([key, value]) => {
+    const numeric = Number(value);
+    cleaned[key] = Number.isFinite(numeric) ? numeric : null;
+  });
+  const values = Object.values(cleaned).filter((value) => Number.isFinite(value));
+  if (!values.length) return cleaned;
   const max = Math.max(...values);
   if (max <= 10) {
     const scaled = {};
-    Object.entries(scoreMap).forEach(([key, value]) => {
+    Object.entries(cleaned).forEach(([key, value]) => {
       const numeric = Number(value);
       scaled[key] = Number.isFinite(numeric) ? Math.round(numeric * 10) : null;
     });
     return scaled;
   }
-  return scoreMap;
+  return cleaned;
 }
 
 function extractStrainScoresFromPdfText(pdfText) {
@@ -1321,7 +1326,7 @@ async function ingestAssignedReportIntoDashboard(data) {
         };
         instinctScoresRaw = normalizeScoreScale(extractedInstinct);
       }
-      if (!hasInformativeScoreMap(centerScoresRaw, 1)) {
+      if (!hasInformativeScoreMap(centerScoresRaw, 2)) {
         const extractedCenters = {
           body: Number((extractSnippetFromLabels(pdfText, ["Action Center", "Body Center"]) || "").match(/\d{1,3}/)?.[0] || NaN),
           heart: Number((extractSnippetFromLabels(pdfText, ["Feeling Center", "Heart Center"]) || "").match(/\d{1,3}/)?.[0] || NaN),
@@ -1353,9 +1358,11 @@ async function ingestAssignedReportIntoDashboard(data) {
     integrationLevel =
       integrationLevel || extractIntegrationFromPdfText(pdfText) || extractSnippet(pdfText, "Integration Level");
     strainScoresRaw = extractStrainScoresFromPdfText(pdfText);
+    const assertiveRaw = Number((extractSnippetFromLabels(pdfText, ["Assertive"]) || "").match(/\d{1,3}/)?.[0] || NaN);
+    const reactiveRaw = Number((extractSnippetFromLabels(pdfText, ["Reactive"]) || "").match(/\d{1,3}/)?.[0] || NaN);
     interactionScores = {
-      assertive: Number((extractSnippetFromLabels(pdfText, ["Assertive"]) || "").match(/\d{1,3}/)?.[0] || NaN),
-      reactive: Number((extractSnippetFromLabels(pdfText, ["Reactive"]) || "").match(/\d{1,3}/)?.[0] || NaN),
+      assertive: Number.isFinite(assertiveRaw) ? assertiveRaw : null,
+      reactive: Number.isFinite(reactiveRaw) ? reactiveRaw : null,
     };
     const coreIdentityBlock = extractCoreIdentityBlock(pdfText);
     const worldviewFromCoreBlock =
@@ -2623,8 +2630,11 @@ function currentCoreTypeLabel() {
 }
 
 function getLineTypeNumber(line) {
-  const match = line.match(/Type (\d)/);
-  return match ? match[1] : '';
+  const raw = String(line || "").trim();
+  const explicit = raw.match(/Type\s*([1-9])/i);
+  if (explicit) return explicit[1];
+  const bare = raw.match(/\b([1-9])\b/);
+  return bare ? bare[1] : '';
 }
 
 function formatTypeLine(line) {
@@ -2876,8 +2886,8 @@ function buildPdfOnlyReport(payload) {
   const typeName = sanitizeSnippet(payload?.typeName, fallbackReport.typeName || "Assigned Profile");
   const instinct = sanitizeSnippet(payload?.instinct, fallbackReport.instinct || "Unknown Instinct");
   const keyword = sanitizeSnippet(payload?.subtypeKeyword, fallbackReport.keyword || "Not detected");
-  const release = sanitizeSnippet(payload?.connectedLineA, fallbackReport.release || "Type ?");
-  const stretch = sanitizeSnippet(payload?.connectedLineB, fallbackReport.stretch || "Type ?");
+  const release = formatTypeLine(sanitizeSnippet(payload?.connectedLineA, fallbackReport.release || "Type ?"));
+  const stretch = formatTypeLine(sanitizeSnippet(payload?.connectedLineB, fallbackReport.stretch || "Type ?"));
   const integration = sanitizeSnippet(payload?.integrationLevel, fallbackReport.integration || "Not detected");
   const profile = buildPdfOnlyProfile(typeNumber, payload?.profileScores);
   const strainScoresRaw = payload?.strainScoresRaw && typeof payload.strainScoresRaw === "object"
