@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/ensure-dev-server.mjs",
     "dev": "__NEXT_DEV_INDICATOR=false next dev -H 127.0.0.1 -p 3000",
     "lint": "node -e \"console.log('No lint configuration yet. Skipping.')\"",
     "test": "node --test",
@@ -18,9 +19,11 @@
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.1",
+    "@napi-rs/canvas": "^0.1.70",
     "next": "^16.2.6",
     "next-auth": "^4.24.14",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   }

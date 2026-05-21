@@ -39,6 +39,7 @@ export async function POST(req) {
 
     const buffer = Buffer.from(await report.arrayBuffer());
     const parsed = await parsePdf(buffer);
+    const parseStatus = parsed?._parseStatus || "complete";
 
     const result = {
       ...parsed,
@@ -46,6 +47,13 @@ export async function POST(req) {
       sourceFile: report.name,
       ...(clientId ? { clientId } : {}),
     };
+
+    if (parseStatus !== "complete") {
+      return NextResponse.json(
+        { success: false, error: "PDF parsed but marked incomplete", data: result },
+        { status: 422 },
+      );
+    }
 
     return NextResponse.json({ success: true, data: result }, { status: 200 });
   } catch (error) {

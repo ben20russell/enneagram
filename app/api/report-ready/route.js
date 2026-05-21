@@ -51,6 +51,33 @@ function normalizeResultsData(resultsData) {
   return null;
 }
 
+function getIngestionState(resultsData) {
+  const normalized = normalizeResultsData(resultsData);
+  if (!normalized || typeof normalized !== "object") {
+    return { status: null, parseDiagnostics: null, isComplete: false };
+  }
+  const ingestion = normalized.ingestion && typeof normalized.ingestion === "object" ? normalized.ingestion : {};
+  const parseDiagnostics =
+    ingestion.parseDiagnostics && typeof ingestion.parseDiagnostics === "object"
+      ? ingestion.parseDiagnostics
+      : normalized?.parsedProfile?._parseDiagnostics || null;
+  const status = String(ingestion.status || "").toLowerCase() || null;
+  const parsedProfile = normalized?.parsedProfile && typeof normalized.parsedProfile === "object"
+    ? normalized.parsedProfile
+    : null;
+  const countNonNull = (obj) =>
+    obj && typeof obj === "object" ? Object.values(obj).filter((v) => v != null).length : 0;
+  const typeNonNull = countNonNull(parsedProfile?.typeScores);
+  const instinctNonNull = countNonNull(parsedProfile?.instinctScores);
+  const centerNonNull = countNonNull(parsedProfile?.centerScores);
+  const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
+  const pageCount = Number(parseDiagnostics?.extraction?.pages || 0);
+  const minPages = Number(parseDiagnostics?.extraction?.minExpectedPages || 20);
+  const meetsPageCoverage = pageCount >= minPages;
+  const isComplete = status === "ready" && meetsPageCoverage && hasAllChartScores;
+  return { status, parseDiagnostics, isComplete };
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   const userEmail = session?.user?.email || null;
@@ -91,7 +118,8 @@ export async function GET() {
       .from(bucket)
       .createSignedUrl(storagePath, 60);
     const isPdfRenderable = Boolean(data?.signedUrl) && !error;
-    const isReportReady = hasAssignedPdfMetadata && isPdfRenderable;
+    const ingestionState = getIngestionState(assignedReport?.resultsData);
+    const isReportReady = hasAssignedPdfMetadata && isPdfRenderable && ingestionState.isComplete;
 
     if (error) {
       console.log("[report-ready] Signed URL creation failed", {
@@ -113,6 +141,8 @@ export async function GET() {
         reportSignedUrl: data?.signedUrl || null,
         ingestedDashboardContext: getIngestedDashboardContext(assignedReport?.resultsData),
         ingestedParsedProfile: getParsedProfile(assignedReport?.resultsData),
+        ingestionStatus: ingestionState.status,
+        parseDiagnostics: ingestionState.parseDiagnostics,
         reportReadyErrorDetails: error
           ? {
               bucket,

@@ -28,6 +28,37 @@ const userEmail = (process.argv[2] || "ben20russell@gmail.com").trim().toLowerCa
 const table = process.env.SUPABASE_REPORTS_TABLE || "reports";
 const supabase = getSupabaseAdmin();
 
+function getNonNullCount(obj) {
+  if (!obj || typeof obj !== "object") return 0;
+  return Object.values(obj).filter((v) => v != null).length;
+}
+
+function computeCompletenessFromParsed(parsed, diagnostics) {
+  const pages = Number(diagnostics?.extraction?.pages ?? parsed?.reportContent?.pages?.length ?? 0);
+  const minPages = Number(diagnostics?.extraction?.minExpectedPages ?? process.env.PDF_PARSE_MIN_PAGES ?? 20);
+  const typeNonNull = getNonNullCount(parsed?.typeScores);
+  const instinctNonNull = getNonNullCount(parsed?.instinctScores);
+  const centerNonNull = getNonNullCount(parsed?.centerScores);
+  const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
+  const hasMinPages = pages >= minPages;
+  const isComplete = hasMinPages && hasAllChartScores;
+  let incompleteReason = null;
+  if (!hasMinPages) {
+    incompleteReason = `Extracted ${pages} pages, expected at least ${minPages}`;
+  } else if (!hasAllChartScores) {
+    incompleteReason = "Chart numerics incomplete: one or more type, instinct, or center scores are null";
+  }
+  return {
+    isComplete,
+    incompleteReason,
+    pages,
+    minPages,
+    typeNonNull,
+    instinctNonNull,
+    centerNonNull,
+  };
+}
+
 async function main() {
   const { data: report, error: reportErr } = await supabase
     .from(table)
@@ -60,12 +91,38 @@ async function main() {
 
   const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
   const parsed = await parsePdf(pdfBuffer);
+  const parseDiagnostics =
+    parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
+      ? parsed._parseDiagnostics
+      : null;
+  const recomputed = computeCompletenessFromParsed(parsed, parseDiagnostics);
+  const nextDiagnostics = {
+    ...(parseDiagnostics || {}),
+    isComplete: recomputed.isComplete,
+    incompleteReason: recomputed.incompleteReason,
+    extraction: {
+      ...(parseDiagnostics?.extraction || {}),
+      pages: recomputed.pages,
+      minExpectedPages: recomputed.minPages,
+    },
+    scoreCoverage: {
+      ...(parseDiagnostics?.scoreCoverage || {}),
+      typeScoresNonNull: recomputed.typeNonNull,
+      typeScoresTotal: 9,
+      instinctScoresNonNull: recomputed.instinctNonNull,
+      instinctScoresTotal: 3,
+      centerScoresNonNull: recomputed.centerNonNull,
+      centerScoresTotal: 3,
+    },
+    completedAt: new Date().toISOString(),
+  };
+  const parseStatus = recomputed.isComplete ? "complete" : "incomplete";
 
   const nextResultsData = {
     ...(report.results_data && typeof report.results_data === "object" ? report.results_data : {}),
     ingestion: {
       ...(report.results_data?.ingestion || {}),
-      status: "ready",
+      status: parseStatus === "complete" ? "ready" : "incomplete",
       mode: "admin-import-auto",
       ingestedAt: new Date().toISOString(),
       reportId: report.id,
@@ -73,11 +130,12 @@ async function main() {
         provider: "azure-openai",
         model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
       },
+      parseDiagnostics: nextDiagnostics,
     },
     dashboardContext: {
       ...(report.results_data?.dashboardContext || {}),
       detectedType: parsed?.primaryType ? String(parsed.primaryType) : null,
-      detectedTypeSource: "azure-openai:gpt-5.4-mini",
+      detectedTypeSource: `azure-openai:${process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini"}`,
       sourceFileName: fileName,
       basicFear: parsed?.coreFear || null,
       basicDesire: parsed?.coreDesire || null,
@@ -92,7 +150,7 @@ async function main() {
       pages: Array.isArray(parsed?.reportContent?.pages) ? parsed.reportContent.pages : [],
       sections: Array.isArray(parsed?.reportContent?.sections) ? parsed.reportContent.sections : [],
       extractedAt: new Date().toISOString(),
-      parserVersion: "multi-pass-v2",
+      parserVersion: nextDiagnostics?.parserVersion || "multi-pass-v3",
     },
     parsedProfile: parsed,
   };
@@ -119,6 +177,9 @@ async function main() {
         parsedPrimaryType: parsed?.primaryType || null,
         parsedInstinctualVariant: parsed?.instinctualVariant || null,
         parserModel: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
+        parseStatus,
+        parsePages: nextDiagnostics?.extraction?.pages ?? null,
+        parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
       },
       null,
       2,
