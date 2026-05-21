@@ -399,9 +399,9 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           <div class="card">
             <div class="ct">Centers of Expression</div>
             <p style="font-size:13px;color:var(--text2);margin-bottom:14px">Dominant Center: <strong style="color:var(--text)">Action Center</strong>. Weakest Center: <strong style="color:var(--text)">Thinking Center</strong>.</p>
-            <div class="brow"><div class="blbl">Action Center</div><div class="btrk"><div class="bfil" style="width:47%;background:var(--red)"></div></div><div class="bval">47</div></div>
-            <div class="brow"><div class="blbl">Feeling Center</div><div class="btrk"><div class="bfil" style="width:27%;background:var(--gold)"></div></div><div class="bval">27</div></div>
-            <div class="brow"><div class="blbl">Thinking Center</div><div class="btrk"><div class="bfil" style="width:25%;background:var(--surface3)"></div></div><div class="bval">25</div></div>
+            <div class="brow"><div class="blbl">Action Center</div><div class="btrk"><div class="bfil" id="centerBodyBar" style="width:47%;background:var(--red)"></div></div><div class="bval" id="centerBodyVal">47</div></div>
+            <div class="brow"><div class="blbl">Feeling Center</div><div class="btrk"><div class="bfil" id="centerHeartBar" style="width:27%;background:var(--gold)"></div></div><div class="bval" id="centerHeartVal">27</div></div>
+            <div class="brow"><div class="blbl">Thinking Center</div><div class="btrk"><div class="bfil" id="centerHeadBar" style="width:25%;background:var(--surface3)"></div></div><div class="bval" id="centerHeadVal">25</div></div>
             <div class="div"></div>
             <div class="tlist">
               <div class="ti"><div class="tic pos">→</div><div class="tt"><strong>Externalised Action:</strong> You act on gut impulses in quick and compelling ways.</div></div>
@@ -412,14 +412,14 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           <div class="card">
             <div class="ct">27 Subtypes &amp; Instincts</div>
             <p style="font-size:13px;color:var(--text2);margin-bottom:14px"><strong style="color:var(--text)">You are an Enneagram type 8 with an SX instinct.</strong></p>
-            <div class="brow"><div class="blbl">SX — One-On-One</div><div class="btrk"><div class="bfil" style="width:54%;background:var(--red)"></div></div><div class="bval">54</div></div>
-            <div class="brow"><div class="blbl">SO — Social</div><div class="btrk"><div class="bfil" style="width:29%;background:var(--gold)"></div></div><div class="bval">29</div></div>
-            <div class="brow"><div class="blbl">SP — Self-Preserv</div><div class="btrk"><div class="bfil" style="width:17%;background:var(--surface3)"></div></div><div class="bval">17</div></div>
+            <div class="brow"><div class="blbl">SX — One-On-One</div><div class="btrk"><div class="bfil" id="instinctSxBar" style="width:54%;background:var(--red)"></div></div><div class="bval" id="instinctSxVal">54</div></div>
+            <div class="brow"><div class="blbl">SO — Social</div><div class="btrk"><div class="bfil" id="instinctSoBar" style="width:29%;background:var(--gold)"></div></div><div class="bval" id="instinctSoVal">29</div></div>
+            <div class="brow"><div class="blbl">SP — Self-Preserv</div><div class="btrk"><div class="bfil" id="instinctSpBar" style="width:17%;background:var(--surface3)"></div></div><div class="bval" id="instinctSpVal">17</div></div>
             <div class="div"></div>
             <p style="font-size:13px;color:var(--text2)">The one-to-one instinct is concerned with intensity of experience and strong connection with specific people.</p>
             <div class="subh">Interaction &amp; Conflict Styles</div>
-            <div class="brow"><div class="blbl">Assertive</div><div class="btrk"><div class="bfil" style="width:44%;background:var(--red)"></div></div><div class="bval">44</div></div>
-            <div class="brow"><div class="blbl">Reactive</div><div class="btrk"><div class="bfil" style="width:51%;background:var(--red)"></div></div><div class="bval">51</div></div>
+            <div class="brow"><div class="blbl">Assertive</div><div class="btrk"><div class="bfil" id="interactionAssertiveBar" style="width:44%;background:var(--red)"></div></div><div class="bval" id="interactionAssertiveVal">44</div></div>
+            <div class="brow"><div class="blbl">Reactive</div><div class="btrk"><div class="bfil" id="interactionReactiveBar" style="width:51%;background:var(--red)"></div></div><div class="bval" id="interactionReactiveVal">51</div></div>
             <p style="font-size:13px;color:var(--text2);margin-top:12px"><strong style="color:var(--text)">Your preferred conflict processing strategy is reactive.</strong></p>
           </div>
         </div>
@@ -589,15 +589,15 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           <div class="card">
             <div class="ct">Strain Area Breakdown</div>
             <div style="margin-bottom:6px;padding-bottom:12px;border-bottom:1px solid var(--border)">
-              <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">Overall strain is MEDIUM.</div>
-              <div style="font-size:12px;color:var(--text3)">Overall score: 26</div>
+              <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px" id="strainOverallLabel">Overall strain is MEDIUM.</div>
+              <div style="font-size:12px;color:var(--text3)" id="strainOverallScore">Overall score: 26</div>
             </div>
-            <div class="brow" style="margin-top:12px"><div class="blbl">Happiness</div><div class="btrk"><div class="bfil" style="width:46%;background:var(--red)"></div></div><div class="bval" style="color:var(--red)">46</div></div>
-            <div class="brow"><div class="blbl">Vocational</div><div class="btrk"><div class="bfil" style="width:33%;background:var(--gold)"></div></div><div class="bval">33</div></div>
-            <div class="brow"><div class="blbl">Interpersonal</div><div class="btrk"><div class="bfil" style="width:26%;background:var(--gold)"></div></div><div class="bval">26</div></div>
-            <div class="brow"><div class="blbl">Physical</div><div class="btrk"><div class="bfil" style="width:33%;background:var(--gold)"></div></div><div class="bval">33</div></div>
-            <div class="brow"><div class="blbl">Environmental</div><div class="btrk"><div class="bfil" style="width:6%;background:var(--green)"></div></div><div class="bval">6</div></div>
-            <div class="brow"><div class="blbl">Psychological</div><div class="btrk"><div class="bfil" style="width:6%;background:var(--green)"></div></div><div class="bval">6</div></div>
+            <div class="brow" style="margin-top:12px"><div class="blbl">Happiness</div><div class="btrk"><div class="bfil" id="strainHappinessBar" style="width:46%;background:var(--red)"></div></div><div class="bval" id="strainHappinessVal" style="color:var(--red)">46</div></div>
+            <div class="brow"><div class="blbl">Vocational</div><div class="btrk"><div class="bfil" id="strainVocationalBar" style="width:33%;background:var(--gold)"></div></div><div class="bval" id="strainVocationalVal">33</div></div>
+            <div class="brow"><div class="blbl">Interpersonal</div><div class="btrk"><div class="bfil" id="strainInterpersonalBar" style="width:26%;background:var(--gold)"></div></div><div class="bval" id="strainInterpersonalVal">26</div></div>
+            <div class="brow"><div class="blbl">Physical</div><div class="btrk"><div class="bfil" id="strainPhysicalBar" style="width:33%;background:var(--gold)"></div></div><div class="bval" id="strainPhysicalVal">33</div></div>
+            <div class="brow"><div class="blbl">Environmental</div><div class="btrk"><div class="bfil" id="strainEnvironmentalBar" style="width:6%;background:var(--green)"></div></div><div class="bval" id="strainEnvironmentalVal">6</div></div>
+            <div class="brow"><div class="blbl">Psychological</div><div class="btrk"><div class="bfil" id="strainPsychologicalBar" style="width:6%;background:var(--green)"></div></div><div class="bval" id="strainPsychologicalVal">6</div></div>
           </div>
         </div>
 
@@ -1096,6 +1096,46 @@ function extractEnneagramProfileScores(pdfText) {
   return profile;
 }
 
+function hasInformativeScoreMap(scoreMap, minPositive = 2) {
+  if (!scoreMap || typeof scoreMap !== "object") return false;
+  const values = Object.values(scoreMap).map((value) => Number(value));
+  const finiteValues = values.filter((value) => Number.isFinite(value));
+  if (!finiteValues.length) return false;
+  const positiveCount = finiteValues.filter((value) => value > 0).length;
+  return positiveCount >= minPositive;
+}
+
+function normalizeScoreScale(scoreMap) {
+  if (!scoreMap || typeof scoreMap !== "object") return null;
+  const values = Object.values(scoreMap).map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  if (!values.length) return scoreMap;
+  const max = Math.max(...values);
+  if (max <= 10) {
+    const scaled = {};
+    Object.entries(scoreMap).forEach(([key, value]) => {
+      const numeric = Number(value);
+      scaled[key] = Number.isFinite(numeric) ? Math.round(numeric * 10) : null;
+    });
+    return scaled;
+  }
+  return scoreMap;
+}
+
+function extractStrainScoresFromPdfText(pdfText) {
+  const normalized = normalizeExtractedText(pdfText);
+  const categories = ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"];
+  const scores = {};
+  categories.forEach((category) => {
+    const match = normalized.match(new RegExp(`${escapeRegex(category)}\\s*[:\\-]?\\s*(\\d{1,3})\\b`, "i"));
+    scores[category.toLowerCase()] = match?.[1] ? Number(match[1]) : null;
+  });
+
+  const detectedValues = Object.values(scores).filter((value) => Number.isFinite(value));
+  if (!detectedValues.length) return null;
+  const overall = Math.round(detectedValues.reduce((sum, value) => sum + value, 0) / detectedValues.length);
+  return { ...scores, overall };
+}
+
 function extractSnippetFromLabels(pdfText, labels) {
   for (const label of labels) {
     const value = extractSnippet(pdfText, label);
@@ -1240,12 +1280,17 @@ async function ingestAssignedReportIntoDashboard(data) {
           "9": parsedProfile.typeScores.type9 ?? null,
         }
       : null;
+    profileScores = normalizeScoreScale(profileScores);
     let integrationLevel = serverContext?.integrationLevel || parsedProfile?.integrationLevel || null;
     let metaQuote = parsedProfile?.metaMessage || parsedProfile?.selfTalk || null;
     let worldview = parsedProfile?.worldview || null;
     let focus = parsedProfile?.focusOfAttention || null;
+    let instinctScoresRaw = normalizeScoreScale(parsedProfile?.instinctScores || null);
+    let centerScoresRaw = normalizeScoreScale(parsedProfile?.centerScores || null);
+    let strainScoresRaw = null;
+    let interactionScores = null;
 
-    if (!detectedType || !basicFear || !basicDesire || !passion || !instinct || !profileScores) {
+    if (!detectedType || !basicFear || !basicDesire || !passion || !instinct || !hasInformativeScoreMap(profileScores, 3)) {
       pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
       const detectedTypeResult = inferTypeFromPdfText(pdfText);
       const shouldOverrideTypeFromPdf =
@@ -1264,6 +1309,26 @@ async function ingestAssignedReportIntoDashboard(data) {
       basicFear = basicFear || extractSnippet(pdfText, "Basic Fear");
       basicDesire = basicDesire || extractSnippet(pdfText, "Basic Desire");
       passion = passion || extractSnippet(pdfText, "Passion");
+      const extractedProfile = extractEnneagramProfileScores(pdfText);
+      if (hasInformativeScoreMap(extractedProfile, 3)) {
+        profileScores = normalizeScoreScale(extractedProfile);
+      }
+      if (!hasInformativeScoreMap(instinctScoresRaw, 1)) {
+        const extractedInstinct = {
+          sexual: Number((extractSnippetFromLabels(pdfText, ["SX", "Sexual"]) || "").match(/\d{1,3}/)?.[0] || NaN),
+          social: Number((extractSnippetFromLabels(pdfText, ["SO", "Social"]) || "").match(/\d{1,3}/)?.[0] || NaN),
+          selfPreservation: Number((extractSnippetFromLabels(pdfText, ["SP", "Self-Preservation", "Self Preservation"]) || "").match(/\d{1,3}/)?.[0] || NaN),
+        };
+        instinctScoresRaw = normalizeScoreScale(extractedInstinct);
+      }
+      if (!hasInformativeScoreMap(centerScoresRaw, 1)) {
+        const extractedCenters = {
+          body: Number((extractSnippetFromLabels(pdfText, ["Action Center", "Body Center"]) || "").match(/\d{1,3}/)?.[0] || NaN),
+          heart: Number((extractSnippetFromLabels(pdfText, ["Feeling Center", "Heart Center"]) || "").match(/\d{1,3}/)?.[0] || NaN),
+          head: Number((extractSnippetFromLabels(pdfText, ["Thinking Center", "Head Center"]) || "").match(/\d{1,3}/)?.[0] || NaN),
+        };
+        centerScoresRaw = normalizeScoreScale(extractedCenters);
+      }
     }
 
     if (!pdfText && (!typeName || !instinct || !connectedLineA || !connectedLineB || !integrationLevel)) {
@@ -1282,9 +1347,16 @@ async function ingestAssignedReportIntoDashboard(data) {
       connectedLineB ||
       extractLineTypeFromFlowSection(pdfText, "stress") ||
       extractConnectedLineType(pdfText, "Connected Line B");
-    profileScores = profileScores || extractEnneagramProfileScores(pdfText);
+    if (!hasInformativeScoreMap(profileScores, 3)) {
+      profileScores = normalizeScoreScale(extractEnneagramProfileScores(pdfText));
+    }
     integrationLevel =
       integrationLevel || extractIntegrationFromPdfText(pdfText) || extractSnippet(pdfText, "Integration Level");
+    strainScoresRaw = extractStrainScoresFromPdfText(pdfText);
+    interactionScores = {
+      assertive: Number((extractSnippetFromLabels(pdfText, ["Assertive"]) || "").match(/\d{1,3}/)?.[0] || NaN),
+      reactive: Number((extractSnippetFromLabels(pdfText, ["Reactive"]) || "").match(/\d{1,3}/)?.[0] || NaN),
+    };
     const coreIdentityBlock = extractCoreIdentityBlock(pdfText);
     const worldviewFromCoreBlock =
       coreIdentityBlock?.worldview ||
@@ -1405,6 +1477,10 @@ async function ingestAssignedReportIntoDashboard(data) {
       feedbackGuideMatrix,
       strainQualitativeWriteups,
       developmentExercises,
+      instinctScoresRaw,
+      centerScoresRaw,
+      strainScoresRaw,
+      interactionScores,
     });
     console.log("[report-ingest] Applied PDF-only assigned report context", {
       detectedType,
@@ -2581,6 +2657,16 @@ function formatOptionalText(value, fallback = "Not detected") {
   return normalized || fallback;
 }
 
+function setBarRow(barId, valueId, value, options = {}) {
+  const barNode = document.getElementById(barId);
+  const valueNode = document.getElementById(valueId);
+  const numeric = Number(value);
+  const safeValue = Number.isFinite(numeric) ? Math.max(0, Math.min(100, Math.round(numeric))) : 0;
+  if (barNode) barNode.style.width = `${safeValue}%`;
+  if (valueNode) valueNode.textContent = String(safeValue);
+  if (valueNode && options.color) valueNode.style.color = options.color;
+}
+
 function firstPresentSnippet(values, fallback = "Not detected in parsed PDF text.") {
   for (const value of values) {
     const normalized = sanitizeSnippet(value || "", "");
@@ -2768,7 +2854,9 @@ function applyReport(typeId) {
 function buildPdfOnlyProfile(typeNumber, extractedScores) {
   const order = ["8", "9", "1", "2", "3", "4", "5", "6", "7"];
   const fallback = order.map(() => 40);
-  const hasExtractedScores = extractedScores && order.some((type) => Number.isFinite(extractedScores[type]));
+  const hasExtractedScores =
+    extractedScores &&
+    order.filter((type) => Number.isFinite(Number(extractedScores[type])) && Number(extractedScores[type]) > 0).length >= 3;
   if (hasExtractedScores) {
     return order.map((type) => {
       const value = Number(extractedScores[type]);
@@ -2792,6 +2880,19 @@ function buildPdfOnlyReport(payload) {
   const stretch = sanitizeSnippet(payload?.connectedLineB, fallbackReport.stretch || "Type ?");
   const integration = sanitizeSnippet(payload?.integrationLevel, fallbackReport.integration || "Not detected");
   const profile = buildPdfOnlyProfile(typeNumber, payload?.profileScores);
+  const strainScoresRaw = payload?.strainScoresRaw && typeof payload.strainScoresRaw === "object"
+    ? payload.strainScoresRaw
+    : null;
+  const strain = strainScoresRaw
+    ? [
+        Number(strainScoresRaw.happiness) || 20,
+        Number(strainScoresRaw.vocational) || 20,
+        Number(strainScoresRaw.interpersonal) || 20,
+        Number(strainScoresRaw.physical) || 20,
+        Number(strainScoresRaw.environmental) || 20,
+        Number(strainScoresRaw.psychological) || 20,
+      ]
+    : [20, 20, 20, 20, 20, 20];
   const releaseType = getLineTypeNumber(release);
   const stretchType = getLineTypeNumber(stretch);
   const releaseIndex = PROFILE_TYPE_ORDER.indexOf(releaseType);
@@ -2834,6 +2935,8 @@ function buildPdfOnlyReport(payload) {
     typeScoresRaw: payload?.typeScoresRaw || null,
     instinctScoresRaw: payload?.instinctScoresRaw || null,
     centerScoresRaw: payload?.centerScoresRaw || null,
+    strainScoresRaw,
+    interactionScores: payload?.interactionScores || null,
     extractedPageCount: Number(payload?.extractedPageCount || 0),
     extractedSectionCount: Number(payload?.extractedSectionCount || 0),
     extractedSectionTitles: Array.isArray(payload?.extractedSectionTitles) ? payload.extractedSectionTitles : [],
@@ -2849,7 +2952,7 @@ function buildPdfOnlyReport(payload) {
     strainQualitativeWriteups: Array.isArray(payload?.strainQualitativeWriteups) ? payload.strainQualitativeWriteups : [],
     developmentExercises: Array.isArray(payload?.developmentExercises) ? payload.developmentExercises : [],
     profile,
-    strain: [20, 20, 20, 20, 20, 20],
+    strain,
     mainValue: mainIndex >= 0 ? profile[mainIndex] : 0,
     releaseValue: releaseIndex >= 0 ? profile[releaseIndex] : 0,
     stretchValue: stretchIndex >= 0 ? profile[stretchIndex] : 0,
@@ -2965,6 +3068,43 @@ function renderReportFromState(isExampleMode) {
       )
       .join(""),
   );
+
+  const centerScores = REPORT.centerScoresRaw || {};
+  setBarRow('centerBodyBar', 'centerBodyVal', centerScores.body ?? 47);
+  setBarRow('centerHeartBar', 'centerHeartVal', centerScores.heart ?? 27);
+  setBarRow('centerHeadBar', 'centerHeadVal', centerScores.head ?? 25);
+
+  const instinctScores = REPORT.instinctScoresRaw || {};
+  setBarRow('instinctSxBar', 'instinctSxVal', instinctScores.sexual ?? 54);
+  setBarRow('instinctSoBar', 'instinctSoVal', instinctScores.social ?? 29);
+  setBarRow('instinctSpBar', 'instinctSpVal', instinctScores.selfPreservation ?? 17);
+
+  const interaction = REPORT.interactionScores || {};
+  setBarRow('interactionAssertiveBar', 'interactionAssertiveVal', interaction.assertive ?? 44);
+  setBarRow('interactionReactiveBar', 'interactionReactiveVal', interaction.reactive ?? 51);
+
+  const strain = REPORT.strainScoresRaw || {};
+  setBarRow('strainHappinessBar', 'strainHappinessVal', strain.happiness ?? REPORT.strain?.[0] ?? 46, { color: 'var(--red)' });
+  setBarRow('strainVocationalBar', 'strainVocationalVal', strain.vocational ?? REPORT.strain?.[1] ?? 33);
+  setBarRow('strainInterpersonalBar', 'strainInterpersonalVal', strain.interpersonal ?? REPORT.strain?.[2] ?? 26);
+  setBarRow('strainPhysicalBar', 'strainPhysicalVal', strain.physical ?? REPORT.strain?.[3] ?? 33);
+  setBarRow('strainEnvironmentalBar', 'strainEnvironmentalVal', strain.environmental ?? REPORT.strain?.[4] ?? 6);
+  setBarRow('strainPsychologicalBar', 'strainPsychologicalVal', strain.psychological ?? REPORT.strain?.[5] ?? 6);
+  const overallNumeric = Number(strain.overall);
+  const overall = Number.isFinite(overallNumeric)
+    ? Math.max(0, Math.min(100, Math.round(overallNumeric)))
+    : Math.round((REPORT.strain || []).reduce((a, b) => a + Number(b || 0), 0) / Math.max((REPORT.strain || []).length, 1));
+  setText('strainOverallScore', `Overall score: ${overall}`);
+  const level = overall >= 40 ? "HIGH" : overall >= 20 ? "MEDIUM" : "LOW";
+  setText('strainOverallLabel', `Overall strain is ${level}.`);
+  console.log('[charts] updated all chart and bar datasets', {
+    profile: REPORT.profile,
+    strain: REPORT.strain,
+    strainScoresRaw: REPORT.strainScoresRaw,
+    centerScoresRaw: REPORT.centerScoresRaw,
+    instinctScoresRaw: REPORT.instinctScoresRaw,
+    interactionScores: REPORT.interactionScores,
+  });
   document.getElementById('worldviewValue').innerHTML = `<strong style="color:var(--text)">Worldview:</strong> ${REPORT.worldview}`;
   document.getElementById('focusValue').innerHTML = `<strong style="color:var(--text)">Focus of Attention:</strong> ${REPORT.focus}`;
   setText('selfTalkValue', REPORT.selfTalk);
@@ -3047,7 +3187,7 @@ window.addEventListener('load', () => {
         plugins: { legend: { display: false } },
         scales: {
           x: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color:'#7b8ea4', font: { size: 11 } } },
-          y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color:'#7b8ea4', font: { size: 11 } }, min: 0, max: 90 }
+          y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color:'#7b8ea4', font: { size: 11 } }, min: 0, max: 100 }
         }
       }
     });
@@ -3074,7 +3214,7 @@ window.addEventListener('load', () => {
         plugins: { legend: { display: false } },
         scales: {
           r: {
-            min: 0, max: 55,
+            min: 0, max: 100,
             grid: { color: 'rgba(0,0,0,0.07)' },
             angleLines: { color: 'rgba(0,0,0,0.07)' },
             ticks: { display: false },
