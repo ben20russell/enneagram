@@ -1073,24 +1073,43 @@ async function ingestAssignedReportIntoDashboard(data) {
 
   try {
     const serverContext = data?.ingestedDashboardContext || null;
+    const parsedProfile = data?.ingestedParsedProfile || null;
     let pdfText = "";
-    let detectedType = serverContext?.detectedType || null;
+    let detectedType =
+      serverContext?.detectedType ||
+      (parsedProfile?.primaryType ? String(parsedProfile.primaryType) : null);
     let detectedTypeSource = serverContext?.detectedTypeSource || null;
-    let basicFear = serverContext?.basicFear || null;
-    let basicDesire = serverContext?.basicDesire || null;
+    let basicFear = serverContext?.basicFear || parsedProfile?.coreFear || null;
+    let basicDesire = serverContext?.basicDesire || parsedProfile?.coreDesire || null;
     let passion = serverContext?.passion || null;
     let typeName = null;
-    let instinct = null;
+    let instinct = instinctCodeToLabel(parsedProfile?.instinctualVariant) || null;
     let subtypeKeyword = null;
-    let connectedLineA = null;
-    let connectedLineB = null;
-    let profileScores = null;
-    let integrationLevel = null;
+    let connectedLineA = parsedProfile?.arrowDynamics?.integration
+      ? `Type ${parsedProfile.arrowDynamics.integration}`
+      : null;
+    let connectedLineB = parsedProfile?.arrowDynamics?.disintegration
+      ? `Type ${parsedProfile.arrowDynamics.disintegration}`
+      : null;
+    let profileScores = parsedProfile?.typeScores
+      ? {
+          "1": parsedProfile.typeScores.type1 ?? null,
+          "2": parsedProfile.typeScores.type2 ?? null,
+          "3": parsedProfile.typeScores.type3 ?? null,
+          "4": parsedProfile.typeScores.type4 ?? null,
+          "5": parsedProfile.typeScores.type5 ?? null,
+          "6": parsedProfile.typeScores.type6 ?? null,
+          "7": parsedProfile.typeScores.type7 ?? null,
+          "8": parsedProfile.typeScores.type8 ?? null,
+          "9": parsedProfile.typeScores.type9 ?? null,
+        }
+      : null;
+    let integrationLevel = serverContext?.integrationLevel || null;
     let metaQuote = null;
     let worldview = null;
     let focus = null;
 
-    if (!detectedType || !basicFear || !basicDesire || !passion) {
+    if (!detectedType || !basicFear || !basicDesire || !passion || !instinct || !profileScores) {
       pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
       const detectedTypeResult = inferTypeFromPdfText(pdfText);
       const shouldOverrideTypeFromPdf =
@@ -1111,22 +1130,25 @@ async function ingestAssignedReportIntoDashboard(data) {
       passion = passion || extractSnippet(pdfText, "Passion");
     }
 
-    if (!pdfText) {
+    if (!pdfText && (!typeName || !instinct || !connectedLineA || !connectedLineB || !integrationLevel)) {
       pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
     }
-    typeName = cleanupTypeName(extractTypeNameFromPdfText(pdfText, detectedType));
-    instinct = extractInstinctFromPdfText(pdfText);
+    typeName = typeName || cleanupTypeName(extractTypeNameFromPdfText(pdfText, detectedType));
+    instinct = instinct || extractInstinctFromPdfText(pdfText);
     subtypeKeyword =
       extractSubtypeKeywordFromPdfText(pdfText, detectedType) ||
       extractSnippetFromLabels(pdfText, ["Subtype Keyword", "Subtype"]);
     connectedLineA =
+      connectedLineA ||
       extractLineTypeFromFlowSection(pdfText, "release") ||
       extractConnectedLineType(pdfText, "Connected Line A");
     connectedLineB =
+      connectedLineB ||
       extractLineTypeFromFlowSection(pdfText, "stress") ||
       extractConnectedLineType(pdfText, "Connected Line B");
-    profileScores = extractEnneagramProfileScores(pdfText);
-    integrationLevel = extractIntegrationFromPdfText(pdfText) || extractSnippet(pdfText, "Integration Level");
+    profileScores = profileScores || extractEnneagramProfileScores(pdfText);
+    integrationLevel =
+      integrationLevel || extractIntegrationFromPdfText(pdfText) || extractSnippet(pdfText, "Integration Level");
     const coreIdentityBlock = extractCoreIdentityBlock(pdfText);
     const worldviewFromCoreBlock =
       coreIdentityBlock?.worldview ||

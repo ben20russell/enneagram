@@ -5,9 +5,48 @@ import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabas
 import { authOptions } from "../auth/[...nextauth]/route";
 
 function getIngestedDashboardContext(resultsData) {
+  const normalized = normalizeResultsData(resultsData);
+  if (!normalized) return null;
+
+  if (typeof normalized.dashboardContext === "object" && normalized.dashboardContext) {
+    return normalized.dashboardContext;
+  }
+
+  if (typeof normalized.parsedProfile === "object" && normalized.parsedProfile) {
+    const parsed = normalized.parsedProfile;
+    return {
+      detectedType: parsed?.primaryType ? String(parsed.primaryType) : null,
+      detectedTypeSource: "parsedProfile:primaryType",
+      sourceFileName: normalized?.file?.fileName || null,
+      basicFear: parsed?.coreFear || null,
+      basicDesire: parsed?.coreDesire || null,
+      passion: null,
+      reportSummary: parsed?.reportSummary || null,
+    };
+  }
+
+  return null;
+}
+
+function getParsedProfile(resultsData) {
+  const normalized = normalizeResultsData(resultsData);
+  if (!normalized) return null;
+  if (typeof normalized.parsedProfile === "object" && normalized.parsedProfile) {
+    return normalized.parsedProfile;
+  }
+  return null;
+}
+
+function normalizeResultsData(resultsData) {
   if (!resultsData) return null;
-  if (typeof resultsData === "object" && resultsData.dashboardContext) {
-    return resultsData.dashboardContext;
+  if (typeof resultsData === "object") return resultsData;
+  if (typeof resultsData === "string") {
+    try {
+      const parsed = JSON.parse(resultsData);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch (_error) {
+      return null;
+    }
   }
   return null;
 }
@@ -73,6 +112,7 @@ export async function GET() {
         reportFileName: assignedReport?.reportPdf?.fileName || null,
         reportSignedUrl: data?.signedUrl || null,
         ingestedDashboardContext: getIngestedDashboardContext(assignedReport?.resultsData),
+        ingestedParsedProfile: getParsedProfile(assignedReport?.resultsData),
         reportReadyErrorDetails: error
           ? {
               bucket,
