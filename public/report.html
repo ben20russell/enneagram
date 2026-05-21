@@ -1081,16 +1081,16 @@ async function ingestAssignedReportIntoDashboard(data) {
     let detectedTypeSource = serverContext?.detectedTypeSource || null;
     let basicFear = serverContext?.basicFear || parsedProfile?.coreFear || null;
     let basicDesire = serverContext?.basicDesire || parsedProfile?.coreDesire || null;
-    let passion = serverContext?.passion || null;
-    let typeName = null;
+    let passion = serverContext?.passion || parsedProfile?.passion || null;
+    let typeName = parsedProfile?.typeName || null;
     let instinct = instinctCodeToLabel(parsedProfile?.instinctualVariant) || null;
-    let subtypeKeyword = null;
-    let connectedLineA = parsedProfile?.arrowDynamics?.integration
+    let subtypeKeyword = parsedProfile?.subtypeKeyword || null;
+    let connectedLineA = parsedProfile?.connectedLineA || (parsedProfile?.arrowDynamics?.integration
       ? `Type ${parsedProfile.arrowDynamics.integration}`
-      : null;
-    let connectedLineB = parsedProfile?.arrowDynamics?.disintegration
+      : null);
+    let connectedLineB = parsedProfile?.connectedLineB || (parsedProfile?.arrowDynamics?.disintegration
       ? `Type ${parsedProfile.arrowDynamics.disintegration}`
-      : null;
+      : null);
     let profileScores = parsedProfile?.typeScores
       ? {
           "1": parsedProfile.typeScores.type1 ?? null,
@@ -1104,10 +1104,10 @@ async function ingestAssignedReportIntoDashboard(data) {
           "9": parsedProfile.typeScores.type9 ?? null,
         }
       : null;
-    let integrationLevel = serverContext?.integrationLevel || null;
-    let metaQuote = null;
-    let worldview = null;
-    let focus = null;
+    let integrationLevel = serverContext?.integrationLevel || parsedProfile?.integrationLevel || null;
+    let metaQuote = parsedProfile?.metaMessage || parsedProfile?.selfTalk || null;
+    let worldview = parsedProfile?.worldview || null;
+    let focus = parsedProfile?.focusOfAttention || null;
 
     if (!detectedType || !basicFear || !basicDesire || !passion || !instinct || !profileScores) {
       pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
@@ -1239,6 +1239,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       metaQuote,
       worldview,
       focus,
+      reportSummary: parsedProfile?.reportSummary || null,
     });
     console.log("[report-ingest] Applied PDF-only assigned report context", {
       detectedType,
@@ -2348,12 +2349,13 @@ function buildPdfOnlyProfile(typeNumber, extractedScores) {
 function buildPdfOnlyReport(payload) {
   const fallbackText = "Not detected in assigned PDF.";
   const typeNumber = String(payload?.typeNumber || "").match(/^[1-9]$/)?.[0] || "?";
-  const typeName = sanitizeSnippet(payload?.typeName, "Assigned Profile");
-  const instinct = sanitizeSnippet(payload?.instinct, "Unknown Instinct");
-  const keyword = sanitizeSnippet(payload?.subtypeKeyword, "Not detected");
-  const release = sanitizeSnippet(payload?.connectedLineA, "Type ?");
-  const stretch = sanitizeSnippet(payload?.connectedLineB, "Type ?");
-  const integration = sanitizeSnippet(payload?.integrationLevel, "Not detected");
+  const fallbackReport = REPORT_EXAMPLES[typeNumber] || {};
+  const typeName = sanitizeSnippet(payload?.typeName, fallbackReport.typeName || "Assigned Profile");
+  const instinct = sanitizeSnippet(payload?.instinct, fallbackReport.instinct || "Unknown Instinct");
+  const keyword = sanitizeSnippet(payload?.subtypeKeyword, fallbackReport.keyword || "Not detected");
+  const release = sanitizeSnippet(payload?.connectedLineA, fallbackReport.release || "Type ?");
+  const stretch = sanitizeSnippet(payload?.connectedLineB, fallbackReport.stretch || "Type ?");
+  const integration = sanitizeSnippet(payload?.integrationLevel, fallbackReport.integration || "Not detected");
   const profile = buildPdfOnlyProfile(typeNumber, payload?.profileScores);
   const releaseType = getLineTypeNumber(release);
   const stretchType = getLineTypeNumber(stretch);
@@ -2369,15 +2371,15 @@ function buildPdfOnlyReport(payload) {
     release,
     stretch,
     integration,
-    coreFear: sanitizeSnippet(payload?.basicFear, fallbackText),
-    gifts: sanitizeSnippet(payload?.basicDesire, fallbackText),
+    coreFear: sanitizeSnippet(payload?.basicFear, fallbackReport.coreFear || fallbackText),
+    gifts: sanitizeSnippet(payload?.basicDesire, fallbackReport.gifts || fallbackText),
     giftsDesc: "Loaded from assigned PDF report.",
-    vice: sanitizeSnippet(payload?.passion, fallbackText),
+    vice: sanitizeSnippet(payload?.passion, fallbackReport.vice || fallbackText),
     viceDesc: "Loaded from assigned PDF report.",
-    worldview: sanitizeSnippet(payload?.worldview, fallbackText),
-    focus: sanitizeSnippet(payload?.focus, fallbackText),
-    selfTalk: sanitizeSnippet(payload?.metaQuote, fallbackText),
-    motivation1: "This dashboard is populated from your assigned PDF report.",
+    worldview: sanitizeSnippet(payload?.worldview, fallbackReport.worldview || fallbackText),
+    focus: sanitizeSnippet(payload?.focus, fallbackReport.focus || fallbackText),
+    selfTalk: sanitizeSnippet(payload?.metaQuote, fallbackReport.selfTalk || fallbackText),
+    motivation1: sanitizeSnippet(payload?.reportSummary, "This dashboard is populated from your assigned PDF report."),
     motivation2: "If any field is missing, update the PDF content and re-import.",
     traits: ["Assigned", "PDF", "Ingested"],
     deepTitle: `Assigned PDF Summary · Type ${typeNumber}`,
