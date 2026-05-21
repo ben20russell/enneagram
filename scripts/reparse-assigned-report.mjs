@@ -82,7 +82,17 @@ async function main() {
       basicFear: parsed?.coreFear || null,
       basicDesire: parsed?.coreDesire || null,
       passion: report?.results_data?.dashboardContext?.passion || null,
+      integrationLevel: parsed?.integrationLevel || null,
+      instinct: parsed?.instinctualVariant || null,
       reportSummary: parsed?.reportSummary || null,
+    },
+    extractedContent: {
+      ...(report.results_data?.extractedContent || {}),
+      documentSummary: parsed?.reportContent?.documentSummary || null,
+      pages: Array.isArray(parsed?.reportContent?.pages) ? parsed.reportContent.pages : [],
+      sections: Array.isArray(parsed?.reportContent?.sections) ? parsed.reportContent.sections : [],
+      extractedAt: new Date().toISOString(),
+      parserVersion: "multi-pass-v2",
     },
     parsedProfile: parsed,
   };
