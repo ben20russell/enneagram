@@ -359,6 +359,14 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </div>
         </div>
 
+        <div class="card mb24">
+          <div class="ct">Data Quality Diagnostics</div>
+          <p style="font-size:13px;color:var(--text3);margin-bottom:10px" id="diagnosticsSummary">No diagnostics loaded yet.</p>
+          <div id="diagnosticsIssues" class="tlist">
+            <div class="ti"><div class="tic neu">•</div><div class="tt">Waiting for assigned report diagnostics.</div></div>
+          </div>
+        </div>
+
         <div class="g2 mb24">
           <div class="card">
             <div class="ct">Core Belief &amp; Attention Pattern</div>
@@ -1439,9 +1447,16 @@ async function ingestAssignedReportIntoDashboard(data) {
         "Gifts",
       ]) || extractSnippetFromLabels(pdfText, ["Focus of Attention", "Focus"]);
     const proInsights = buildProInsightsFromPdfText(pdfText);
-    const feedbackGuideMatrix = extractFeedbackGuideMatrix(pdfText);
-    const strainQualitativeWriteups = extractStrainQualitativeWriteups(pdfText);
-    const developmentExercises = extractDevelopmentExercises(pdfText);
+    const feedbackGuideMatrix = extractFeedbackGuideFromReportContent(parsedProfile);
+    const strainQualitativeWriteups = extractStrainQualitativeFromReportContent(parsedProfile);
+    const developmentExercises = extractDevelopmentExercisesFromReportContent(parsedProfile);
+    const dataQualityDiagnostics = buildDataQualityDiagnostics({
+      parsedProfile,
+      parseDiagnostics: data?.parseDiagnostics || null,
+      feedbackGuideMatrix,
+      strainQualitativeWriteups,
+      developmentExercises,
+    });
 
     applyAssignedPdfReport({
       typeNumber: detectedType,
@@ -1488,6 +1503,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       centerScoresRaw,
       strainScoresRaw,
       interactionScores,
+      dataQualityDiagnostics,
     });
     console.log("[report-ingest] Applied PDF-only assigned report context", {
       detectedType,
@@ -2803,6 +2819,173 @@ function extractDevelopmentExercises(pdfText) {
   }));
 }
 
+function getReportContentSections(parsedProfile) {
+  return Array.isArray(parsedProfile?.reportContent?.sections) ? parsedProfile.reportContent.sections : [];
+}
+
+function getReportContentPages(parsedProfile) {
+  return Array.isArray(parsedProfile?.reportContent?.pages) ? parsedProfile.reportContent.pages : [];
+}
+
+function getSectionByTitle(parsedProfile, matcher) {
+  const sections = getReportContentSections(parsedProfile);
+  return sections.find((section) => matcher(String(section?.sectionTitle || section?.title || ""))) || null;
+}
+
+function getSectionCompositeText(parsedProfile, section) {
+  if (!section || typeof section !== "object") return "";
+  const sectionsText = [section?.fullText, section?.summary, section?.text].filter(Boolean).join(" ");
+  const pages = getReportContentPages(parsedProfile);
+  const start = Number(section?.pageStart || NaN);
+  const end = Number(section?.pageEnd || NaN);
+  const inRangePageText = pages
+    .filter((page) => {
+      const n = Number(page?.pageNumber || NaN);
+      if (!Number.isFinite(n)) return false;
+      if (Number.isFinite(start) && n < start) return false;
+      if (Number.isFinite(end) && n > end) return false;
+      return true;
+    })
+    .map((page) => [page?.heading, page?.extractedText, ...(Array.isArray(page?.keyDataPoints) ? page.keyDataPoints : [])].filter(Boolean).join(" "))
+    .join(" ");
+  return normalizeExtractedText(`${sectionsText} ${inRangePageText}`);
+}
+
+function extractFeedbackGuideFromReportContent(parsedProfile) {
+  const communicationSection = getSectionByTitle(parsedProfile, (title) => /communication|feedback/i.test(title));
+  const text = getSectionCompositeText(parsedProfile, communicationSection);
+  if (!text) {
+    return Array.from({ length: 9 }, (_, idx) => ({
+      type: `Type ${idx + 1}`,
+      label: "",
+      guidance: "Not detected in structured report content.",
+    }));
+  }
+
+  const names = {
+    1: "Reformer",
+    2: "Helper",
+    3: "Achiever",
+    4: "Individualist",
+    5: "Investigator",
+    6: "Loyalist",
+    7: "Enthusiast",
+    8: "Challenger",
+    9: "Peacemaker",
+  };
+
+  const rows = [];
+  for (let type = 1; type <= 9; type += 1) {
+    const pattern = new RegExp(`Type\\s*${type}\\b\\s*[:\\-]?\\s*([\\s\\S]{10,320}?)(?=Type\\s*[1-9]\\b|$)`, "i");
+    const match = text.match(pattern);
+    rows.push({
+      type: `Type ${type}`,
+      label: names[type],
+      guidance: cleanPdfExtractedValue(match?.[1] || "") || "Not detected in structured report content.",
+    });
+  }
+  return rows;
+}
+
+function extractStrainQualitativeFromReportContent(parsedProfile) {
+  const strainSection = getSectionByTitle(parsedProfile, (title) => /strain/i.test(title));
+  const text = getSectionCompositeText(parsedProfile, strainSection);
+  const categories = ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"];
+  if (!text) {
+    return categories.map((category) => ({ category, text: "Not detected in structured report content." }));
+  }
+
+  return categories.map((category, index) => {
+    const nextLabels = categories.slice(index + 1);
+    const nextBoundary = nextLabels.length ? `(?:${nextLabels.map(escapeRegex).join("|")})\\b` : "$";
+    const pattern = new RegExp(`${escapeRegex(category)}\\s*[:\\-]?\\s*([\\s\\S]{10,280}?)(?=\\s*${nextBoundary})`, "i");
+    const match = text.match(pattern);
+    const snippet = cleanPdfExtractedValue(match?.[1] || "") || extractSnippetFromLabels(text, [category, `${category} Strain`]);
+    return {
+      category,
+      text: snippet || "Not detected in structured report content.",
+    };
+  });
+}
+
+function extractDevelopmentExercisesFromReportContent(parsedProfile) {
+  const devSection = getSectionByTitle(parsedProfile, (title) => /development/i.test(title));
+  const text = getSectionCompositeText(parsedProfile, devSection);
+  const matches = [];
+  if (text) {
+    const pattern = /DEVELOPMENT\s*EXERCISE\s*[:\-]?\s*([\s\S]{16,420}?)(?=DEVELOPMENT\s*EXERCISE|Key\s*Challenges|$)/gi;
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const cleaned = cleanPdfExtractedValue(match?.[1] || "");
+      if (!cleaned) continue;
+      matches.push(cleaned);
+      if (matches.length >= 8) break;
+    }
+  }
+  if (!matches.length) {
+    const pages = getReportContentPages(parsedProfile);
+    const fallback = pages
+      .filter((page) => /development/i.test(String(page?.heading || "")))
+      .flatMap((page) => (Array.isArray(page?.keyDataPoints) ? page.keyDataPoints : []))
+      .map((line) => cleanPdfExtractedValue(line))
+      .filter(Boolean)
+      .slice(0, 8);
+    matches.push(...fallback);
+  }
+  if (!matches.length) {
+    return [
+      { title: "Exercise 1", text: "Not detected in structured report content." },
+      { title: "Exercise 2", text: "Not detected in structured report content." },
+      { title: "Exercise 3", text: "Not detected in structured report content." },
+    ];
+  }
+  return matches.map((item, index) => ({ title: `Exercise ${index + 1}`, text: item }));
+}
+
+function buildDataQualityDiagnostics({ parsedProfile, parseDiagnostics, feedbackGuideMatrix, strainQualitativeWriteups, developmentExercises }) {
+  const issues = [];
+  const typeScores = parsedProfile?.typeScores || {};
+  const instinctScores = parsedProfile?.instinctScores || {};
+  const centerScores = parsedProfile?.centerScores || {};
+  const typeValues = Object.values(typeScores).map(Number).filter((v) => Number.isFinite(v));
+  const instinctValues = Object.values(instinctScores).map(Number).filter((v) => Number.isFinite(v));
+  const centerValues = Object.values(centerScores).map(Number).filter((v) => Number.isFinite(v));
+  const typeNonZero = typeValues.filter((v) => v > 0).length;
+  const sectionCount = getReportContentSections(parsedProfile).length;
+
+  if (!typeValues.length || typeNonZero < 3) {
+    issues.push("Type score chart data appears low-quality (few/no non-zero values).");
+  }
+  if (!instinctValues.length || instinctValues.filter((v) => v > 0).length < 1) {
+    issues.push("Instinct score values are mostly missing.");
+  }
+  if (!centerValues.length || centerValues.filter((v) => v > 0).length < 2) {
+    issues.push("Center score values are sparse (likely partial extraction).");
+  }
+  if (sectionCount < 8) {
+    issues.push(`Only ${sectionCount} structured sections available; expected broader PRO coverage.`);
+  }
+  if (!Array.isArray(feedbackGuideMatrix) || feedbackGuideMatrix.every((row) => /Not detected/i.test(String(row?.guidance || "")))) {
+    issues.push("Feedback guide matrix content not found in structured report content.");
+  }
+  if (!Array.isArray(strainQualitativeWriteups) || strainQualitativeWriteups.every((row) => /Not detected/i.test(String(row?.text || "")))) {
+    issues.push("Qualitative strain narratives not found in structured report content.");
+  }
+  if (!Array.isArray(developmentExercises) || developmentExercises.every((row) => /Not detected/i.test(String(row?.text || "")))) {
+    issues.push("Development exercises not found in structured report content.");
+  }
+
+  const parserWarnings = Array.isArray(parseDiagnostics?.warnings) ? parseDiagnostics.warnings : [];
+  const parserErrors = Array.isArray(parseDiagnostics?.errors) ? parseDiagnostics.errors : [];
+  parserWarnings.forEach((warning) => issues.push(`Parser warning: ${String(warning)}`));
+  parserErrors.forEach((error) => issues.push(`Parser error: ${String(error)}`));
+
+  const pages = Number(parseDiagnostics?.extraction?.pages || 0);
+  const sections = Number(parseDiagnostics?.extraction?.sections || 0);
+  const summary = `Parser status: ${parseDiagnostics?.isComplete ? "complete" : "incomplete"} · Pages: ${pages} · Sections: ${sections}`;
+  return { summary, issues };
+}
+
 function buildReflectionDeck(report) {
   return {
     leadership: [
@@ -2961,6 +3144,7 @@ function buildPdfOnlyReport(payload) {
     feedbackGuideMatrix: Array.isArray(payload?.feedbackGuideMatrix) ? payload.feedbackGuideMatrix : [],
     strainQualitativeWriteups: Array.isArray(payload?.strainQualitativeWriteups) ? payload.strainQualitativeWriteups : [],
     developmentExercises: Array.isArray(payload?.developmentExercises) ? payload.developmentExercises : [],
+    dataQualityDiagnostics: payload?.dataQualityDiagnostics || null,
     profile,
     strain,
     mainValue: mainIndex >= 0 ? profile[mainIndex] : 0,
@@ -3077,6 +3261,16 @@ function renderReportFromState(isExampleMode) {
           `<div class="dev-item"><div class="dev-item-title">${formatOptionalText(exercise.title, "Development Exercise")}</div><p>${formatOptionalText(exercise.text, "Not detected in assigned PDF.")}</p></div>`,
       )
       .join(""),
+  );
+
+  const diagnostics = REPORT.dataQualityDiagnostics || null;
+  setText('diagnosticsSummary', formatOptionalText(diagnostics?.summary, 'No diagnostics loaded yet.'));
+  const diagnosticIssues = Array.isArray(diagnostics?.issues) ? diagnostics.issues.filter(Boolean) : [];
+  setHtml(
+    'diagnosticsIssues',
+    diagnosticIssues.length
+      ? diagnosticIssues.map((issue) => `<div class="ti"><div class="tic neg">!</div><div class="tt">${issue}</div></div>`).join("")
+      : '<div class="ti"><div class="tic pos">✓</div><div class="tt">No critical data quality issues detected.</div></div>',
   );
 
   const centerScores = REPORT.centerScoresRaw || {};
