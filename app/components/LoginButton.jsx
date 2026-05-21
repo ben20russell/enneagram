@@ -101,23 +101,42 @@ export default function LoginButton() {
               Dashboard
             </Link>
             {isAdmin ? (
-              <Link
-                data-testid="admin-import-link"
-                href="/admin-import"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setIsMenuOpen(false)}
-                style={{
-                  textDecoration: "none",
-                  color: "#0a66d8",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  padding: "6px 8px",
-                  borderRadius: "8px",
-                }}
-              >
-                Admin Page
-              </Link>
+              <>
+                <Link
+                  data-testid="admin-import-link"
+                  href="/admin-import"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setIsMenuOpen(false)}
+                  style={{
+                    textDecoration: "none",
+                    color: "#0a66d8",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    padding: "6px 8px",
+                    borderRadius: "8px",
+                  }}
+                >
+                  Admin Import
+                </Link>
+                <Link
+                  data-testid="admin-review-link"
+                  href="/admin-review"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setIsMenuOpen(false)}
+                  style={{
+                    textDecoration: "none",
+                    color: "#0a66d8",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    padding: "6px 8px",
+                    borderRadius: "8px",
+                  }}
+                >
+                  Admin Review
+                </Link>
+              </>
             ) : null}
             <button
               data-testid="sign-out"

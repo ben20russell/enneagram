@@ -95,6 +95,10 @@ async function main() {
     parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
       ? parsed._parseDiagnostics
       : null;
+  const parseReview =
+    parsed && typeof parsed === "object" && parsed._review && typeof parsed._review === "object"
+      ? parsed._review
+      : null;
   const recomputed = computeCompletenessFromParsed(parsed, parseDiagnostics);
   const nextDiagnostics = {
     ...(parseDiagnostics || {}),
@@ -117,12 +121,13 @@ async function main() {
     completedAt: new Date().toISOString(),
   };
   const parseStatus = recomputed.isComplete ? "complete" : "incomplete";
+  const reviewStatus = parseReview?.status || (recomputed.isComplete ? "auto_approved" : "needs_review");
 
   const nextResultsData = {
     ...(report.results_data && typeof report.results_data === "object" ? report.results_data : {}),
     ingestion: {
       ...(report.results_data?.ingestion || {}),
-      status: parseStatus === "complete" ? "ready" : "incomplete",
+      status: parseStatus === "complete" && reviewStatus !== "needs_review" ? "ready" : "incomplete",
       mode: "admin-import-auto",
       ingestedAt: new Date().toISOString(),
       reportId: report.id,
@@ -131,6 +136,12 @@ async function main() {
         model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
       },
       parseDiagnostics: nextDiagnostics,
+    },
+    review: {
+      ...(report.results_data?.review || {}),
+      ...(parseReview || {}),
+      status: reviewStatus,
+      updatedAt: new Date().toISOString(),
     },
     dashboardContext: {
       ...(report.results_data?.dashboardContext || {}),
@@ -180,6 +191,7 @@ async function main() {
         parseStatus,
         parsePages: nextDiagnostics?.extraction?.pages ?? null,
         parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
+        reviewStatus,
       },
       null,
       2,

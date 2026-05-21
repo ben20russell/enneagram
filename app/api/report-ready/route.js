@@ -65,6 +65,7 @@ function getIngestionState(resultsData) {
   const parsedProfile = normalized?.parsedProfile && typeof normalized.parsedProfile === "object"
     ? normalized.parsedProfile
     : null;
+  const reviewState = normalized?.review && typeof normalized.review === "object" ? normalized.review : null;
   const countNonNull = (obj) =>
     obj && typeof obj === "object" ? Object.values(obj).filter((v) => v != null).length : 0;
   const typeNonNull = countNonNull(parsedProfile?.typeScores);
@@ -74,8 +75,9 @@ function getIngestionState(resultsData) {
   const pageCount = Number(parseDiagnostics?.extraction?.pages || 0);
   const minPages = Number(parseDiagnostics?.extraction?.minExpectedPages || 20);
   const meetsPageCoverage = pageCount >= minPages;
-  const isComplete = status === "ready" && meetsPageCoverage && hasAllChartScores;
-  return { status, parseDiagnostics, isComplete };
+  const reviewApproved = !reviewState || reviewState.status === "auto_approved" || reviewState.status === "approved";
+  const isComplete = status === "ready" && meetsPageCoverage && hasAllChartScores && reviewApproved;
+  return { status, parseDiagnostics, isComplete, review: reviewState };
 }
 
 export async function GET() {
@@ -143,6 +145,10 @@ export async function GET() {
         ingestedParsedProfile: getParsedProfile(assignedReport?.resultsData),
         ingestionStatus: ingestionState.status,
         parseDiagnostics: ingestionState.parseDiagnostics,
+        reviewStatus: ingestionState.review?.status || null,
+        reviewPendingFields: Array.isArray(ingestionState.review?.pendingFields)
+          ? ingestionState.review.pendingFields
+          : [],
         reportReadyErrorDetails: error
           ? {
               bucket,

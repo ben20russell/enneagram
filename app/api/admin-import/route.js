@@ -62,6 +62,11 @@ function buildIngestedResultsData({ reportId, safeFileName, storagePath, bucket,
       basicDesire: null,
       passion: null,
     },
+    review: {
+      status: "needs_review",
+      pendingFields: [],
+      generatedAt: new Date().toISOString(),
+    },
     file: {
       bucket,
       storagePath,
