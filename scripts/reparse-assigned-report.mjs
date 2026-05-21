@@ -1,5 +1,28 @@
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../lib/supabaseAdmin.js";
 import { parsePdf } from "../lib/parsePdf.js";
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
+
+function loadEnvFile(filePath) {
+  if (!existsSync(filePath)) return;
+  const raw = readFileSync(filePath, "utf8");
+  raw.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex <= 0) return;
+    const key = trimmed.slice(0, eqIndex).trim();
+    if (!key || process.env[key]) return;
+    let value = trimmed.slice(eqIndex + 1).trim();
+    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  });
+}
+
+loadEnvFile(resolve(process.cwd(), ".env.local"));
+loadEnvFile(resolve(process.cwd(), ".env"));
 
 const userEmail = (process.argv[2] || "ben20russell@gmail.com").trim().toLowerCase();
 const table = process.env.SUPABASE_REPORTS_TABLE || "reports";
