@@ -48,6 +48,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .auth-menu.open{display:block}
 .auth-menu-item{width:100%;display:block;border:0;background:#fff;color:var(--text2);text-align:left;padding:8px 10px;border-radius:8px;font:600 12px var(--font-sans);text-decoration:none;cursor:pointer}
 .auth-menu-item:hover{background:var(--surface2);color:var(--text)}
+.auth-menu-item:disabled{opacity:.5;cursor:not-allowed}
 .body-grid{display:block}
 .mobile-menu-toggle{display:none;position:fixed;top:16px;left:14px;z-index:140;background:#fff;border:1px solid var(--border2);border-radius:10px;width:40px;height:40px;align-items:center;justify-content:center;cursor:pointer}
 .mobile-menu-toggle svg{display:block}
@@ -186,6 +187,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
         <a class="auth-btn google" id="authSignInButton" data-testid="sign-in-google" href="#" onclick="openGoogleSignInPopup(event)">Sign In</a>
         <div class="auth-menu" id="authMenu" data-testid="auth-menu">
           <a class="auth-menu-item" id="authAdminPageLink" data-testid="admin-page-link" href="/admin-import" target="_top" style="display:none">Admin Page</a>
+          <button class="auth-menu-item" type="button" id="authExportPdfButton" data-testid="export-pdf-button">Export PDF</button>
           <button class="auth-menu-item" type="button" id="authSignOutButton">Sign Out</button>
         </div>
       </div>
@@ -640,6 +642,10 @@ function getAdminPageLink() {
   return document.getElementById("authAdminPageLink");
 }
 
+function getExportPdfButton() {
+  return document.getElementById("authExportPdfButton");
+}
+
 function getReportReadyChip() {
   return document.getElementById("reportReadyChip");
 }
@@ -683,6 +689,14 @@ function setReportSwitchVisible(visible) {
 
 let assignedReportIngested = false;
 let exampleReportInitialized = false;
+let latestReportReadyData = null;
+
+function setExportPdfState({ visible, enabled }) {
+  const exportButton = getExportPdfButton();
+  if (!exportButton) return;
+  exportButton.style.display = visible ? "block" : "none";
+  exportButton.disabled = !enabled;
+}
 
 function applyRandomExampleReport() {
   const reportSelector = document.getElementById("reportSelector");
@@ -1271,6 +1285,8 @@ async function refreshReportReadyUi() {
     });
 
     if (!response.ok) {
+      latestReportReadyData = null;
+      setExportPdfState({ visible: true, enabled: false });
       setReportReadyChipVisible(false);
       setReportSwitchVisible(true);
       return;
@@ -1278,6 +1294,8 @@ async function refreshReportReadyUi() {
 
     const data = await response.json().catch(() => ({}));
     const isReady = Boolean(data?.isAuthenticated) && Boolean(data?.isReportReady);
+    latestReportReadyData = data;
+    setExportPdfState({ visible: true, enabled: isReady });
     setReportReadyChipVisible(isReady);
     setReportSwitchVisible(!isReady);
     if (isReady) {
@@ -1285,6 +1303,8 @@ async function refreshReportReadyUi() {
     }
   } catch (error) {
     console.log("[auth] Failed to refresh report-ready status:", error);
+    latestReportReadyData = null;
+    setExportPdfState({ visible: true, enabled: false });
     setReportReadyChipVisible(false);
     setReportSwitchVisible(true);
   }
@@ -1315,6 +1335,8 @@ function setSignedOutAuthUi() {
 
   closeAuthMenu();
   updateAdminPageLink(null);
+  latestReportReadyData = null;
+  setExportPdfState({ visible: false, enabled: false });
   setReportReadyChipVisible(false);
   setReportSwitchVisible(true);
   hideAssignedIngestCard();
@@ -1337,6 +1359,7 @@ function setSignedInAuthUi(user) {
 
   closeAuthMenu();
   updateAdminPageLink(user?.email);
+  setExportPdfState({ visible: true, enabled: false });
   button.classList.remove("google");
   button.classList.add("avatar");
   button.setAttribute("href", "#");
@@ -1362,6 +1385,42 @@ function setSignedInAuthUi(user) {
 
   button.title = user?.name ? `Signed in as ${user.name}` : "Signed in";
   refreshReportReadyUi();
+}
+
+async function exportAssignedPdf() {
+  closeAuthMenu();
+  console.log("[report-export] Export PDF requested from account dropdown");
+
+  try {
+    const response = await fetch("/api/report-ready", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "include",
+      cache: "no-store",
+    });
+    const data = await response.json().catch(() => ({}));
+    const signedUrl = data?.reportSignedUrl || latestReportReadyData?.reportSignedUrl || null;
+    const fileName = data?.reportFileName || latestReportReadyData?.reportFileName || "assigned-report.pdf";
+
+    if (signedUrl) {
+      console.log("[report-export] Opening signed URL for PDF export", { fileName });
+      const link = document.createElement("a");
+      link.href = signedUrl;
+      link.download = fileName;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      return;
+    }
+
+    console.log("[report-export] Signed URL missing, using /api/report-pdf fallback route");
+    window.open("/api/report-pdf", "_blank", "noopener,noreferrer");
+  } catch (error) {
+    console.log("[report-export] Export failed, falling back to /api/report-pdf", error);
+    window.open("/api/report-pdf", "_blank", "noopener,noreferrer");
+  }
 }
 
 async function signOutUser() {
@@ -1564,10 +1623,16 @@ window.addEventListener("message", (event) => {
 
 window.addEventListener("DOMContentLoaded", () => {
   const signOutButton = document.getElementById("authSignOutButton");
+  const exportPdfButton = getExportPdfButton();
   if (signOutButton) {
     signOutButton.addEventListener("click", () => {
       closeAuthMenu();
       signOutUser();
+    });
+  }
+  if (exportPdfButton) {
+    exportPdfButton.addEventListener("click", () => {
+      exportAssignedPdf();
     });
   }
 
