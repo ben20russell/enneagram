@@ -86,10 +86,10 @@ export async function GET() {
 
   if (!userEmail) {
     return NextResponse.json(
-      {
-        isAuthenticated: false,
-        isReportReady: false,
-      },
+        {
+          isAuthenticated: false,
+          isReportActive: false,
+        },
       { status: 200 },
     );
   }
@@ -105,7 +105,7 @@ export async function GET() {
       return NextResponse.json(
         {
           isAuthenticated: true,
-          isReportReady: false,
+          isReportActive: false,
           isPdfRenderable: false,
           reportFileName: assignedReport?.reportPdf?.fileName || null,
         },
@@ -121,10 +121,10 @@ export async function GET() {
       .createSignedUrl(storagePath, 60);
     const isPdfRenderable = Boolean(data?.signedUrl) && !error;
     const ingestionState = getIngestionState(assignedReport?.resultsData);
-    const isReportReady = hasAssignedPdfMetadata && isPdfRenderable && ingestionState.isComplete;
+    const isReportActive = hasAssignedPdfMetadata && isPdfRenderable && ingestionState.isComplete;
 
     if (error) {
-      console.log("[report-ready] Signed URL creation failed", {
+      console.log("[report-active] Signed URL creation failed", {
         userEmail,
         bucket,
         storagePath,
@@ -137,7 +137,7 @@ export async function GET() {
     return NextResponse.json(
       {
         isAuthenticated: true,
-        isReportReady,
+        isReportActive,
         isPdfRenderable,
         reportFileName: assignedReport?.reportPdf?.fileName || null,
         reportSignedUrl: data?.signedUrl || null,
@@ -149,7 +149,7 @@ export async function GET() {
         reviewPendingFields: Array.isArray(ingestionState.review?.pendingFields)
           ? ingestionState.review.pendingFields
           : [],
-        reportReadyErrorDetails: error
+        reportActiveErrorDetails: error
           ? {
               bucket,
               storagePath,
@@ -165,8 +165,8 @@ export async function GET() {
     return NextResponse.json(
       {
         isAuthenticated: true,
-        isReportReady: false,
-        error: String(error?.message || "Unknown report-ready check error"),
+        isReportActive: false,
+        error: String(error?.message || "Unknown report-active check error"),
       },
       { status: 200 },
     );

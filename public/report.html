@@ -38,7 +38,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .header-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text3);font-family:var(--font-mono)}
 .hdot{color:var(--surface3)}
 .header-auth{display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative}
-.report-ready-chip{display:none;align-items:center;border:1px solid #86efac;background:#dcfce7;color:#166534;border-radius:999px;padding:4px 10px;font:700 11px var(--font-sans);line-height:1}
+.report-active-chip{display:none;align-items:center;border:1px solid #86efac;background:#dcfce7;color:#166534;border-radius:999px;padding:4px 10px;font:700 11px var(--font-sans);line-height:1}
 .auth-btn{display:inline-flex;align-items:center;justify-content:center;border-radius:10px;padding:8px 12px;font:700 12px var(--font-sans);text-decoration:none;line-height:1}
 .auth-btn.google{border:1px solid #0a66d8;background:#0a66d8;color:#fff}
 .auth-btn.avatar{border:1px solid var(--border2);background:#fff;color:var(--text2);padding:2px;box-shadow:none}
@@ -201,7 +201,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
         <span class="eyebrow-text" id="headerSubtitle" data-testid="header-subtitle">Active Controller · SX Subtype</span>
       </div>
       <div class="header-auth" data-testid="auth-top-right">
-        <span class="report-ready-chip" id="reportactiveyChip" data-testid="report-active-chip">Report Active</span>
+        <span class="report-active-chip" id="reportActiveChip" data-testid="report-active-chip">Report Active</span>
         <a class="auth-btn google" id="authSignInButton" data-testid="sign-in-google" href="#" onclick="openGoogleSignInPopup(event)">Sign In</a>
         <div class="auth-menu" id="authMenu" data-testid="auth-menu">
           <a class="auth-menu-item" id="authAdminPageLink" data-testid="admin-page-link" href="/admin-import" target="_top" style="display:none">Admin Page</a>
@@ -768,8 +768,8 @@ function getExportPdfButton() {
   return document.getElementById("authExportPdfButton");
 }
 
-function getReportReadyChip() {
-  return document.getElementById("reportReadyChip");
+function getReportActiveChip() {
+  return document.getElementById("reportActiveChip");
 }
 
 function getReportSwitchControl() {
@@ -797,8 +797,8 @@ function updateAdminPageLink(email) {
   adminLink.style.display = allowed ? "block" : "none";
 }
 
-function setReportReadyChipVisible(visible) {
-  const chip = getReportReadyChip();
+function setReportActiveChipVisible(visible) {
+  const chip = getReportActiveChip();
   if (!chip) return;
   chip.style.display = visible ? "inline-flex" : "none";
 }
@@ -811,7 +811,7 @@ function setReportSwitchVisible(visible) {
 
 let assignedReportIngested = false;
 let exampleReportInitialized = false;
-let latestReportReadyData = null;
+let latestReportActiveData = null;
 
 function setExportPdfState({ visible, enabled }) {
   const exportButton = getExportPdfButton();
@@ -1509,9 +1509,9 @@ async function ingestAssignedReportIntoDashboard(data) {
   }
 }
 
-async function refreshReportReadyUi() {
+async function refreshReportActiveUi() {
   try {
-    const response = await fetch("/api/report-ready", {
+    const response = await fetch("/api/report-active", {
       method: "GET",
       headers: { Accept: "application/json" },
       credentials: "include",
@@ -1519,27 +1519,27 @@ async function refreshReportReadyUi() {
     });
 
     if (!response.ok) {
-      latestReportReadyData = null;
+      latestReportActiveData = null;
       setExportPdfState({ visible: true, enabled: false });
-      setReportReadyChipVisible(false);
+      setReportActiveChipVisible(false);
       setReportSwitchVisible(true);
       return;
     }
 
     const data = await response.json().catch(() => ({}));
-    const isReady = Boolean(data?.isAuthenticated) && Boolean(data?.isReportReady);
-    latestReportReadyData = data;
+    const isReady = Boolean(data?.isAuthenticated) && Boolean(data?.isReportActive);
+    latestReportActiveData = data;
     setExportPdfState({ visible: true, enabled: isReady });
-    setReportReadyChipVisible(isReady);
+    setReportActiveChipVisible(isReady);
     setReportSwitchVisible(!isReady);
     if (isReady) {
       ingestAssignedReportIntoDashboard(data);
     }
   } catch (error) {
-    console.log("[auth] Failed to refresh report-ready status:", error);
-    latestReportReadyData = null;
+    console.log("[auth] Failed to refresh report-active status:", error);
+    latestReportActiveData = null;
     setExportPdfState({ visible: true, enabled: false });
-    setReportReadyChipVisible(false);
+    setReportActiveChipVisible(false);
     setReportSwitchVisible(true);
   }
 }
@@ -1569,9 +1569,9 @@ function setSignedOutAuthUi() {
 
   closeAuthMenu();
   updateAdminPageLink(null);
-  latestReportReadyData = null;
+  latestReportActiveData = null;
   setExportPdfState({ visible: false, enabled: false });
-  setReportReadyChipVisible(false);
+  setReportActiveChipVisible(false);
   setReportSwitchVisible(true);
   hideAssignedIngestCard();
   assignedReportIngested = false;
@@ -1618,7 +1618,7 @@ function setSignedInAuthUi(user) {
   }
 
   button.title = user?.name ? `Signed in as ${user.name}` : "Signed in";
-  refreshReportReadyUi();
+  refreshReportActiveUi();
 }
 
 function sanitizeExportFileName(value) {
