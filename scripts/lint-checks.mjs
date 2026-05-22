@@ -32,18 +32,18 @@ function checkNodeSyntax() {
 function checkReportSelectorBinding() {
   const reportPath = resolve("public/report.html");
   const text = readFileSync(reportPath, "utf8");
-  const hasInlineSelectorChange = text.includes(
-    'id="reportSelector" data-testid="report-selector" onchange="onReportSelectorChange({ target: this })"',
-  );
-  const hasJsSelectorBinding = text.includes(
-    "addEventListener('change', onReportSelectorChange)",
-  );
+  const hasInlineOnChange = /id="reportSelector"[\s\S]*\sonchange=/.test(text);
+  const changeBindingCount = (text.match(/addEventListener\((["'])change\1,\s*onReportSelectorChange\)/g) || []).length;
+  const inputBindingCount = (text.match(/addEventListener\((["'])input\1,\s*onReportSelectorChange\)/g) || []).length;
 
-  if (!hasInlineSelectorChange) {
-    fail("report selector is missing inline onchange binding");
+  if (hasInlineOnChange) {
+    fail("report selector should not use inline onchange binding");
   }
-  if (hasJsSelectorBinding) {
-    fail("duplicate report selector JS change binding still present");
+  if (changeBindingCount !== 1) {
+    fail(`report selector change handler binding count is ${changeBindingCount}, expected 1`);
+  }
+  if (inputBindingCount !== 1) {
+    fail(`report selector input handler binding count is ${inputBindingCount}, expected 1`);
   }
 }
 
