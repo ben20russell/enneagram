@@ -4413,6 +4413,12 @@ function renderReportFromState(isExampleMode) {
   setText('profileWheelBadgeType', REPORT.typeNumber);
   setText('profileWheelBadgeKeyword', String(REPORT.keyword || '').toUpperCase());
   setText('profileWheelBadgeInstinct', String(REPORT.instinct || '').split('—')[0].trim() || 'N/A');
+  // Render the wheel early so My Report still shows the graphic even if later blocks throw.
+  try {
+    renderProfileWheel();
+  } catch (error) {
+    console.log('[profile-wheel] early render failed', error);
+  }
   setText('releaseValue', formatTypeLine(REPORT.release));
   setText('stretchValue', formatTypeLine(REPORT.stretch));
   setText('integrationValue', REPORT.integration);
@@ -4632,6 +4638,41 @@ function applyAssignedPdfReport(payload) {
   }
 }
 
+function setupReportSelectorHandler() {
+  const reportSelector = document.getElementById('reportSelector');
+  if (!reportSelector) return;
+  if (reportSelector.dataset.bound === "1") return;
+
+  reportSelector.dataset.bound = "1";
+  reportSelector.addEventListener('change', event => {
+    const selectedType = String(event.target.value || "").trim();
+    const isMyReport = selectedType === "my-report";
+    console.log('[report-switch] selector changed to', selectedType);
+    if (isMyReport) {
+      currentReportViewMode = "my-report";
+      if (latestAssignedPdfReport) {
+        REPORT = latestAssignedPdfReport;
+        reflectionDeck = buildReflectionDeck(REPORT);
+        renderReportFromState(false);
+        return;
+      }
+      if (latestReportActiveData?.isAuthenticated && latestReportActiveData?.isReportActive) {
+        assignedReportIngested = false;
+        ingestAssignedReportIntoDashboard(latestReportActiveData);
+        return;
+      }
+      alert("No active assigned report was found for this account.");
+      const fallbackType = String(REPORT?.typeNumber || "8");
+      event.target.value = fallbackType;
+      currentReportViewMode = "example";
+      applyReport(fallbackType);
+      return;
+    }
+    currentReportViewMode = "example";
+    applyReport(selectedType);
+  });
+}
+
 function genReflection() {
   const options = reflectionDeck[refCat];
   const choice = options[Math.floor(Math.random() * options.length)];
@@ -4655,6 +4696,8 @@ function toggleReflections(minimize) {
 }
 
 window.addEventListener('load', () => {
+  // Bind report selector first so it still works even if later setup code fails.
+  setupReportSelectorHandler();
   decorateInterfaceIcons();
   buildReportModuleIndex();
 
@@ -4685,34 +4728,7 @@ window.addEventListener('load', () => {
     if (event.key === 'Escape') toggleSearchPopout(false);
   });
 
-  const reportSelector = document.getElementById('reportSelector');
-  reportSelector.addEventListener('change', event => {
-    const selectedType = event.target.value;
-    const isMyReport = selectedType === "my-report";
-    console.log('[report-switch] selector changed to', selectedType);
-    if (isMyReport) {
-      currentReportViewMode = "my-report";
-      if (latestAssignedPdfReport) {
-        REPORT = latestAssignedPdfReport;
-        reflectionDeck = buildReflectionDeck(REPORT);
-        renderReportFromState(false);
-        return;
-      }
-      if (latestReportActiveData?.isAuthenticated && latestReportActiveData?.isReportActive) {
-        assignedReportIngested = false;
-        ingestAssignedReportIntoDashboard(latestReportActiveData);
-        return;
-      }
-      alert("No active assigned report was found for this account.");
-      const fallbackType = String(REPORT?.typeNumber || "8");
-      event.target.value = fallbackType;
-      currentReportViewMode = "example";
-      applyReport(fallbackType);
-      return;
-    }
-    currentReportViewMode = "example";
-    applyReport(selectedType);
-  });
+  setupReportSelectorHandler();
 });
 </script>
 </body>
