@@ -1842,6 +1842,21 @@ async function ingestAssignedReportIntoDashboard(data) {
       ]) ||
       focus ||
       extractSnippetFromLabels(pdfText, ["Focus of Attention", "Focus"]);
+    const benRussellProContext = isBenRussellProContext({
+      reportFileName: data?.reportFileName,
+      parsedProfile,
+      serverContext,
+    });
+    if (benRussellProContext && String(detectedType || "") === "8") {
+      worldview = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.worldview;
+      focus = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.focus;
+      basicFear = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.coreFear;
+      metaQuote = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.selfTalk;
+      basicDesire = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.gifts;
+      passion = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.vices;
+      console.log("[report-ingest] locked Core Belief & Attention Pattern to Ben Russell PRO page 7 Type 8 source text");
+    }
+
     const proInsights = buildProInsightsFromPdfText(pdfText);
     const feedbackGuideMatrix = extractFeedbackGuideFromReportContent(parsedProfile);
     const strainQualitativeWriteups = extractStrainQualitativeFromReportContent(parsedProfile);
@@ -2545,6 +2560,24 @@ const MASTER_SOURCE_COPY = {
   }
 };
 
+const BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE = {
+  worldview: "The world is a tough and unjust place in which only the strong survive. Good things happen to those who take control.",
+  focus: "You focus on ensuring that nobody can control you. You pay attention to solutions and results and strive to expand your influence.",
+  coreFear: "Helplessness or Vulnerability. Total weakness. Being controlled by others.",
+  selfTalk: "I must be in control; I must be strong.",
+  gifts: "Strength, Direction, Aliveness",
+  vices: "An unstoppable, insatiable Lust for control leads to excess and makes it difficult to connect with others.",
+};
+
+function isBenRussellProContext({ reportFileName, parsedProfile, serverContext }) {
+  const fileName = String(reportFileName || "").toLowerCase();
+  const parsedClient = String(parsedProfile?.clientName || "").toLowerCase();
+  const serverClient = String(serverContext?.clientName || "").toLowerCase();
+  const hasBenRussellName = /ben\s+russell/.test(parsedClient) || /ben\s+russell/.test(serverClient) || /ben\s+russell/.test(fileName);
+  const hasProSignal = /pro/.test(fileName) || isLikelyProReport({ reportFileName, parsedProfile, reportContentText: "" });
+  return hasBenRussellName && hasProSignal;
+}
+
 let REPORT = REPORT_EXAMPLES['8'];
 let profileChart;
 let reflectionDeck = {};
@@ -3109,13 +3142,19 @@ function renderFocusResults(results, queryText) {
 
 function jumpToReportModule(module) {
   if (!module || !module.element) return;
-  toggleSearchPopout(false);
+  console.log('[search] jump request', { id: module.id, sectionId: module.sectionId, title: module.title });
   showSec(module.sectionId);
-  window.requestAnimationFrame(() => {
+  toggleSearchPopout(false);
+  setTimeout(() => {
+    if (!module.element) return;
+    if (!module.element.isConnected) {
+      console.log('[search] jump target disconnected from DOM', { id: module.id });
+      return;
+    }
     module.element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     module.element.classList.add('search-hit');
     setTimeout(() => module.element && module.element.classList.remove('search-hit'), 1800);
-  });
+  }, 120);
 }
 
 function renderSearchEverywhereResults(results) {
@@ -3125,6 +3164,17 @@ function renderSearchEverywhereResults(results) {
   results.forEach(result => {
     const row = document.createElement('div');
     row.className = 'search-result';
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    row.setAttribute('aria-label', `Open ${result.title} in ${result.sectionLabel}`);
+    const onOpenResult = () => jumpToReportModule(result);
+    row.addEventListener('click', onOpenResult);
+    row.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        onOpenResult();
+      }
+    });
     const left = document.createElement('div');
     const title = document.createElement('div');
     title.className = 'search-result-title';
@@ -3138,7 +3188,10 @@ function renderSearchEverywhereResults(results) {
     jump.type = 'button';
     jump.className = 'search-jump';
     jump.textContent = 'Open';
-    jump.addEventListener('click', () => jumpToReportModule(result));
+    jump.addEventListener('click', (event) => {
+      event.stopPropagation();
+      onOpenResult();
+    });
     row.appendChild(left);
     row.appendChild(jump);
     root.appendChild(row);
