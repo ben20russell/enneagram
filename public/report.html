@@ -386,7 +386,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
     <div class="header-controls">
       <div class="report-switch" id="reportSwitchControl">
         <label class="report-switch-label" for="reportSelector">Example Report</label>
-        <select class="report-switch-select" id="reportSelector" data-testid="report-selector">
+        <select class="report-switch-select" id="reportSelector" data-testid="report-selector" onchange="onReportSelectorChange(event)">
           <option value="my-report" id="reportSelectorMyReportOption" style="display:none">My Report</option>
           <option value="1">Type 1</option>
           <option value="2">Type 2</option>
@@ -2924,6 +2924,43 @@ function toggleSearchPopout(open) {
   }
 }
 
+function isSearchPopoutOpen() {
+  const overlay = document.getElementById('searchPopoutOverlay');
+  if (!overlay) return false;
+  return overlay.classList.contains('open') && overlay.getAttribute('aria-hidden') !== 'true';
+}
+
+function setupSearchPopoutHandlers() {
+  const overlay = document.getElementById('searchPopoutOverlay');
+  if (!overlay) return;
+  if (overlay.dataset.bound === '1') return;
+  overlay.dataset.bound = '1';
+
+  const closeButton = document.getElementById('searchPopoutClose');
+  if (closeButton) {
+    closeButton.addEventListener('click', () => toggleSearchPopout(false));
+  }
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && isSearchPopoutOpen()) {
+      toggleSearchPopout(false);
+    }
+  });
+
+  // Close whenever the user clicks outside the popout panel.
+  document.addEventListener('pointerdown', event => {
+    if (!isSearchPopoutOpen()) return;
+    const panel = document.getElementById('searchPopoutPanel');
+    if (!panel) {
+      toggleSearchPopout(false);
+      return;
+    }
+    if (!panel.contains(event.target)) {
+      toggleSearchPopout(false);
+    }
+  }, true);
+}
+
 function toggleMobileMenu(open) {
   const drawer = document.getElementById('mobileMenu');
   const overlay = document.getElementById('mobileMenuOverlay');
@@ -4644,33 +4681,35 @@ function setupReportSelectorHandler() {
   if (reportSelector.dataset.bound === "1") return;
 
   reportSelector.dataset.bound = "1";
-  reportSelector.addEventListener('change', event => {
-    const selectedType = String(event.target.value || "").trim();
-    const isMyReport = selectedType === "my-report";
-    console.log('[report-switch] selector changed to', selectedType);
-    if (isMyReport) {
-      currentReportViewMode = "my-report";
-      if (latestAssignedPdfReport) {
-        REPORT = latestAssignedPdfReport;
-        reflectionDeck = buildReflectionDeck(REPORT);
-        renderReportFromState(false);
-        return;
-      }
-      if (latestReportActiveData?.isAuthenticated && latestReportActiveData?.isReportActive) {
-        assignedReportIngested = false;
-        ingestAssignedReportIntoDashboard(latestReportActiveData);
-        return;
-      }
-      alert("No active assigned report was found for this account.");
-      const fallbackType = String(REPORT?.typeNumber || "8");
-      event.target.value = fallbackType;
-      currentReportViewMode = "example";
-      applyReport(fallbackType);
+  reportSelector.addEventListener('change', onReportSelectorChange);
+}
+
+function onReportSelectorChange(event) {
+  const selectedType = String(event?.target?.value || "").trim();
+  const isMyReport = selectedType === "my-report";
+  console.log('[report-switch] selector changed to', selectedType);
+  if (isMyReport) {
+    currentReportViewMode = "my-report";
+    if (latestAssignedPdfReport) {
+      REPORT = latestAssignedPdfReport;
+      reflectionDeck = buildReflectionDeck(REPORT);
+      renderReportFromState(false);
       return;
     }
+    if (latestReportActiveData?.isAuthenticated && latestReportActiveData?.isReportActive) {
+      assignedReportIngested = false;
+      ingestAssignedReportIntoDashboard(latestReportActiveData);
+      return;
+    }
+    alert("No active assigned report was found for this account.");
+    const fallbackType = String(REPORT?.typeNumber || "8");
+    if (event?.target) event.target.value = fallbackType;
     currentReportViewMode = "example";
-    applyReport(selectedType);
-  });
+    applyReport(fallbackType);
+    return;
+  }
+  currentReportViewMode = "example";
+  applyReport(selectedType);
 }
 
 function genReflection() {
@@ -4696,6 +4735,7 @@ function toggleReflections(minimize) {
 }
 
 window.addEventListener('load', () => {
+  setupSearchPopoutHandlers();
   // Bind report selector first so it still works even if later setup code fails.
   setupReportSelectorHandler();
   decorateInterfaceIcons();
@@ -4716,18 +4756,7 @@ window.addEventListener('load', () => {
       }
     });
   }
-  const searchPopoutClose = document.getElementById('searchPopoutClose');
-  if (searchPopoutClose) searchPopoutClose.addEventListener('click', () => toggleSearchPopout(false));
-  const searchPopoutOverlay = document.getElementById('searchPopoutOverlay');
-  if (searchPopoutOverlay) {
-    searchPopoutOverlay.addEventListener('click', event => {
-      if (event.target === searchPopoutOverlay) toggleSearchPopout(false);
-    });
-  }
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') toggleSearchPopout(false);
-  });
-
+  setupSearchPopoutHandlers();
   setupReportSelectorHandler();
 });
 </script>
