@@ -3988,13 +3988,12 @@ function buildPdfOnlyProfile(typeNumber, extractedScores) {
 function buildPdfOnlyReport(payload) {
   const fallbackText = "Not detected in assigned PDF.";
   const typeNumber = String(payload?.typeNumber || "").match(/^[1-9]$/)?.[0] || "?";
-  const fallbackReport = REPORT_EXAMPLES[typeNumber] || {};
-  const typeName = sanitizeSnippet(payload?.typeName, fallbackReport.typeName || "Assigned Profile");
-  const instinct = sanitizeSnippet(payload?.instinct, fallbackReport.instinct || "Unknown Instinct");
-  const keyword = sanitizeSnippet(payload?.subtypeKeyword, fallbackReport.keyword || "Not detected");
-  const release = formatTypeLine(sanitizeSnippet(payload?.connectedLineA, fallbackReport.release || "Type ?"));
-  const stretch = formatTypeLine(sanitizeSnippet(payload?.connectedLineB, fallbackReport.stretch || "Type ?"));
-  const integration = sanitizeSnippet(payload?.integrationLevel, fallbackReport.integration || "Not detected");
+  const typeName = sanitizeSnippet(payload?.typeName, fallbackText);
+  const instinct = sanitizeSnippet(payload?.instinct, fallbackText);
+  const keyword = sanitizeSnippet(payload?.subtypeKeyword, fallbackText);
+  const release = formatTypeLine(sanitizeSnippet(payload?.connectedLineA, "Type ?"));
+  const stretch = formatTypeLine(sanitizeSnippet(payload?.connectedLineB, "Type ?"));
+  const integration = sanitizeSnippet(payload?.integrationLevel, fallbackText);
   const profile = buildPdfOnlyProfile(typeNumber, payload?.profileScores);
   const strainScoresRaw = payload?.strainScoresRaw && typeof payload.strainScoresRaw === "object"
     ? payload.strainScoresRaw
@@ -4023,22 +4022,22 @@ function buildPdfOnlyReport(payload) {
     release,
     stretch,
     integration,
-    coreFear: sanitizeSnippet(payload?.basicFear, fallbackReport.coreFear || fallbackText),
-    gifts: sanitizeSnippet(payload?.basicDesire, fallbackReport.gifts || fallbackText),
+    coreFear: sanitizeSnippet(payload?.basicFear, fallbackText),
+    gifts: sanitizeSnippet(payload?.basicDesire, fallbackText),
     giftsDesc: "",
-    vice: sanitizeSnippet(payload?.passion, fallbackReport.vice || fallbackText),
+    vice: sanitizeSnippet(payload?.passion, fallbackText),
     viceDesc: "",
-    worldview: sanitizeSnippet(payload?.worldview, fallbackReport.worldview || fallbackText),
-    focus: sanitizeSnippet(payload?.focus, fallbackReport.focus || fallbackText),
-    instinctNarrativePrimary: sanitizeSnippet(payload?.instinctNarrativePrimary, ""),
-    instinctNarrativeSecondary: sanitizeSnippet(payload?.instinctNarrativeSecondary, ""),
+    worldview: sanitizeSnippet(payload?.worldview, fallbackText),
+    focus: sanitizeSnippet(payload?.focus, fallbackText),
+    instinctNarrativePrimary: sanitizeSnippet(payload?.instinctNarrativePrimary, fallbackText),
+    instinctNarrativeSecondary: sanitizeSnippet(payload?.instinctNarrativeSecondary, fallbackText),
     conflictStyleDetected: sanitizeSnippet(payload?.conflictStyleDetected, ""),
-    conflictNarrativePrimary: sanitizeSnippet(payload?.conflictNarrativePrimary, ""),
-    conflictNarrativeSecondary: sanitizeSnippet(payload?.conflictNarrativeSecondary, ""),
-    selfTalk: sanitizeSnippet(payload?.metaQuote, fallbackReport.selfTalk || fallbackText),
-    motivation1: sanitizeSnippet(payload?.reportSummary, "This dashboard is populated from your assigned PDF report."),
-    motivation2: "If any field is missing, update the PDF content and re-import.",
-    traits: ["Assigned", "PDF", "Ingested"],
+    conflictNarrativePrimary: sanitizeSnippet(payload?.conflictNarrativePrimary, fallbackText),
+    conflictNarrativeSecondary: sanitizeSnippet(payload?.conflictNarrativeSecondary, fallbackText),
+    selfTalk: sanitizeSnippet(payload?.metaQuote, fallbackText),
+    motivation1: sanitizeSnippet(payload?.reportSummary, fallbackText),
+    motivation2: fallbackText,
+    traits: [],
     deepTitle: `Assigned PDF Summary · Type ${typeNumber}`,
     deep: [
       `Type: ${typeNumber} — ${typeName}`,
@@ -4046,7 +4045,7 @@ function buildPdfOnlyReport(payload) {
       `Connected Line A: ${release}`,
       `Connected Line B: ${stretch}`,
     ],
-    meta: sanitizeSnippet(payload?.metaQuote, "Assigned report loaded from PDF."),
+    meta: sanitizeSnippet(payload?.metaQuote, fallbackText),
     clientName: sanitizeSnippet(payload?.clientName, "Not detected"),
     reportDate: sanitizeSnippet(payload?.reportDate, "Not detected"),
     wing: sanitizeSnippet(payload?.wing, "Not detected"),
@@ -4099,32 +4098,44 @@ function getConflictStyleForDisplay(report) {
 function buildInstinctCopyForDisplay(report) {
   const instinctLabel = String(report?.instinct || "Unknown instinct");
   const instinctCode = instinctLabel.toUpperCase().match(/\b(SX|SO|SP)\b/)?.[1] || "SX";
-  const lead = "You are an Enneagram type 8 with an SX instinct.";
+  const isAssignedReportMode = currentReportViewMode === "my-report";
+  const lead = isAssignedReportMode
+    ? formatOptionalText(report?.instinctNarrativeLead, "Not detected in assigned PDF.")
+    : `You are an Enneagram type ${String(report?.typeNumber || "?")} with an ${instinctCode} instinct.`;
   const primary =
     formatOptionalText(
       report?.instinctNarrativePrimary,
-      instinctCode === "SX"
-        ? "The one-to-one instinct is concerned with intensity of experience and strong connection with specific people."
-        : instinctCode === "SO"
-          ? "The social instinct is concerned with belonging, contribution, and maintaining meaningful connections in groups."
-          : "The self-preservation instinct is concerned with practical stability, resources, and long-term personal sustainability.",
+      isAssignedReportMode
+        ? "Not detected in assigned PDF."
+        : instinctCode === "SX"
+          ? "The one-to-one instinct is concerned with intensity of experience and strong connection with specific people."
+          : instinctCode === "SO"
+            ? "The social instinct is concerned with belonging, contribution, and maintaining meaningful connections in groups."
+            : "The self-preservation instinct is concerned with practical stability, resources, and long-term personal sustainability.",
     );
   const secondary = formatOptionalText(
     report?.instinctNarrativeSecondary,
-    report?.deep?.[2] || "This instinct pattern shapes how you connect, protect energy, and prioritize relationships.",
+    isAssignedReportMode
+      ? "Not detected in assigned PDF."
+      : (report?.deep?.[2] || "This instinct pattern shapes how you connect, protect energy, and prioritize relationships."),
   );
   return { lead, primary, secondary };
 }
 
 function buildConflictCopyForDisplay(report) {
   const style = getConflictStyleForDisplay(report);
+  const isAssignedReportMode = currentReportViewMode === "my-report";
   const primary = formatOptionalText(
     report?.conflictNarrativePrimary,
-    `Your preferred conflict processing strategy is ${style}.`,
+    isAssignedReportMode
+      ? "Not detected in assigned PDF."
+      : `Your preferred conflict processing strategy is ${style}.`,
   );
   const secondary = formatOptionalText(
     report?.conflictNarrativeSecondary,
-    "A more regulated body and explicit positive regard can change the outcome dramatically.",
+    isAssignedReportMode
+      ? "Not detected in assigned PDF."
+      : "A more regulated body and explicit positive regard can change the outcome dramatically.",
   );
   return { primary, secondary };
 }
