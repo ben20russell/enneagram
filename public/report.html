@@ -97,7 +97,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .sec{display:none}.sec.active{display:block}
 .card,.sidebar-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--r)}
 .card{padding:22px 24px}.card+.card{margin-top:0}
-.ct{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:14px}
+.ct{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:14px}
 .ct .title-icon{display:inline-flex;align-items:center;justify-content:center;width:100%;height:100%;line-height:0;margin:0;position:static}
 .ct .title-icon svg{display:block}
 .title-icon-chip{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);margin-right:7px;line-height:0;vertical-align:middle;position:static}
@@ -191,12 +191,23 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 }
 .profile-wheel-line{fill:none;stroke-linecap:round;stroke-linejoin:round}
 .profile-wheel-type{font:800 28px/1 var(--font-display);fill:#ffffff;dominant-baseline:middle;text-anchor:middle}
+.profile-wheel-role{
+  font:800 13px/1 var(--font-sans);
+  dominant-baseline:middle;
+  text-anchor:middle;
+  letter-spacing:.02em;
+  paint-order:stroke fill;
+  stroke:#ffffff;
+  stroke-width:3px;
+  stroke-linejoin:round;
+}
 @media(max-width:700px){
   .profile-wheel-wrap{height:260px}
   .profile-wheel-badge{width:98px;height:98px;left:6px;top:6px;padding-top:10px}
   .profile-wheel-badge-instinct{font-size:15px}
   .profile-wheel-badge-type{font-size:40px}
   .profile-wheel-badge-keyword{font-size:8px;padding:0 8px}
+  .profile-wheel-role{font-size:11px;stroke-width:2.4px}
 }
 .footer-note{font-size:11px;color:var(--text3);margin-top:10px}
 .site-footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--border2);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);font-family:var(--font-mono);text-align:center}
@@ -344,11 +355,11 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
               <div><div class="kvl">Integration Level</div><div class="kvv red" id="integrationValue">Low</div></div>
             </div>
             <div class="div"></div>
-            <div class="subh" style="margin-top:0">Meta-Message</div>
+            <div class="subh" style="margin-top:0">Your Meta-Message</div>
             <div class="quote"><p id="metaQuote">“Be honest and forthright, but don't waste my time.”</p></div>
           </div>
           <div class="card">
-            <div class="ct">Enneagram Profile — All 9 Types</div>
+            <div class="ct">Your Enneagram Profile</div>
             <div class="profile-wheel-wrap">
               <div id="profileWheel" class="profile-wheel" data-testid="profile-wheel"></div>
               <div class="profile-wheel-badge" data-testid="profile-wheel-badge">
@@ -361,7 +372,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
         </div>
 
         <div class="g3 mb24">
-          <div class="card"><div class="ct">Basic Fear</div><p style="font-size:14px;color:var(--text2)" id="coreFearValue">Helplessness or vulnerability. Total weakness. Being controlled by others.</p></div>
+          <div class="card"><div class="ct">Basic Fear</div><p style="font-size:15px;color:var(--text2)" id="coreFearValue">Helplessness or vulnerability. Total weakness. Being controlled by others.</p></div>
           <div class="card"><div class="ct">Basic Desire</div><p style="font-size:15px;color:var(--green);font-weight:600;margin-bottom:6px" id="giftsTitle">Strength, Direction, Aliveness</p><p style="font-size:13px;color:var(--text3)" id="giftsDesc">At your best others experience you as empowering and encouraging.</p></div>
           <div class="card"><div class="ct">Passion (Habit Energy)</div><p style="font-size:15px;color:var(--red);font-weight:600;margin-bottom:6px" id="viceTitle">Lust</p><p style="font-size:13px;color:var(--text3)" id="viceDesc">An insatiable push for control can lead to excess and make connection harder.</p></div>
         </div>
@@ -710,7 +721,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
       </div>
 
       <div id="sec-integration" class="sec">
-        <div class="mb24">
+        <div class="g2 mb24">
           <div class="card">
             <div class="ct">Levels of Health and Integration</div>
             <div style="margin-bottom:14px"><div style="font-family:var(--font-display);font-size:26px;font-weight:700;color:var(--red)">Low</div><div style="font-size:12px;color:var(--text3)">You are operating at a low level of Enneagram awareness and mastery in this report.</div></div>
@@ -723,20 +734,19 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
               <div class="ti"><div class="tic neg">!</div><div class="tt">Controlling explosive anger may be difficult when you feel vulnerable or controlled.</div></div>
             </div>
           </div>
-        </div>
-
-        <div class="card mb24">
-          <div class="ct">Wing Influence — Types 7 &amp; 9</div>
-          <div class="g2">
-            <div>
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--gold-lt);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--gold)">7</div><div><div style="font-size:13px;font-weight:600">Wing 7</div><div style="font-size:11px;color:var(--text3)">Moderate integration</div></div></div>
-              <div class="wing-item">May combine interests in power and experience, making you seem pushy, tough or manipulative.</div>
-              <div class="wing-item">At high integration, it helps you lighten up, experiment, and soften intensity.</div>
-            </div>
-            <div>
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--blue-lt);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--blue)">9</div><div><div style="font-size:13px;font-weight:600">Wing 9</div><div style="font-size:11px;color:var(--text3)">Moderate integration</div></div></div>
-              <div class="wing-item">May make you calmer than an 8w7, yet still unexpectedly overt in anger.</div>
-              <div class="wing-item">At high integration, it increases warmth, empathy, consensus-building and flexibility.</div>
+          <div class="card">
+            <div class="ct">Wing Influence — Types 7 &amp; 9</div>
+            <div class="g2">
+              <div>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--gold-lt);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--gold)">7</div><div><div style="font-size:13px;font-weight:600">Wing 7</div><div style="font-size:11px;color:var(--text3)">Moderate integration</div></div></div>
+                <div class="wing-item">May combine interests in power and experience, making you seem pushy, tough or manipulative.</div>
+                <div class="wing-item">At high integration, it helps you lighten up, experiment, and soften intensity.</div>
+              </div>
+              <div>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--blue-lt);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--blue)">9</div><div><div style="font-size:13px;font-weight:600">Wing 9</div><div style="font-size:11px;color:var(--text3)">Moderate integration</div></div></div>
+                <div class="wing-item">May make you calmer than an 8w7, yet still unexpectedly overt in anger.</div>
+                <div class="wing-item">At high integration, it increases warmth, empathy, consensus-building and flexibility.</div>
+              </div>
             </div>
           </div>
         </div>
@@ -2478,13 +2488,27 @@ function renderProfileWheel() {
     const segmentEnd = segmentStart + segmentAngle;
     const segmentCenterAngle = segmentStart + segmentAngle / 2;
     const labelPoint = toPoint(cx, cy, ringMidRadius, segmentCenterAngle);
+    const rolePoint = toPoint(cx, cy, outerRadius + 24, segmentCenterAngle);
     let fill = PROFILE_SEGMENT_COLORS.base;
+    let roleLabel = '';
+    let roleColor = '';
     if (typeNumber === mainType) fill = PROFILE_SEGMENT_COLORS.main;
     else if (typeNumber === releaseType) fill = PROFILE_SEGMENT_COLORS.release;
     else if (typeNumber === stretchType) fill = PROFILE_SEGMENT_COLORS.stretch;
+    if (typeNumber === mainType) {
+      roleLabel = 'Main';
+      roleColor = PROFILE_SEGMENT_COLORS.main;
+    } else if (typeNumber === releaseType) {
+      roleLabel = 'Release';
+      roleColor = PROFILE_SEGMENT_COLORS.release;
+    } else if (typeNumber === stretchType) {
+      roleLabel = 'Stretch';
+      roleColor = PROFILE_SEGMENT_COLORS.stretch;
+    }
     return `
       <path d="${donutSlicePath(cx, cy, innerRadius, outerRadius, segmentStart, segmentEnd)}" fill="${fill}" stroke="#ffffff" stroke-width="2"></path>
       <text class="profile-wheel-type" x="${labelPoint.x}" y="${labelPoint.y}" transform="rotate(${segmentCenterAngle + 90}, ${labelPoint.x}, ${labelPoint.y})">${typeNumber}</text>
+      ${roleLabel ? `<text class="profile-wheel-role" x="${rolePoint.x}" y="${rolePoint.y}" fill="${roleColor}">${roleLabel}</text>` : ''}
     `;
   }).join('');
 
@@ -2551,7 +2575,7 @@ function decorateInterfaceIcons() {
 
   const sectionIconMap = {
     'Core Identity': 'card',
-    'Enneagram Profile — All 9 Types': 'chart',
+    'Your Enneagram Profile': 'chart',
     'Basic Fear': 'target',
     'Basic Desire': 'spark',
     'Passion (Habit Energy)': 'shield',
