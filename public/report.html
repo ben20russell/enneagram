@@ -200,27 +200,28 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 @media(max-width:900px){.reflection-launcher{right:12px;bottom:12px}}
 .chart-wrap{position:relative;width:100%}
 .insight-stack{display:flex;flex-direction:column;gap:10px}
-.core-copy-stack{display:flex;flex-direction:column;gap:10px}
+.core-copy-stack{display:flex;flex-direction:column;gap:12px}
 .core-copy-item{
-  border:1px solid var(--border);
-  border-radius:var(--r-sm);
-  background:var(--surface2);
-  padding:12px;
+  border:1px solid #cfe3ff;
+  border-left:4px solid var(--blue);
+  border-radius:12px;
+  background:#fff;
+  padding:12px 14px;
 }
 .core-copy-item-title{
-  color:var(--text3);
+  color:#4f6ea0;
   font-family:var(--font-sans);
-  font-size:10px;
+  font-size:11px;
   font-weight:700;
   text-transform:uppercase;
-  letter-spacing:.08em;
-  margin-bottom:4px;
+  letter-spacing:.1em;
+  margin-bottom:6px;
 }
 .core-copy-item-body{
   padding:0;
   font-size:14px;
-  line-height:1.55;
-  color:var(--text2);
+  line-height:1.5;
+  color:var(--text);
 }
 .insight-box{
   background:var(--surface2);
@@ -1252,6 +1253,28 @@ function extractCoreIdentityBlock(pdfText) {
   };
 }
 
+function extractCorePatternLinesFromText(text) {
+  const normalized = normalizeExtractedText(text);
+  if (!normalized) return [];
+  const match = normalized.match(
+    /Typical\s+Feeling\s+Patterns\s*:?\s*([\s\S]{40,2600}?)(?=Blind\s+Spots\b|World\s*view\b|Worldview\b|Focus\s+of\s+Attention\b|Core\s+Fear\b|DEVELOPMENT\s+EXERCISE\b|$)/i,
+  );
+  const block = cleanPdfExtractedValue(match?.[1] || "");
+  if (!block) return [];
+  const bullets = block
+    .replace(/\s*[•●◦▪]\s*/g, "\n")
+    .split(/\n+/)
+    .map((line) => cleanPdfExtractedValue(line.replace(/^[-–—]\s*/, "")))
+    .filter((line) => line && line.length >= 24 && !/^typical feeling patterns[:\s]*$/i.test(line));
+  let lines = bullets;
+  if (!lines.length) {
+    lines = (block.match(/[^.!?]+[.!?]/g) || [])
+      .map((line) => cleanPdfExtractedValue(line))
+      .filter((line) => line && line.length >= 24);
+  }
+  return Array.from(new Set(lines)).slice(0, 4);
+}
+
 function extractSubtypeKeywordFromPdfText(pdfText, detectedType) {
   const normalized = normalizeExtractedText(pdfText);
   const hint = detectedType ? String(detectedType) : "[1-9]";
@@ -1656,6 +1679,13 @@ async function ingestAssignedReportIntoDashboard(data) {
     let metaQuote = parsedProfile?.metaMessage || parsedProfile?.selfTalk || null;
     let worldview = parsedProfile?.worldview || null;
     let focus = parsedProfile?.focusOfAttention || null;
+    let corePatternTitle = sanitizeSnippet(parsedProfile?.corePattern?.title, null);
+    let corePatternLines = Array.isArray(parsedProfile?.corePattern?.lines)
+      ? parsedProfile.corePattern.lines
+          .map((line) => sanitizeSnippet(line, null))
+          .filter(Boolean)
+          .slice(0, 4)
+      : [];
     let instinctScoresRaw = normalizeScoreScale(parsedProfile?.instinctScores || null);
     let centerScoresRaw = normalizeScoreScale(parsedProfile?.centerScores || null);
     let strainScoresRaw = null;
@@ -1856,6 +1886,15 @@ async function ingestAssignedReportIntoDashboard(data) {
       passion = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.vices;
       console.log("[report-ingest] locked Core Belief & Attention Pattern to Ben Russell PRO page 7 Type 8 source text");
     }
+    if (!corePatternLines.length) {
+      corePatternLines =
+        extractCorePatternLinesFromText(reportContentText) ||
+        extractCorePatternLinesFromText(pdfText) ||
+        [];
+    }
+    if (!corePatternTitle && corePatternLines.length) {
+      corePatternTitle = `Type ${detectedType || "?"} Core Pattern`;
+    }
 
     const proInsights = buildProInsightsFromPdfText(pdfText);
     const feedbackGuideMatrix = extractFeedbackGuideFromReportContent(parsedProfile);
@@ -1885,6 +1924,8 @@ async function ingestAssignedReportIntoDashboard(data) {
       metaQuote,
       worldview,
       focus,
+      corePatternTitle,
+      corePatternLines,
       reportSummary: parsedProfile?.reportSummary || null,
       clientName: parsedProfile?.clientName || null,
       reportDate: parsedProfile?.reportDate || null,
@@ -2639,7 +2680,7 @@ function renderProfileWheel() {
   const starIndexOrder = [0, 3, 6, 1, 4, 7, 2, 5, 8];
   const starPath = starIndexOrder.map((pointIndex, index) => `${index === 0 ? 'M' : 'L'} ${symbolPoints[pointIndex].x} ${symbolPoints[pointIndex].y}`).join(' ') + ' Z';
 
-  const segmentsMarkup = PROFILE_TYPE_ORDER.map((typeNumber, index) => {
+  const segmentNodes = PROFILE_TYPE_ORDER.map((typeNumber, index) => {
     const segmentStart = startAngle + index * segmentAngle;
     const segmentEnd = segmentStart + segmentAngle;
     const segmentCenterAngle = segmentStart + segmentAngle / 2;
@@ -2675,12 +2716,15 @@ function renderProfileWheel() {
         y: radialRolePoint.y - 4,
       };
     }
-    return `
-      <path d="${donutSlicePath(cx, cy, innerRadius, outerRadius, segmentStart, segmentEnd)}" fill="${fill}" stroke="#ffffff" stroke-width="2"></path>
-      <text class="profile-wheel-type" x="${labelPoint.x}" y="${labelPoint.y}" transform="rotate(${segmentCenterAngle + 90}, ${labelPoint.x}, ${labelPoint.y})">${typeNumber}</text>
-      ${roleLabel ? `<text class="profile-wheel-role" x="${rolePoint.x}" y="${rolePoint.y}" fill="${roleColor}">${roleLabel}</text>` : ''}
-    `;
-  }).join('');
+    return {
+      segmentPath: `<path d="${donutSlicePath(cx, cy, innerRadius, outerRadius, segmentStart, segmentEnd)}" fill="${fill}" stroke="#ffffff" stroke-width="2"></path>`,
+      typeLabel: `<text class="profile-wheel-type" x="${labelPoint.x}" y="${labelPoint.y}" transform="rotate(${segmentCenterAngle + 90}, ${labelPoint.x}, ${labelPoint.y})">${typeNumber}</text>`,
+      roleLabel: roleLabel ? `<text class="profile-wheel-role" x="${rolePoint.x}" y="${rolePoint.y}" fill="${roleColor}">${roleLabel}</text>` : '',
+    };
+  });
+  const segmentsMarkup = segmentNodes.map((node) => node.segmentPath).join('');
+  const roleLabelsMarkup = segmentNodes.map((node) => node.roleLabel).join('');
+  const typeLabelsMarkup = segmentNodes.map((node) => node.typeLabel).join('');
 
   wheelNode.innerHTML = `
     <svg class="profile-wheel-svg" viewBox="-24 -24 ${size.width + 48} ${size.height + 48}" role="img" aria-label="Enneagram profile wheel">
@@ -2700,6 +2744,8 @@ function renderProfileWheel() {
       <path d="M ${symbolPoints[1].x} ${symbolPoints[1].y} L ${symbolPoints[4].x} ${symbolPoints[4].y} L ${symbolPoints[7].x} ${symbolPoints[7].y} Z" fill="none" stroke="#e9edf1" stroke-width="5"></path>
       <path class="profile-wheel-line" d="M ${lineStart.x} ${lineStart.y} L ${releaseTarget.x} ${releaseTarget.y}" stroke="url(#profileLineRelease)" stroke-width="8"></path>
       <path class="profile-wheel-line" d="M ${lineStart.x} ${lineStart.y} L ${stretchTarget.x} ${stretchTarget.y}" stroke="url(#profileLineStretch)" stroke-width="8"></path>
+      ${roleLabelsMarkup}
+      ${typeLabelsMarkup}
     </svg>
   `;
 
@@ -4013,6 +4059,21 @@ function buildPdfOnlyReport(payload) {
   const releaseIndex = PROFILE_TYPE_ORDER.indexOf(releaseType);
   const stretchIndex = PROFILE_TYPE_ORDER.indexOf(stretchType);
   const mainIndex = PROFILE_TYPE_ORDER.indexOf(typeNumber);
+  const parsedCorePatternLines = Array.isArray(payload?.corePatternLines)
+    ? payload.corePatternLines
+        .map((line) => sanitizeSnippet(line, null))
+        .filter(Boolean)
+        .slice(0, 4)
+    : [];
+  const deepLines = (parsedCorePatternLines.length
+    ? parsedCorePatternLines
+    : [
+        `Type: ${typeNumber} — ${typeName}`,
+        `Dominant instinct: ${instinct}`,
+        `Release point: ${release}`,
+        `Stretch point: ${stretch}`,
+      ]).slice(0, 4);
+  while (deepLines.length < 4) deepLines.push(fallbackText);
 
   return {
     typeNumber,
@@ -4038,13 +4099,8 @@ function buildPdfOnlyReport(payload) {
     motivation1: sanitizeSnippet(payload?.reportSummary, fallbackText),
     motivation2: fallbackText,
     traits: [],
-    deepTitle: `Assigned PDF Summary · Type ${typeNumber}`,
-    deep: [
-      `Type: ${typeNumber} — ${typeName}`,
-      `Dominant instinct: ${instinct}`,
-      `Connected Line A: ${release}`,
-      `Connected Line B: ${stretch}`,
-    ],
+    deepTitle: sanitizeSnippet(payload?.corePatternTitle, null) || `Type ${typeNumber} Core Pattern`,
+    deep: deepLines,
     meta: sanitizeSnippet(payload?.metaQuote, fallbackText),
     clientName: sanitizeSnippet(payload?.clientName, "Not detected"),
     reportDate: sanitizeSnippet(payload?.reportDate, "Not detected"),
