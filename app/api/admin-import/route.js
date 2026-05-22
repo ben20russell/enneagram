@@ -3,10 +3,11 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { createReport, getReportById } from "../../../lib/reportsStore";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabaseAdmin";
+import { parsePdf } from "../../../lib/parsePdf";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function sanitizeFileName(name) {
   return String(name || "report.pdf")
@@ -44,15 +45,54 @@ function inferTypeFromFileName(fileName) {
   return { detectedType: null, detectionSource: "none" };
 }
 
+function getNonNullCount(obj) {
+  if (!obj || typeof obj !== "object") return 0;
+  return Object.values(obj).filter((v) => v != null).length;
+}
+
+function computeCompletenessFromParsed(parsed, diagnostics) {
+  const pages = Number(diagnostics?.extraction?.pages ?? parsed?.reportContent?.pages?.length ?? 0);
+  const minPages = Number(diagnostics?.extraction?.minExpectedPages ?? process.env.PDF_PARSE_MIN_PAGES ?? 20);
+  const typeNonNull = getNonNullCount(parsed?.typeScores);
+  const instinctNonNull = getNonNullCount(parsed?.instinctScores);
+  const centerNonNull = getNonNullCount(parsed?.centerScores);
+  const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
+  const hasMinPages = pages >= minPages;
+  const isComplete = hasMinPages && hasAllChartScores;
+  let incompleteReason = null;
+  if (!hasMinPages) {
+    incompleteReason = `Extracted ${pages} pages, expected at least ${minPages}`;
+  } else if (!hasAllChartScores) {
+    incompleteReason = "Chart numerics incomplete: one or more type, instinct, or center scores are null";
+  }
+  return {
+    isComplete,
+    incompleteReason,
+    pages,
+    minPages,
+    typeNonNull,
+    instinctNonNull,
+    centerNonNull,
+  };
+}
+
 function buildIngestedResultsData({ reportId, safeFileName, storagePath, bucket, sizeBytes, mimeType }) {
   const { detectedType, detectionSource } = inferTypeFromFileName(safeFileName);
 
   return {
     ingestion: {
-      status: "ready",
+      status: "incomplete",
       mode: "admin-import-auto",
       ingestedAt: new Date().toISOString(),
       reportId,
+      parseDiagnostics: {
+        isComplete: false,
+        incompleteReason: "Report metadata imported; parsed profile not yet available.",
+        extraction: {
+          pages: 0,
+          minExpectedPages: Number(process.env.PDF_PARSE_MIN_PAGES || 20),
+        },
+      },
     },
     dashboardContext: {
       detectedType,
@@ -67,6 +107,94 @@ function buildIngestedResultsData({ reportId, safeFileName, storagePath, bucket,
       pendingFields: [],
       generatedAt: new Date().toISOString(),
     },
+    file: {
+      bucket,
+      storagePath,
+      fileName: safeFileName,
+      sizeBytes,
+      mimeType: mimeType || "application/pdf",
+    },
+  };
+}
+
+function buildParsedResultsData({
+  reportId,
+  safeFileName,
+  storagePath,
+  bucket,
+  sizeBytes,
+  mimeType,
+  parsed,
+}) {
+  const parseDiagnostics =
+    parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
+      ? parsed._parseDiagnostics
+      : null;
+  const parseReview =
+    parsed && typeof parsed === "object" && parsed._review && typeof parsed._review === "object"
+      ? parsed._review
+      : null;
+  const recomputed = computeCompletenessFromParsed(parsed, parseDiagnostics);
+  const nextDiagnostics = {
+    ...(parseDiagnostics || {}),
+    isComplete: recomputed.isComplete,
+    incompleteReason: recomputed.incompleteReason,
+    extraction: {
+      ...(parseDiagnostics?.extraction || {}),
+      pages: recomputed.pages,
+      minExpectedPages: recomputed.minPages,
+    },
+    scoreCoverage: {
+      ...(parseDiagnostics?.scoreCoverage || {}),
+      typeScoresNonNull: recomputed.typeNonNull,
+      typeScoresTotal: 9,
+      instinctScoresNonNull: recomputed.instinctNonNull,
+      instinctScoresTotal: 3,
+      centerScoresNonNull: recomputed.centerNonNull,
+      centerScoresTotal: 3,
+    },
+    completedAt: new Date().toISOString(),
+  };
+  const parseStatus = recomputed.isComplete ? "complete" : "incomplete";
+  const reviewStatus = parseReview?.status || (recomputed.isComplete ? "auto_approved" : "needs_review");
+  const fallbackType = inferTypeFromFileName(safeFileName).detectedType;
+
+  return {
+    ingestion: {
+      status: parseStatus === "complete" && reviewStatus !== "needs_review" ? "ready" : "incomplete",
+      mode: "admin-import-auto",
+      ingestedAt: new Date().toISOString(),
+      reportId,
+      parser: {
+        provider: "azure-openai",
+        model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
+      },
+      parseDiagnostics: nextDiagnostics,
+    },
+    dashboardContext: {
+      detectedType: parsed?.primaryType ? String(parsed.primaryType) : fallbackType,
+      detectedTypeSource: `azure-openai:${process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini"}`,
+      sourceFileName: safeFileName,
+      basicFear: parsed?.coreFear || null,
+      basicDesire: parsed?.coreDesire || null,
+      passion: parsed?.passion || null,
+      integrationLevel: parsed?.integrationLevel || null,
+      instinct: parsed?.instinctualVariant || null,
+      reportSummary: parsed?.reportSummary || null,
+    },
+    review: {
+      ...(parseReview || {}),
+      status: reviewStatus,
+      updatedAt: new Date().toISOString(),
+    },
+    extractedContent: {
+      documentSummary: parsed?.reportContent?.documentSummary || null,
+      pages: Array.isArray(parsed?.reportContent?.pages) ? parsed.reportContent.pages : [],
+      sections: Array.isArray(parsed?.reportContent?.sections) ? parsed.reportContent.sections : [],
+      extractedAt: new Date().toISOString(),
+      parserVersion: nextDiagnostics?.parserVersion || "multi-pass-v3",
+    },
+    parsedProfile: parsed,
     file: {
       bucket,
       storagePath,
@@ -141,19 +269,73 @@ async function finalizeImport({
     return NextResponse.json({ error: "Report already imported" }, { status: 409 });
   }
 
-  const report = await createReport({
-    id: reportId,
-    userEmail,
-    enneagramType: inferTypeFromFileName(safeFileName).detectedType,
-    wing: null,
-    resultsData: buildIngestedResultsData({
+  let resultsData = buildIngestedResultsData({
+    reportId,
+    safeFileName,
+    storagePath,
+    bucket,
+    sizeBytes,
+    mimeType,
+  });
+  let parsedPrimaryType = inferTypeFromFileName(safeFileName).detectedType;
+
+  try {
+    console.log("[admin-import] Starting parse for imported report", {
+      reportId,
+      userEmail,
+      bucket,
+      storagePath,
+      fileName: safeFileName,
+      sizeBytes,
+    });
+    const { data: fileBlob, error: downloadErr } = await supabaseAdmin.storage.from(bucket).download(storagePath);
+    if (downloadErr || !fileBlob) {
+      throw new Error(`Failed to download uploaded PDF for parsing: ${downloadErr?.message || "unknown error"}`);
+    }
+    const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
+    const parsed = await parsePdf(pdfBuffer);
+    parsedPrimaryType = parsed?.primaryType ? String(parsed.primaryType) : parsedPrimaryType;
+    resultsData = buildParsedResultsData({
       reportId,
       safeFileName,
       storagePath,
       bucket,
       sizeBytes,
       mimeType,
-    }),
+      parsed,
+    });
+    console.log("[admin-import] Parse completed", {
+      reportId,
+      parsedPrimaryType,
+      parseStatus: resultsData?.ingestion?.status || null,
+      parsePages: resultsData?.ingestion?.parseDiagnostics?.extraction?.pages ?? null,
+      parseMinExpectedPages: resultsData?.ingestion?.parseDiagnostics?.extraction?.minExpectedPages ?? null,
+    });
+  } catch (error) {
+    console.log("[admin-import] Parse failed; keeping metadata-only import", {
+      reportId,
+      details: String(error?.message || error),
+    });
+    resultsData = {
+      ...resultsData,
+      ingestion: {
+        ...(resultsData.ingestion || {}),
+        status: "incomplete",
+        parseDiagnostics: {
+          ...(resultsData?.ingestion?.parseDiagnostics || {}),
+          isComplete: false,
+          incompleteReason: `Parsing failed: ${String(error?.message || "unknown parse error")}`,
+        },
+      },
+    };
+  }
+
+  const report = await createReport({
+    id: reportId,
+    userEmail,
+    enneagramType: parsedPrimaryType,
+    wing: null,
+    resultsData,
     reportPdf: {
       fileName: safeFileName,
       mimeType: mimeType || "application/pdf",
