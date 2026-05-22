@@ -214,6 +214,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
       <div class="report-switch" id="reportSwitchControl">
         <label class="report-switch-label" for="reportSelector">Example Report</label>
         <select class="report-switch-select" id="reportSelector" data-testid="report-selector">
+          <option value="my-report" id="reportSelectorMyReportOption" style="display:none">My Report</option>
           <option value="1">Type 1</option>
           <option value="2">Type 2</option>
           <option value="3">Type 3</option>
@@ -825,6 +826,8 @@ let assignedReportIngested = false;
 let exampleReportInitialized = false;
 let latestReportActiveData = null;
 let currentSignedInUser = null;
+let currentReportViewMode = "example";
+let latestAssignedPdfReport = null;
 
 function setExportPdfState({ visible, enabled }) {
   const exportButton = getExportPdfButton();
@@ -841,6 +844,28 @@ function applyRandomExampleReport() {
   console.log("[report-switch] randomized initial example report to", randomizedType);
   applyReport(randomizedType);
   exampleReportInitialized = true;
+}
+
+function getReportSelector() {
+  return document.getElementById("reportSelector");
+}
+
+function getMyReportSelectorOption() {
+  return document.getElementById("reportSelectorMyReportOption");
+}
+
+function setMyReportOptionVisible(visible) {
+  const option = getMyReportSelectorOption();
+  if (!option) return;
+  option.style.display = visible ? "block" : "none";
+}
+
+function selectMyReportInSelector() {
+  const selector = getReportSelector();
+  if (!selector) return;
+  const option = getMyReportSelectorOption();
+  if (!option || option.style.display === "none") return;
+  selector.value = "my-report";
 }
 
 function normalizeExtractedText(rawText) {
@@ -1544,6 +1569,7 @@ async function refreshReportActiveUi() {
       setExportPdfState({ visible: true, enabled: false });
       setReportActiveChipVisible(false);
       setReportSwitchVisible(true);
+      setMyReportOptionVisible(false);
       return;
     }
 
@@ -1554,16 +1580,22 @@ async function refreshReportActiveUi() {
       isReportActive: isReady,
     });
     latestReportActiveData = data;
+    const isAdmin = hasAdminAccess(currentSignedInUser?.email);
+    setMyReportOptionVisible(isAdmin && isReady);
     setExportPdfState({ visible: true, enabled: isReady });
     setReportActiveChipVisible(isReady);
     setReportSwitchVisible(shouldShowExampleReports);
     console.log("[report-switch] visibility refreshed", {
       isReady,
-      isAdmin: hasAdminAccess(currentSignedInUser?.email),
+      isAdmin,
       shouldShowExampleReports,
     });
     if (isReady) {
       ingestAssignedReportIntoDashboard(data);
+      if (isAdmin) {
+        currentReportViewMode = "my-report";
+        selectMyReportInSelector();
+      }
     }
   } catch (error) {
     console.log("[auth] Failed to refresh report-active status:", error);
@@ -1571,6 +1603,7 @@ async function refreshReportActiveUi() {
     setExportPdfState({ visible: true, enabled: false });
     setReportActiveChipVisible(false);
     setReportSwitchVisible(true);
+    setMyReportOptionVisible(false);
   }
 }
 
@@ -1604,6 +1637,9 @@ function setSignedOutAuthUi() {
   setExportPdfState({ visible: false, enabled: false });
   setReportActiveChipVisible(false);
   setReportSwitchVisible(true);
+  setMyReportOptionVisible(false);
+  currentReportViewMode = "example";
+  latestAssignedPdfReport = null;
   hideAssignedIngestCard();
   assignedReportIngested = false;
   if (!exampleReportInitialized) {
@@ -3421,6 +3457,8 @@ function renderReportFromState(isExampleMode) {
 function applyAssignedPdfReport(payload) {
   try {
     REPORT = buildPdfOnlyReport(payload);
+    latestAssignedPdfReport = REPORT;
+    currentReportViewMode = "my-report";
     reflectionDeck = buildReflectionDeck(REPORT);
     renderReportFromState(false);
   } catch (error) {
@@ -3519,7 +3557,29 @@ window.addEventListener('load', () => {
   const reportSelector = document.getElementById('reportSelector');
   reportSelector.addEventListener('change', event => {
     const selectedType = event.target.value;
+    const isMyReport = selectedType === "my-report";
     console.log('[report-switch] selector changed to', selectedType);
+    if (isMyReport) {
+      currentReportViewMode = "my-report";
+      if (latestAssignedPdfReport) {
+        REPORT = latestAssignedPdfReport;
+        reflectionDeck = buildReflectionDeck(REPORT);
+        renderReportFromState(false);
+        return;
+      }
+      if (latestReportActiveData?.isAuthenticated && latestReportActiveData?.isReportActive) {
+        assignedReportIngested = false;
+        ingestAssignedReportIntoDashboard(latestReportActiveData);
+        return;
+      }
+      alert("No active assigned report was found for this account.");
+      const fallbackType = String(REPORT?.typeNumber || "8");
+      event.target.value = fallbackType;
+      currentReportViewMode = "example";
+      applyReport(fallbackType);
+      return;
+    }
+    currentReportViewMode = "example";
     applyReport(selectedType);
   });
 });
