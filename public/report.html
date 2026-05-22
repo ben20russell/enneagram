@@ -168,7 +168,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .strain-chip-medium{background:var(--gold-lt);color:var(--gold)}
 .strain-chip-low{background:var(--green-lt);color:var(--green)}
 .profile-wheel-wrap{position:relative;height:300px}
-.profile-wheel{position:relative;width:100%;height:100%;overflow:hidden}
+.profile-wheel{position:relative;width:100%;height:100%;overflow:visible}
 .profile-wheel-svg{width:100%;height:100%;display:block}
 .profile-wheel-badge{
   position:absolute;left:12px;top:8px;width:122px;height:122px;border-radius:999px;
@@ -415,7 +415,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </div>
         </div>
 
-        <div class="card mb24">
+        <div class="card mb24" id="deepSummaryCard">
           <div class="ct" id="deepTitle">A Deeper Understanding of the SX — 8</div>
           <div class="g2">
             <div>
@@ -2517,7 +2517,7 @@ function renderProfileWheel() {
   }).join('');
 
   wheelNode.innerHTML = `
-    <svg class="profile-wheel-svg" viewBox="0 0 ${size.width} ${size.height}" role="img" aria-label="Enneagram profile wheel">
+    <svg class="profile-wheel-svg" viewBox="-24 -24 ${size.width + 48} ${size.height + 48}" role="img" aria-label="Enneagram profile wheel">
       <defs>
         <linearGradient id="profileLineRelease" x1="${lineStart.x}" y1="${lineStart.y}" x2="${releaseTarget.x}" y2="${releaseTarget.y}" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stop-color="#0a66d8"></stop>
@@ -4068,6 +4068,11 @@ function renderReportFromState(isExampleMode) {
   setText('deepP2', REPORT.deep[1]);
   setText('deepP3', REPORT.deep[2]);
   setText('deepP4', REPORT.deep[3]);
+  const deepSummaryCard = document.getElementById('deepSummaryCard');
+  if (deepSummaryCard) {
+    const isAssignedPdfSummary = /assigned\s+pdf\s+summary/i.test(String(REPORT.deepTitle || ""));
+    deepSummaryCard.style.display = isAssignedPdfSummary ? "none" : "block";
+  }
   document.getElementById('languageTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('communication', 12, 'var(--blue)')}</span></span>Type ${REPORT.typeNumber} Communication Pattern`;
   setText('languageMeta', REPORT.meta);
   setText('refTypeTag', `Type ${REPORT.typeNumber} · ${String(REPORT.instinct || "").split(' — ')[0]}`);
