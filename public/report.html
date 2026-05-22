@@ -107,33 +107,17 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
   background:#fff;
   padding:10px 12px;
   display:flex;
-  align-items:flex-start;
+  align-items:center;
   justify-content:space-between;
   gap:12px;
+  cursor:pointer;
 }
+.search-result:hover{border-color:var(--blue)}
 .search-result-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px}
 .search-result-meta{font-size:11px;color:var(--text3)}
 .search-jump{border:1px solid var(--border2);background:#fff;color:var(--text2);border-radius:999px;padding:5px 10px;font:700 10px var(--font-sans);letter-spacing:.05em;text-transform:uppercase;cursor:pointer;flex-shrink:0}
 .search-jump:hover{border-color:var(--blue);color:var(--blue)}
 .search-hit{outline:3px solid rgba(10,102,216,.35);outline-offset:2px;transition:outline-color .6s ease}
-.search-popout-trigger{
-  position:fixed;
-  right:22px;
-  bottom:74px;
-  z-index:120;
-  border:none;
-  border-radius:999px;
-  background:linear-gradient(135deg,#0a66d8,#0f9e83);
-  color:#fff;
-  padding:10px 14px;
-  font:700 12px var(--font-sans);
-  display:inline-flex;
-  align-items:center;
-  gap:7px;
-  cursor:pointer;
-  box-shadow:0 8px 20px rgba(10,35,66,.2);
-}
-.search-popout-trigger:hover{filter:brightness(1.04)}
 .search-popout-overlay{
   position:fixed;
   inset:0;
@@ -162,8 +146,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .search-popout-close:hover{color:var(--text)}
 .sidebar-col{position:fixed;right:22px;bottom:22px;z-index:50;width:min(360px,calc(100vw - 24px))}
 @media(max-width:900px){.sidebar-col{right:12px;bottom:12px;width:min(360px,calc(100vw - 16px))}}
-@media(max-width:900px){.search-popout-trigger{right:12px;bottom:64px}}
-@media(max-width:760px){.header{padding:18px 16px}.header-top{align-items:flex-start;flex-direction:column;gap:10px}.eyebrow{width:100%}.header-auth{width:100%;justify-content:flex-start}.header-controls{margin-top:10px;padding-left:0}.report-switch{justify-content:flex-start;flex-wrap:wrap}.auth-btn{padding:7px 10px;font-size:11px}.nav-wrap{display:none}.mobile-menu-toggle{display:inline-flex}.mobile-menu-overlay.show{display:block}.focus-grid{grid-template-columns:1fr}.focus-result-grid{column-count:1}.search-popout-trigger{padding:9px 12px;font-size:11px}.search-popout-panel{width:calc(100vw - 16px)}}
+@media(max-width:760px){.header{padding:18px 16px}.header-top{align-items:flex-start;flex-direction:column;gap:10px}.eyebrow{width:100%}.header-auth{width:100%;justify-content:flex-start}.header-controls{margin-top:10px;padding-left:0}.report-switch{justify-content:flex-start;flex-wrap:wrap}.auth-btn{padding:7px 10px;font-size:11px}.nav-wrap{display:none}.mobile-menu-toggle{display:inline-flex}.mobile-menu-overlay.show{display:block}.focus-grid{grid-template-columns:1fr}.focus-result-grid{column-count:1}.search-popout-panel{width:calc(100vw - 16px)}}
 .nav-wrap{border:1px solid var(--border);border-radius:14px;padding:6px;background:rgba(255,255,255,.86);overflow-x:auto;scrollbar-width:none;margin-bottom:22px}
 .nav-wrap::-webkit-scrollbar{display:none}
 .nav{display:flex;gap:6px;padding:0}
@@ -339,12 +322,6 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
     <path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>
   </svg>
 </button>
-<button class="search-popout-trigger" id="searchPopoutTrigger" type="button" aria-label="Open search">
-  <span style="display:inline-flex;line-height:0">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.2-3.2"/></svg>
-  </span>
-  Search
-</button>
 <div class="search-popout-overlay" id="searchPopoutOverlay" aria-hidden="true">
   <div class="search-popout-panel" id="searchPopoutPanel" role="dialog" aria-modal="true" aria-label="Search report">
     <div class="search-popout-head">
@@ -354,12 +331,11 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
       </button>
     </div>
     <div class="search-wrap">
-      <p style="font-size:13px;color:var(--text2)">Search your report content and jump directly to the matching tab and box.</p>
+      <p style="font-size:13px;color:var(--text2)">Search your report and jump directly to specific results.</p>
       <div class="search-row">
-        <input class="search-input" id="searchEverywhereInput" type="text" placeholder="Try: core fear, strain, leadership, communication..." />
+        <input class="search-input" id="searchEverywhereInput" type="text" placeholder="Try: leadership, communication, core desire..." />
         <button class="search-btn" id="searchEverywhereButton" type="button">Search</button>
       </div>
-      <div class="focus-note" id="searchEverywhereStatus">Enter a keyword or phrase to find relevant sections.</div>
       <div class="search-results" id="searchEverywhereResults"></div>
     </div>
   </div>
@@ -375,6 +351,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
     </button>
   </div>
   <div class="mobile-menu-list">
+    <button class="mobile-menu-item" type="button" onclick="toggleSearchPopout(true);toggleMobileMenu(false)">Search</button>
     <button class="mobile-menu-item active" data-sec="overview" onclick="showSec('overview');toggleMobileMenu(false)">Overview</button>
     <button class="mobile-menu-item" data-sec="centers" onclick="showSec('centers');toggleMobileMenu(false)">Centers &amp; Instincts</button>
     <button class="mobile-menu-item" data-sec="strengths" onclick="showSec('strengths');toggleMobileMenu(false)">Strengths &amp; Gaps</button>
@@ -428,6 +405,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
     <div class="main-col">
       <div class="nav-wrap">
         <nav class="nav">
+          <button type="button" onclick="toggleSearchPopout(true)">Search</button>
           <button class="active" data-sec="overview" onclick="showSec('overview')">Overview</button>
           <button data-sec="centers" onclick="showSec('centers')">Centers &amp; Instincts</button>
           <button data-sec="strengths" onclick="showSec('strengths')">Strengths &amp; Gaps</button>
@@ -2722,6 +2700,7 @@ function iconSvg(name, size = 14, color = 'currentColor') {
 
 function decorateInterfaceIcons() {
   const navIconMap = {
+    Search: 'search',
     Overview: 'overview',
     'Centers & Instincts': 'centers',
     'Strengths & Gaps': 'strengths',
@@ -4382,8 +4361,6 @@ window.addEventListener('load', () => {
       }
     });
   }
-  const searchPopoutTrigger = document.getElementById('searchPopoutTrigger');
-  if (searchPopoutTrigger) searchPopoutTrigger.addEventListener('click', () => toggleSearchPopout(true));
   const searchPopoutClose = document.getElementById('searchPopoutClose');
   if (searchPopoutClose) searchPopoutClose.addEventListener('click', () => toggleSearchPopout(false));
   const searchPopoutOverlay = document.getElementById('searchPopoutOverlay');
