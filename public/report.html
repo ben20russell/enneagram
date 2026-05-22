@@ -1696,8 +1696,11 @@ async function ingestAssignedReportIntoDashboard(data) {
       reportContentText,
     });
 
-    if (!detectedType || !basicFear || !basicDesire || !passion || !instinct || !hasInformativeScoreMap(profileScores, 3)) {
+    if (data?.reportSignedUrl) {
       pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
+    }
+
+    if (!detectedType || !basicFear || !basicDesire || !passion || !instinct || !hasInformativeScoreMap(profileScores, 3)) {
       const detectedTypeResult = inferTypeFromPdfText(pdfText);
       const shouldOverrideTypeFromPdf =
         Boolean(detectedTypeResult?.type) &&
@@ -1897,9 +1900,19 @@ async function ingestAssignedReportIntoDashboard(data) {
     }
 
     const proInsights = buildProInsightsFromPdfText(pdfText);
-    const feedbackGuideMatrix = extractFeedbackGuideFromReportContent(parsedProfile);
-    const strainQualitativeWriteups = extractStrainQualitativeFromReportContent(parsedProfile);
-    const developmentExercises = extractDevelopmentExercisesFromReportContent(parsedProfile);
+    const feedbackGuideMatrix = mergeFeedbackGuideRows(
+      extractFeedbackGuideFromReportContent(parsedProfile),
+      extractFeedbackGuideMatrix(pdfText),
+    );
+    const strainQualitativeWriteups = mergeCategoryWriteups(
+      extractStrainQualitativeFromReportContent(parsedProfile),
+      extractStrainQualitativeWriteups(pdfText),
+      ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"],
+    );
+    const developmentExercises = mergeDevelopmentExercises(
+      extractDevelopmentExercisesFromReportContent(parsedProfile),
+      extractDevelopmentExercises(pdfText),
+    );
     const instinctConflictInsights = extractInstinctConflictInsightsFromReportContent(parsedProfile, instinct);
     const dataQualityDiagnostics = buildDataQualityDiagnostics({
       parsedProfile,
@@ -3545,6 +3558,51 @@ function firstPresentSnippet(values, fallback = "Not detected in parsed PDF text
   return fallback;
 }
 
+function isMissingExtractedText(value) {
+  return /not detected/i.test(String(value || ""));
+}
+
+function mergeFeedbackGuideRows(structuredRows, pdfRows) {
+  const fallbackRows = Array.isArray(pdfRows) ? pdfRows : [];
+  const primaryRows = Array.isArray(structuredRows) ? structuredRows : [];
+  return Array.from({ length: 9 }, (_, index) => {
+    const primary = primaryRows[index] || null;
+    const fallback = fallbackRows[index] || null;
+    const primaryGuidance = String(primary?.guidance || "");
+    const guidance = !isMissingExtractedText(primaryGuidance)
+      ? primaryGuidance
+      : String(fallback?.guidance || primaryGuidance || "Not detected in assigned PDF.");
+    return {
+      type: primary?.type || fallback?.type || `Type ${index + 1}`,
+      label: primary?.label || fallback?.label || "",
+      guidance,
+    };
+  });
+}
+
+function mergeCategoryWriteups(structuredRows, pdfRows, categories) {
+  const primaryRows = Array.isArray(structuredRows) ? structuredRows : [];
+  const fallbackRows = Array.isArray(pdfRows) ? pdfRows : [];
+  return categories.map((category) => {
+    const primary = primaryRows.find((row) => String(row?.category || "").toLowerCase() === String(category).toLowerCase()) || null;
+    const fallback = fallbackRows.find((row) => String(row?.category || "").toLowerCase() === String(category).toLowerCase()) || null;
+    const primaryText = String(primary?.text || "");
+    const text = !isMissingExtractedText(primaryText)
+      ? primaryText
+      : String(fallback?.text || primaryText || "Not detected in assigned PDF.");
+    return { category, text };
+  });
+}
+
+function mergeDevelopmentExercises(structuredExercises, pdfExercises) {
+  const primary = Array.isArray(structuredExercises) ? structuredExercises : [];
+  const fallback = Array.isArray(pdfExercises) ? pdfExercises : [];
+  const merged = primary.filter((row) => !isMissingExtractedText(row?.text));
+  if (merged.length) return merged;
+  const fallbackFiltered = fallback.filter((row) => !isMissingExtractedText(row?.text));
+  return fallbackFiltered.length ? fallbackFiltered : primary;
+}
+
 function buildProInsightsFromPdfText(pdfText) {
   return {
     enneagramBasics: firstPresentSnippet([
@@ -3604,6 +3662,37 @@ function extractFeedbackGuideMatrix(pdfText) {
       guidance: cleanPdfExtractedValue(match?.[1] || "") || "Not detected in assigned PDF.",
     });
   }
+
+  const styleHeadingByType = {
+    1: "Strict Perfectionist",
+    2: "Considerate Helper",
+    3: "Competitive Achiever",
+    4: "Intense Creative",
+    5: "Quiet Specialist",
+    6: "Loyal Sceptic",
+    7: "Enthusiastic Visionary",
+    8: "Active Controller",
+    9: "Adaptive Peacemaker",
+  };
+  const allHeadings = Object.values(styleHeadingByType);
+  const styleText = feedbackBlock || normalized;
+  for (let type = 1; type <= 9; type += 1) {
+    if (!isMissingExtractedText(rows[type - 1]?.guidance)) continue;
+    const heading = styleHeadingByType[type];
+    const otherHeadings = allHeadings
+      .filter((value) => value !== heading)
+      .map((value) => escapeRegex(value))
+      .join("|");
+    const boundary = otherHeadings
+      ? `(?:${otherHeadings}|Feedback\\s*Guide|$)`
+      : "(?:Feedback\\s*Guide|$)";
+    const stylePattern = new RegExp(`${escapeRegex(heading)}\\s*([\\s\\S]{24,960}?)(?=${boundary})`, "i");
+    const styleMatch = styleText.match(stylePattern);
+    const extracted = cleanPdfExtractedValue(styleMatch?.[1] || "");
+    if (extracted) {
+      rows[type - 1].guidance = extracted;
+    }
+  }
   return rows;
 }
 
@@ -3623,6 +3712,18 @@ function extractStrainQualitativeWriteups(pdfText) {
   const strainBlock = strainBlockMatch?.[0] || normalized;
 
   return categories.map((category, index) => {
+    const levelPattern = new RegExp(
+      `perceived\\s+level\\s+of\\s+${escapeRegex(category)}\\s+strain\\s+is\\s+(LOW|MEDIUM|HIGH)\\.?([\\s\\S]{0,520}?)(?=Ben\\s+your\\s+perceived\\s+level\\s+of\\s+|The\\s+lines\\s+connecting|$)`,
+      "i",
+    );
+    const levelMatch = normalized.match(levelPattern);
+    if (levelMatch) {
+      const prefix = `${category} strain is ${String(levelMatch[1] || "").toUpperCase()}.`;
+      const detail = cleanPdfExtractedValue(levelMatch[2] || "");
+      const combined = cleanPdfExtractedValue(`${prefix} ${detail}`) || prefix;
+      return { category, text: combined };
+    }
+
     const nextLabels = categories.slice(index + 1);
     const nextBoundary = nextLabels.length ? `(?:${nextLabels.map(escapeRegex).join("|")})\\b` : "$";
     const pattern = new RegExp(`${escapeRegex(category)}\\s*[:\\-]?\\s*([\\s\\S]{10,280}?)(?=\\s*${nextBoundary})`, "i");
