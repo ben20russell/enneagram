@@ -817,9 +817,14 @@ function setReportSwitchVisible(visible) {
   control.style.display = visible ? "flex" : "none";
 }
 
+function canViewExampleReports({ email, isReportActive }) {
+  return !Boolean(isReportActive) || hasAdminAccess(email);
+}
+
 let assignedReportIngested = false;
 let exampleReportInitialized = false;
 let latestReportActiveData = null;
+let currentSignedInUser = null;
 
 function setExportPdfState({ visible, enabled }) {
   const exportButton = getExportPdfButton();
@@ -1544,10 +1549,19 @@ async function refreshReportActiveUi() {
 
     const data = await response.json().catch(() => ({}));
     const isReady = Boolean(data?.isAuthenticated) && Boolean(data?.isReportActive);
+    const shouldShowExampleReports = canViewExampleReports({
+      email: currentSignedInUser?.email,
+      isReportActive: isReady,
+    });
     latestReportActiveData = data;
     setExportPdfState({ visible: true, enabled: isReady });
     setReportActiveChipVisible(isReady);
-    setReportSwitchVisible(!isReady);
+    setReportSwitchVisible(shouldShowExampleReports);
+    console.log("[report-switch] visibility refreshed", {
+      isReady,
+      isAdmin: hasAdminAccess(currentSignedInUser?.email),
+      shouldShowExampleReports,
+    });
     if (isReady) {
       ingestAssignedReportIntoDashboard(data);
     }
@@ -1583,6 +1597,7 @@ function setSignedOutAuthUi() {
   const button = getAuthButton();
   if (!button) return;
 
+  currentSignedInUser = null;
   closeAuthMenu();
   updateAdminPageLink(null);
   latestReportActiveData = null;
@@ -1607,6 +1622,7 @@ function setSignedInAuthUi(user) {
   const button = getAuthButton();
   if (!button) return;
 
+  currentSignedInUser = user || null;
   closeAuthMenu();
   updateAdminPageLink(user?.email);
   setExportPdfState({ visible: true, enabled: false });
