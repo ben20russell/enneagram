@@ -2689,8 +2689,21 @@ function setBarRow(barId, valueId, value, options = {}) {
   const numeric = Number(value);
   const safeValue = Number.isFinite(numeric) ? Math.max(0, Math.min(100, Math.round(numeric))) : 0;
   if (barNode) barNode.style.width = `${safeValue}%`;
-  if (valueNode) valueNode.textContent = String(safeValue);
+  if (valueNode) {
+    const label = typeof options.valueFormatter === "function"
+      ? options.valueFormatter(safeValue)
+      : String(safeValue);
+    valueNode.textContent = String(label);
+  }
   if (valueNode && options.color) valueNode.style.color = options.color;
+}
+
+function scoreBandLabel(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "Low";
+  if (numeric >= 67) return "High";
+  if (numeric >= 34) return "Medium";
+  return "Low";
 }
 
 function firstPresentSnippet(values, fallback = "Not detected in parsed PDF text.") {
@@ -2827,6 +2840,41 @@ function getReportContentPages(parsedProfile) {
   return Array.isArray(parsedProfile?.reportContent?.pages) ? parsedProfile.reportContent.pages : [];
 }
 
+const PDF_PAGE_ANCHORS = {
+  coreType: [8],
+  subtypesInstincts: [10],
+  centersOfExpression: [12, 13],
+  selfAwarenessIntegration: [16, 17],
+  strainProfile: {
+    overall: [18],
+    vocational: [20],
+    environmental: [20],
+    physical: [21],
+    interpersonal: [21],
+    psychological: [22],
+    happiness: [22],
+  },
+  communication: [24],
+  feedbackGuide: [28, 29],
+  developmentExercises: [7, 11, 13, 17, 19, 28, 31, 36],
+};
+
+function getPageAnchoredText(parsedProfile, pageNumbers) {
+  const desired = new Set((Array.isArray(pageNumbers) ? pageNumbers : []).map((n) => Number(n)));
+  if (!desired.size) return "";
+  const pages = getReportContentPages(parsedProfile);
+  return normalizeExtractedText(
+    pages
+      .filter((page) => desired.has(Number(page?.pageNumber)))
+      .map((page) =>
+        [page?.heading, page?.sectionTitle, page?.extractedText, ...(Array.isArray(page?.keyDataPoints) ? page.keyDataPoints : [])]
+          .filter(Boolean)
+          .join(" "),
+      )
+      .join(" "),
+  );
+}
+
 function getSectionByTitle(parsedProfile, matcher) {
   const sections = getReportContentSections(parsedProfile);
   return sections.find((section) => matcher(String(section?.sectionTitle || section?.title || ""))) || null;
@@ -2853,7 +2901,13 @@ function getSectionCompositeText(parsedProfile, section) {
 
 function extractFeedbackGuideFromReportContent(parsedProfile) {
   const communicationSection = getSectionByTitle(parsedProfile, (title) => /communication|feedback/i.test(title));
-  const text = getSectionCompositeText(parsedProfile, communicationSection);
+  const text = normalizeExtractedText(
+    [
+      getSectionCompositeText(parsedProfile, communicationSection),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.communication),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.feedbackGuide),
+    ].join(" "),
+  );
   if (!text) {
     return Array.from({ length: 9 }, (_, idx) => ({
       type: `Type ${idx + 1}`,
@@ -2889,7 +2943,18 @@ function extractFeedbackGuideFromReportContent(parsedProfile) {
 
 function extractStrainQualitativeFromReportContent(parsedProfile) {
   const strainSection = getSectionByTitle(parsedProfile, (title) => /strain/i.test(title));
-  const text = getSectionCompositeText(parsedProfile, strainSection);
+  const text = normalizeExtractedText(
+    [
+      getSectionCompositeText(parsedProfile, strainSection),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.strainProfile.overall),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.strainProfile.vocational),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.strainProfile.environmental),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.strainProfile.physical),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.strainProfile.interpersonal),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.strainProfile.psychological),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.strainProfile.happiness),
+    ].join(" "),
+  );
   const categories = ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"];
   if (!text) {
     return categories.map((category) => ({ category, text: "Not detected in structured report content." }));
@@ -2910,7 +2975,12 @@ function extractStrainQualitativeFromReportContent(parsedProfile) {
 
 function extractDevelopmentExercisesFromReportContent(parsedProfile) {
   const devSection = getSectionByTitle(parsedProfile, (title) => /development/i.test(title));
-  const text = getSectionCompositeText(parsedProfile, devSection);
+  const text = normalizeExtractedText(
+    [
+      getSectionCompositeText(parsedProfile, devSection),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.developmentExercises),
+    ].join(" "),
+  );
   const matches = [];
   if (text) {
     const pattern = /DEVELOPMENT\s*EXERCISE\s*[:\-]?\s*([\s\S]{16,420}?)(?=DEVELOPMENT\s*EXERCISE|Key\s*Challenges|$)/gi;
@@ -2924,8 +2994,9 @@ function extractDevelopmentExercisesFromReportContent(parsedProfile) {
   }
   if (!matches.length) {
     const pages = getReportContentPages(parsedProfile);
+    const desiredDevPages = new Set(PDF_PAGE_ANCHORS.developmentExercises.map((n) => Number(n)));
     const fallback = pages
-      .filter((page) => /development/i.test(String(page?.heading || "")))
+      .filter((page) => desiredDevPages.has(Number(page?.pageNumber)) || /development/i.test(String(page?.heading || "")))
       .flatMap((page) => (Array.isArray(page?.keyDataPoints) ? page.keyDataPoints : []))
       .map((line) => cleanPdfExtractedValue(line))
       .filter(Boolean)
@@ -3274,9 +3345,9 @@ function renderReportFromState(isExampleMode) {
   );
 
   const centerScores = REPORT.centerScoresRaw || {};
-  setBarRow('centerBodyBar', 'centerBodyVal', centerScores.body ?? 47);
-  setBarRow('centerHeartBar', 'centerHeartVal', centerScores.heart ?? 27);
-  setBarRow('centerHeadBar', 'centerHeadVal', centerScores.head ?? 25);
+  setBarRow('centerBodyBar', 'centerBodyVal', centerScores.body ?? 47, { valueFormatter: scoreBandLabel });
+  setBarRow('centerHeartBar', 'centerHeartVal', centerScores.heart ?? 27, { valueFormatter: scoreBandLabel });
+  setBarRow('centerHeadBar', 'centerHeadVal', centerScores.head ?? 25, { valueFormatter: scoreBandLabel });
 
   const instinctScores = REPORT.instinctScoresRaw || {};
   setBarRow('instinctSxBar', 'instinctSxVal', instinctScores.sexual ?? 54);
@@ -3288,18 +3359,18 @@ function renderReportFromState(isExampleMode) {
   setBarRow('interactionReactiveBar', 'interactionReactiveVal', interaction.reactive ?? 51);
 
   const strain = REPORT.strainScoresRaw || {};
-  setBarRow('strainHappinessBar', 'strainHappinessVal', strain.happiness ?? REPORT.strain?.[0] ?? 46, { color: 'var(--red)' });
-  setBarRow('strainVocationalBar', 'strainVocationalVal', strain.vocational ?? REPORT.strain?.[1] ?? 33);
-  setBarRow('strainInterpersonalBar', 'strainInterpersonalVal', strain.interpersonal ?? REPORT.strain?.[2] ?? 26);
-  setBarRow('strainPhysicalBar', 'strainPhysicalVal', strain.physical ?? REPORT.strain?.[3] ?? 33);
-  setBarRow('strainEnvironmentalBar', 'strainEnvironmentalVal', strain.environmental ?? REPORT.strain?.[4] ?? 6);
-  setBarRow('strainPsychologicalBar', 'strainPsychologicalVal', strain.psychological ?? REPORT.strain?.[5] ?? 6);
+  setBarRow('strainHappinessBar', 'strainHappinessVal', strain.happiness ?? REPORT.strain?.[0] ?? 46, { color: 'var(--red)', valueFormatter: scoreBandLabel });
+  setBarRow('strainVocationalBar', 'strainVocationalVal', strain.vocational ?? REPORT.strain?.[1] ?? 33, { valueFormatter: scoreBandLabel });
+  setBarRow('strainInterpersonalBar', 'strainInterpersonalVal', strain.interpersonal ?? REPORT.strain?.[2] ?? 26, { valueFormatter: scoreBandLabel });
+  setBarRow('strainPhysicalBar', 'strainPhysicalVal', strain.physical ?? REPORT.strain?.[3] ?? 33, { valueFormatter: scoreBandLabel });
+  setBarRow('strainEnvironmentalBar', 'strainEnvironmentalVal', strain.environmental ?? REPORT.strain?.[4] ?? 6, { valueFormatter: scoreBandLabel });
+  setBarRow('strainPsychologicalBar', 'strainPsychologicalVal', strain.psychological ?? REPORT.strain?.[5] ?? 6, { valueFormatter: scoreBandLabel });
   const overallNumeric = Number(strain.overall);
   const overall = Number.isFinite(overallNumeric)
     ? Math.max(0, Math.min(100, Math.round(overallNumeric)))
     : Math.round((REPORT.strain || []).reduce((a, b) => a + Number(b || 0), 0) / Math.max((REPORT.strain || []).length, 1));
-  setText('strainOverallScore', `Overall score: ${overall}`);
-  const level = overall >= 40 ? "HIGH" : overall >= 20 ? "MEDIUM" : "LOW";
+  const level = scoreBandLabel(overall).toUpperCase();
+  setText('strainOverallScore', `Overall level: ${level}`);
   setText('strainOverallLabel', `Overall strain is ${level}.`);
   console.log('[charts] updated all chart and bar datasets', {
     profile: REPORT.profile,
