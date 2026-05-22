@@ -3488,6 +3488,11 @@ const STRAIN_BREAKDOWN_ORDER = [
   { key: 'environmental', label: 'Environmental', fallbackIndex: 4, barColor: 'var(--green)' },
   { key: 'psychological', label: 'Psychological', fallbackIndex: 5, barColor: 'var(--green)' },
 ];
+const STRAIN_LEVEL_SORT_RANK = { High: 0, Medium: 1, Low: 2, "N/A": 3 };
+
+function getStrainLevelSortRank(level) {
+  return STRAIN_LEVEL_SORT_RANK[level] ?? STRAIN_LEVEL_SORT_RANK["N/A"];
+}
 
 function renderStrainBreakdownRows(strainScoresRaw, fallbackStrainScores) {
   const container = document.getElementById('strainBreakdownRows');
@@ -3497,8 +3502,11 @@ function renderStrainBreakdownRows(strainScoresRaw, fallbackStrainScores) {
     const candidate = Number(strainScoresRaw?.[item.key] ?? fallbackStrainScores?.[item.fallbackIndex]);
     const hasValue = Number.isFinite(candidate);
     const score = hasValue ? Math.max(0, Math.min(100, Math.round(candidate))) : null;
-    return { ...item, hasValue, score };
+    const band = hasValue ? scoreBandLabel(score) : "N/A";
+    return { ...item, hasValue, score, band };
   }).sort((a, b) => {
+    const bandOrder = getStrainLevelSortRank(a.band) - getStrainLevelSortRank(b.band);
+    if (bandOrder !== 0) return bandOrder;
     if (a.hasValue && b.hasValue) return b.score - a.score || a.fallbackIndex - b.fallbackIndex;
     if (a.hasValue) return -1;
     if (b.hasValue) return 1;
@@ -3509,11 +3517,11 @@ function renderStrainBreakdownRows(strainScoresRaw, fallbackStrainScores) {
     key: row.key,
     label: row.label,
     score: row.score,
-    band: row.hasValue ? scoreBandLabel(row.score) : "N/A",
+    band: row.band,
   })));
 
   container.innerHTML = rows.map((row) => {
-    const valueLabel = row.hasValue ? scoreBandLabel(row.score) : 'N/A';
+    const valueLabel = row.band;
     const chipClass =
       valueLabel === "High" ? "strain-chip-high" :
       valueLabel === "Medium" ? "strain-chip-medium" :
@@ -4532,14 +4540,31 @@ function renderReportFromState(isExampleMode) {
   const narrativeMap = new Map(
     strainNarratives.map((item) => [String(item.category || "").toLowerCase(), formatOptionalText(item.text, "Not detected in assigned PDF.")]),
   );
+  const overallLevel = Number.isFinite(overall) ? scoreBandLabel(overall) : "Low";
+  const sortedAreaRows = STRAIN_BREAKDOWN_ORDER
+    .map((item) => {
+      const score = getStrainValueByKey(strain, REPORT.strain, item.key);
+      return {
+        title: item.label,
+        key: item.key,
+        score,
+        level: scoreBandLabel(score),
+        fallbackIndex: item.fallbackIndex,
+      };
+    })
+    .sort((a, b) => {
+      const bandOrder = getStrainLevelSortRank(a.level) - getStrainLevelSortRank(b.level);
+      if (bandOrder !== 0) return bandOrder;
+      if (Number.isFinite(a.score) && Number.isFinite(b.score)) {
+        return b.score - a.score || a.fallbackIndex - b.fallbackIndex;
+      }
+      if (Number.isFinite(a.score)) return -1;
+      if (Number.isFinite(b.score)) return 1;
+      return a.fallbackIndex - b.fallbackIndex;
+    });
   const strainWriteupRows = [
-    { title: "Overall Strain", key: "overall", level: Number.isFinite(overall) ? scoreBandLabel(overall) : "Low" },
-    { title: "Vocational", key: "vocational", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "vocational")) },
-    { title: "Environmental", key: "environmental", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "environmental")) },
-    { title: "Physical", key: "physical", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "physical")) },
-    { title: "Interpersonal", key: "interpersonal", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "interpersonal")) },
-    { title: "Psychological", key: "psychological", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "psychological")) },
-    { title: "Happiness", key: "happiness", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "happiness")) },
+    { title: "Overall Strain", key: "overall", score: overall, level: overallLevel, fallbackIndex: -1 },
+    ...sortedAreaRows,
   ];
   setHtml(
     'strainWriteupCards',
