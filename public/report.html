@@ -866,15 +866,15 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
       <div id="sec-growth" class="sec">
         <div class="g2 mb24">
           <div class="card">
-            <div class="ct">Stretch Point — Type 2</div>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:10px">Stretch Point links Type 8 with Type 2 themes such as empathy, warmth, and relational care.</p>
-            <p style="font-size:14px;color:var(--text2)">Consciously identifying the positive traits you appreciate in others can release tension and unlock compassion beyond self-interest.</p>
-            <div class="quote"><p>Release through surrender to the vulnerability of the power of love.</p></div>
+            <div class="ct" id="growthStretchTitle">Stretch Point — Type 2</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="growthStretchBody">Stretch Point links Type 8 with Type 2 themes such as empathy, warmth, and relational care.</p>
+            <p style="font-size:14px;color:var(--text2)" id="growthStretchFollowup">Consciously identifying the positive traits you appreciate in others can release tension and unlock compassion beyond self-interest.</p>
+            <div class="quote"><p id="growthStretchQuote">Release through surrender to the vulnerability of the power of love.</p></div>
           </div>
           <div class="card">
-            <div class="ct">Release Point — Type 5</div>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:10px">Release Point links Type 8 with Type 5 themes such as withdrawal, strategic distance, and analytic detachment under pressure.</p>
-            <div class="ibox"><p>Making time to recharge alone helps prevent overdrive and makes it less likely that anger will fly off the handle.</p></div>
+            <div class="ct" id="growthReleaseTitle">Release Point — Type 5</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="growthReleaseBody">Release Point links Type 8 with Type 5 themes such as withdrawal, strategic distance, and analytic detachment under pressure.</p>
+            <div class="ibox"><p id="growthReleaseIbox">Making time to recharge alone helps prevent overdrive and makes it less likely that anger will fly off the handle.</p></div>
           </div>
         </div>
 
@@ -4336,6 +4336,21 @@ function buildConflictCopyForDisplay(report) {
   return { primary, secondary };
 }
 
+function buildGrowthCopyForDisplay(report) {
+  const typeNumber = String(report?.typeNumber || "?");
+  const stretch = formatTypeLine(report?.stretch || "Type ?");
+  const release = formatTypeLine(report?.release || "Type ?");
+  return {
+    stretchTitle: `Stretch Point — ${stretch}`,
+    stretchBody: `Stretch Point links Type ${typeNumber} with ${stretch} themes that support growth through new perspectives and behaviors.`,
+    stretchFollowup: `Integrating strengths from ${stretch} helps balance your default pattern and expands your range under pressure.`,
+    stretchQuote: `Stretch through intentional practice of ${stretch} qualities.`,
+    releaseTitle: `Release Point — ${release}`,
+    releaseBody: `Release Point links Type ${typeNumber} with ${release} themes that help you regulate strain and restore clarity.`,
+    releaseIbox: `Returning to ${release} strengths can reduce reactivity and support steadier decision making.`,
+  };
+}
+
 function renderReportFromState(isExampleMode) {
   setText('typeBadge', REPORT.typeNumber);
   setText('headerSubtitle', `Type ${REPORT.typeNumber} · ${REPORT.instinct}`);
@@ -4345,11 +4360,19 @@ function renderReportFromState(isExampleMode) {
   setText('keywordValue', REPORT.keyword);
   const instinctCopy = buildInstinctCopyForDisplay(REPORT);
   const conflictCopy = buildConflictCopyForDisplay(REPORT);
+  const growthCopy = buildGrowthCopyForDisplay(REPORT);
   setText('instinctSummaryLead', instinctCopy.lead);
   setText('instinctNarrativePrimary', instinctCopy.primary);
   setText('instinctNarrativeSecondary', instinctCopy.secondary);
   setText('conflictNarrativePrimary', conflictCopy.primary);
   setText('conflictNarrativeSecondary', conflictCopy.secondary);
+  setText('growthStretchTitle', growthCopy.stretchTitle);
+  setText('growthStretchBody', growthCopy.stretchBody);
+  setText('growthStretchFollowup', growthCopy.stretchFollowup);
+  setText('growthStretchQuote', growthCopy.stretchQuote);
+  setText('growthReleaseTitle', growthCopy.releaseTitle);
+  setText('growthReleaseBody', growthCopy.releaseBody);
+  setText('growthReleaseIbox', growthCopy.releaseIbox);
   setText('profileWheelBadgeType', REPORT.typeNumber);
   setText('profileWheelBadgeKeyword', String(REPORT.keyword || '').toUpperCase());
   setText('profileWheelBadgeInstinct', String(REPORT.instinct || '').split('—')[0].trim() || 'N/A');
