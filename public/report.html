@@ -797,10 +797,10 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
               <div style="font-size:12px;color:var(--text3)" id="strainOverallScore">Overall score: 26</div>
             </div>
             <div id="strainBreakdownRows" style="margin-top:12px">
-              <div class="brow"><div class="blbl">Happiness</div><span class="chip strain-chip-low">Low</span></div>
               <div class="brow"><div class="blbl">Vocational</div><span class="chip strain-chip-medium">Medium</span></div>
               <div class="brow"><div class="blbl">Interpersonal</div><span class="chip strain-chip-medium">Medium</span></div>
               <div class="brow"><div class="blbl">Physical</div><span class="chip strain-chip-medium">Medium</span></div>
+              <div class="brow"><div class="blbl">Happiness</div><span class="chip strain-chip-low">Low</span></div>
               <div class="brow"><div class="blbl">Environmental</div><span class="chip strain-chip-low">Low</span></div>
               <div class="brow"><div class="blbl">Psychological</div><span class="chip strain-chip-low">Low</span></div>
             </div>
@@ -823,11 +823,11 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
         <div id="strainWriteupCards" class="strain-cards-pack mb24" data-testid="strain-writeup-cards">
           <div class="card"><div class="ct">Overall Strain — Medium</div><div class="chip cg" style="margin-bottom:10px">Moderate load detected</div><p style="font-size:13px;color:var(--text2)">Overall strain is currently moderate across the report context.</p></div>
           <div class="card"><div class="ct">Vocational — Medium</div><div class="chip cg" style="margin-bottom:10px">Balanced but mixed</div><p style="font-size:13px;color:var(--text2)">Work-related strain appears present but manageable.</p></div>
-          <div class="card"><div class="ct">Environmental — Low</div><div class="chip cgn" style="margin-bottom:10px">External stress is limited</div><p style="font-size:13px;color:var(--text2)">Contextual and environmental factors currently show lower strain signals.</p></div>
           <div class="card"><div class="ct">Physical — Medium</div><div class="chip cg" style="margin-bottom:10px">Body load is mixed</div><p style="font-size:13px;color:var(--text2)">Physical strain indicators suggest moderate stress in energy and regulation.</p></div>
           <div class="card"><div class="ct">Interpersonal — Medium</div><div class="chip cg" style="margin-bottom:10px">Relational friction present</div><p style="font-size:13px;color:var(--text2)">Interpersonal dynamics appear to carry moderate strain.</p></div>
-          <div class="card"><div class="ct">Psychological — Low</div><div class="chip cgn" style="margin-bottom:10px">Internal pressure limited</div><p style="font-size:13px;color:var(--text2)">Psychological strain markers currently indicate a lower level of pressure.</p></div>
           <div class="card"><div class="ct">Happiness — Low</div><div class="chip cgn" style="margin-bottom:10px">Mood strain is low</div><p style="font-size:13px;color:var(--text2)">Happiness-related strain signals are currently on the lower side.</p></div>
+          <div class="card"><div class="ct">Environmental — Low</div><div class="chip cgn" style="margin-bottom:10px">External stress is limited</div><p style="font-size:13px;color:var(--text2)">Contextual and environmental factors currently show lower strain signals.</p></div>
+          <div class="card"><div class="ct">Psychological — Low</div><div class="chip cgn" style="margin-bottom:10px">Internal pressure limited</div><p style="font-size:13px;color:var(--text2)">Psychological strain markers currently indicate a lower level of pressure.</p></div>
         </div>
       </div>
 
@@ -3563,6 +3563,35 @@ function getStrainValueByKey(strainScoresRaw, fallbackStrainScores, key) {
   return Number.isFinite(candidate) ? Math.max(0, Math.min(100, Math.round(candidate))) : null;
 }
 
+function buildSortedStrainWriteupRows(strainScoresRaw, fallbackStrainScores, overallValue) {
+  const overallLevel = Number.isFinite(overallValue) ? scoreBandLabel(overallValue) : "Low";
+  const sortedAreaRows = STRAIN_BREAKDOWN_ORDER
+    .map((item) => {
+      const score = getStrainValueByKey(strainScoresRaw, fallbackStrainScores, item.key);
+      return {
+        title: item.label,
+        key: item.key,
+        score,
+        level: scoreBandLabel(score),
+        fallbackIndex: item.fallbackIndex,
+      };
+    })
+    .sort((a, b) => {
+      const bandOrder = getStrainLevelSortRank(a.level) - getStrainLevelSortRank(b.level);
+      if (bandOrder !== 0) return bandOrder;
+      if (Number.isFinite(a.score) && Number.isFinite(b.score)) {
+        return b.score - a.score || a.fallbackIndex - b.fallbackIndex;
+      }
+      if (Number.isFinite(a.score)) return -1;
+      if (Number.isFinite(b.score)) return 1;
+      return a.fallbackIndex - b.fallbackIndex;
+    });
+  return [
+    { title: "Overall Strain", key: "overall", score: overallValue, level: overallLevel, fallbackIndex: -1 },
+    ...sortedAreaRows,
+  ];
+}
+
 function getStrainLevelFromKey(strainScoresRaw, fallbackStrainScores, key) {
   const value = getStrainValueByKey(strainScoresRaw, fallbackStrainScores, key);
   return Number.isFinite(value) ? scoreBandLabel(value) : "Medium";
@@ -4540,32 +4569,7 @@ function renderReportFromState(isExampleMode) {
   const narrativeMap = new Map(
     strainNarratives.map((item) => [String(item.category || "").toLowerCase(), formatOptionalText(item.text, "Not detected in assigned PDF.")]),
   );
-  const overallLevel = Number.isFinite(overall) ? scoreBandLabel(overall) : "Low";
-  const sortedAreaRows = STRAIN_BREAKDOWN_ORDER
-    .map((item) => {
-      const score = getStrainValueByKey(strain, REPORT.strain, item.key);
-      return {
-        title: item.label,
-        key: item.key,
-        score,
-        level: scoreBandLabel(score),
-        fallbackIndex: item.fallbackIndex,
-      };
-    })
-    .sort((a, b) => {
-      const bandOrder = getStrainLevelSortRank(a.level) - getStrainLevelSortRank(b.level);
-      if (bandOrder !== 0) return bandOrder;
-      if (Number.isFinite(a.score) && Number.isFinite(b.score)) {
-        return b.score - a.score || a.fallbackIndex - b.fallbackIndex;
-      }
-      if (Number.isFinite(a.score)) return -1;
-      if (Number.isFinite(b.score)) return 1;
-      return a.fallbackIndex - b.fallbackIndex;
-    });
-  const strainWriteupRows = [
-    { title: "Overall Strain", key: "overall", score: overall, level: overallLevel, fallbackIndex: -1 },
-    ...sortedAreaRows,
-  ];
+  const strainWriteupRows = buildSortedStrainWriteupRows(strain, REPORT.strain, overall);
   setHtml(
     'strainWriteupCards',
     strainWriteupRows
