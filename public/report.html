@@ -138,6 +138,50 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .sidebar-col.minimized+.reflection-launcher{display:inline-flex}
 @media(max-width:900px){.reflection-launcher{right:12px;bottom:12px}}
 .chart-wrap{position:relative;width:100%}
+.insight-stack{display:flex;flex-direction:column;gap:10px}
+.insight-box{
+  background:var(--surface2);
+  border:1px solid var(--border);
+  border-left:3px solid var(--blue);
+  border-radius:12px;
+  padding:11px 12px;
+}
+.insight-box h4{
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:var(--text3);
+  margin-bottom:5px;
+}
+.insight-box p{font-size:13px;color:var(--text2);line-height:1.65}
+.insight-box p strong{color:var(--text)}
+.center-chip-high{background:var(--red-lt);color:var(--red)}
+.center-chip-medium{background:var(--gold-lt);color:var(--gold)}
+.center-chip-low{background:var(--surface2);color:var(--text3)}
+.strain-chip-high{background:var(--red-lt);color:var(--red)}
+.strain-chip-medium{background:var(--gold-lt);color:var(--gold)}
+.strain-chip-low{background:var(--green-lt);color:var(--green)}
+.profile-wheel-wrap{position:relative;height:300px}
+.profile-wheel{position:relative;width:100%;height:100%;overflow:hidden}
+.profile-wheel-svg{width:100%;height:100%;display:block}
+.profile-wheel-badge{
+  position:absolute;left:12px;top:8px;width:118px;height:118px;border-radius:999px;
+  background:#df3a2d;color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;
+  box-shadow:0 12px 28px rgba(16,34,61,.2);border:3px solid #fff;z-index:2;
+}
+.profile-wheel-badge-instinct{font:800 22px/1 var(--font-display);letter-spacing:.02em;text-transform:uppercase}
+.profile-wheel-badge-type{font:800 58px/.85 var(--font-display);margin-top:3px}
+.profile-wheel-badge-keyword{font:700 12px/1.1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;margin-top:4px;text-align:center;padding:0 10px}
+.profile-wheel-line{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.profile-wheel-type{font:800 28px/1 var(--font-display);fill:#ffffff;dominant-baseline:middle;text-anchor:middle}
+@media(max-width:700px){
+  .profile-wheel-wrap{height:260px}
+  .profile-wheel-badge{width:94px;height:94px;left:6px;top:6px}
+  .profile-wheel-badge-instinct{font-size:17px}
+  .profile-wheel-badge-type{font-size:44px}
+  .profile-wheel-badge-keyword{font-size:10px}
+}
 .footer-note{font-size:11px;color:var(--text3);margin-top:10px}
 .site-footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--border2);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);font-family:var(--font-mono);text-align:center}
 .site-footer a{color:var(--blue);text-decoration:none}
@@ -293,7 +337,14 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </div>
           <div class="card">
             <div class="ct">Enneagram Profile — All 9 Types</div>
-            <div class="chart-wrap" style="height:220px"><canvas id="profileChart"></canvas></div>
+            <div class="profile-wheel-wrap">
+              <div id="profileWheel" class="profile-wheel" data-testid="profile-wheel"></div>
+              <div class="profile-wheel-badge" data-testid="profile-wheel-badge">
+                <div class="profile-wheel-badge-instinct" id="profileWheelBadgeInstinct">SX</div>
+                <div class="profile-wheel-badge-type" id="profileWheelBadgeType">8</div>
+                <div class="profile-wheel-badge-keyword" id="profileWheelBadgeKeyword">POSSESSION</div>
+              </div>
+            </div>
             <div class="footer-note" id="profileFooter">Main — 8 (78) · Line A — 2 (71) · Line B — 5 (56)</div>
           </div>
         </div>
@@ -408,9 +459,9 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           <div class="card">
             <div class="ct">Centers of Expression</div>
             <p style="font-size:13px;color:var(--text2);margin-bottom:14px">Dominant Center: <strong style="color:var(--text)">Action Center</strong>. Weakest Center: <strong style="color:var(--text)">Thinking Center</strong>.</p>
-            <div class="brow"><div class="blbl">Action Center</div><div class="btrk"><div class="bfil" id="centerBodyBar" style="width:47%;background:var(--red)"></div></div><div class="bval" id="centerBodyVal">47</div></div>
-            <div class="brow"><div class="blbl">Feeling Center</div><div class="btrk"><div class="bfil" id="centerHeartBar" style="width:27%;background:var(--gold)"></div></div><div class="bval" id="centerHeartVal">27</div></div>
-            <div class="brow"><div class="blbl">Thinking Center</div><div class="btrk"><div class="bfil" id="centerHeadBar" style="width:25%;background:var(--surface3)"></div></div><div class="bval" id="centerHeadVal">25</div></div>
+            <div class="brow"><div class="blbl">Action Center</div><span class="chip center-chip-high" id="centerBodyChip" data-testid="center-body-chip">High</span></div>
+            <div class="brow"><div class="blbl">Feeling Center</div><span class="chip center-chip-medium" id="centerHeartChip" data-testid="center-heart-chip">Medium</span></div>
+            <div class="brow"><div class="blbl">Thinking Center</div><span class="chip center-chip-low" id="centerHeadChip" data-testid="center-head-chip">Low</span></div>
             <div class="div"></div>
             <div class="tlist">
               <div class="ti"><div class="tic pos">→</div><div class="tt"><strong>Externalised Action:</strong> You act on gut impulses in quick and compelling ways.</div></div>
@@ -420,16 +471,28 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </div>
           <div class="card">
             <div class="ct">27 Subtypes &amp; Instincts</div>
-            <p style="font-size:13px;color:var(--text2);margin-bottom:14px"><strong style="color:var(--text)">You are an Enneagram type 8 with an SX instinct.</strong></p>
-            <div class="brow"><div class="blbl">SX — One-On-One</div><div class="btrk"><div class="bfil" id="instinctSxBar" style="width:54%;background:var(--red)"></div></div><div class="bval" id="instinctSxVal">54</div></div>
-            <div class="brow"><div class="blbl">SO — Social</div><div class="btrk"><div class="bfil" id="instinctSoBar" style="width:29%;background:var(--gold)"></div></div><div class="bval" id="instinctSoVal">29</div></div>
-            <div class="brow"><div class="blbl">SP — Self-Preserv</div><div class="btrk"><div class="bfil" id="instinctSpBar" style="width:17%;background:var(--surface3)"></div></div><div class="bval" id="instinctSpVal">17</div></div>
-            <div class="div"></div>
-            <p style="font-size:13px;color:var(--text2)">The one-to-one instinct is concerned with intensity of experience and strong connection with specific people.</p>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:12px"><strong style="color:var(--text)" id="instinctSummaryLead" data-testid="instinct-summary-lead">You are an Enneagram type 8 with an SX instinct.</strong></p>
+            <div class="insight-stack" data-testid="instinct-insight-boxes">
+              <div class="insight-box">
+                <h4>Dominant Instinct Pattern</h4>
+                <p id="instinctNarrativePrimary" data-testid="instinct-narrative-primary">The one-to-one instinct is concerned with intensity of experience and strong connection with specific people.</p>
+              </div>
+              <div class="insight-box">
+                <h4>Relational Expression</h4>
+                <p id="instinctNarrativeSecondary" data-testid="instinct-narrative-secondary">You collect a small group of trusted people around you and are a loyal, reliable and protective friend.</p>
+              </div>
+            </div>
             <div class="subh">Interaction &amp; Conflict Styles</div>
-            <div class="brow"><div class="blbl">Assertive</div><div class="btrk"><div class="bfil" id="interactionAssertiveBar" style="width:44%;background:var(--red)"></div></div><div class="bval" id="interactionAssertiveVal">44</div></div>
-            <div class="brow"><div class="blbl">Reactive</div><div class="btrk"><div class="bfil" id="interactionReactiveBar" style="width:51%;background:var(--red)"></div></div><div class="bval" id="interactionReactiveVal">51</div></div>
-            <p style="font-size:13px;color:var(--text2);margin-top:12px"><strong style="color:var(--text)">Your preferred conflict processing strategy is reactive.</strong></p>
+            <div class="insight-stack" data-testid="conflict-insight-boxes">
+              <div class="insight-box">
+                <h4>Conflict Processing Style</h4>
+                <p id="conflictNarrativePrimary" data-testid="conflict-narrative-primary"><strong>Your preferred conflict processing strategy is reactive.</strong></p>
+              </div>
+              <div class="insight-box">
+                <h4>Conflict Guidance</h4>
+                <p id="conflictNarrativeSecondary" data-testid="conflict-narrative-secondary">A more regulated body and explicit positive regard can change the outcome dramatically.</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -594,26 +657,31 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
 
       <div id="sec-strain" class="sec">
         <div class="g2 mb24">
-          <div class="card"><div class="ct">Strain Radar</div><div class="chart-wrap" style="height:280px"><canvas id="strainChart"></canvas></div></div>
           <div class="card">
             <div class="ct">Strain Area Breakdown</div>
             <div style="margin-bottom:6px;padding-bottom:12px;border-bottom:1px solid var(--border)">
               <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px" id="strainOverallLabel">Overall strain is MEDIUM.</div>
               <div style="font-size:12px;color:var(--text3)" id="strainOverallScore">Overall score: 26</div>
             </div>
-            <div class="brow" style="margin-top:12px"><div class="blbl">Happiness</div><div class="btrk"><div class="bfil" id="strainHappinessBar" style="width:46%;background:var(--red)"></div></div><div class="bval" id="strainHappinessVal" style="color:var(--red)">46</div></div>
-            <div class="brow"><div class="blbl">Vocational</div><div class="btrk"><div class="bfil" id="strainVocationalBar" style="width:33%;background:var(--gold)"></div></div><div class="bval" id="strainVocationalVal">33</div></div>
-            <div class="brow"><div class="blbl">Interpersonal</div><div class="btrk"><div class="bfil" id="strainInterpersonalBar" style="width:26%;background:var(--gold)"></div></div><div class="bval" id="strainInterpersonalVal">26</div></div>
-            <div class="brow"><div class="blbl">Physical</div><div class="btrk"><div class="bfil" id="strainPhysicalBar" style="width:33%;background:var(--gold)"></div></div><div class="bval" id="strainPhysicalVal">33</div></div>
-            <div class="brow"><div class="blbl">Environmental</div><div class="btrk"><div class="bfil" id="strainEnvironmentalBar" style="width:6%;background:var(--green)"></div></div><div class="bval" id="strainEnvironmentalVal">6</div></div>
-            <div class="brow"><div class="blbl">Psychological</div><div class="btrk"><div class="bfil" id="strainPsychologicalBar" style="width:6%;background:var(--green)"></div></div><div class="bval" id="strainPsychologicalVal">6</div></div>
+            <div id="strainBreakdownRows" style="margin-top:12px">
+              <div class="brow"><div class="blbl">Happiness</div><span class="chip strain-chip-low">Low</span></div>
+              <div class="brow"><div class="blbl">Vocational</div><span class="chip strain-chip-medium">Medium</span></div>
+              <div class="brow"><div class="blbl">Interpersonal</div><span class="chip strain-chip-medium">Medium</span></div>
+              <div class="brow"><div class="blbl">Physical</div><span class="chip strain-chip-medium">Medium</span></div>
+              <div class="brow"><div class="blbl">Environmental</div><span class="chip strain-chip-low">Low</span></div>
+              <div class="brow"><div class="blbl">Psychological</div><span class="chip strain-chip-low">Low</span></div>
+            </div>
           </div>
         </div>
 
-        <div class="g3 mb24">
-          <div class="card"><div class="ct">Happiness — Low</div><div class="chip cr" style="margin-bottom:10px">More stress than joy at present</div><p style="font-size:13px;color:var(--text2)">General circumstances are detracting from your ability to feel happy, excited, and hopeful.</p></div>
-          <div class="card"><div class="ct">Vocational — Medium</div><div class="chip cg" style="margin-bottom:10px">Somewhat satisfied</div><p style="font-size:13px;color:var(--text2)">You are neutral or mildly positive about work, with some parts enjoyable and others mundane.</p></div>
-          <div class="card"><div class="ct">Interpersonal — Medium</div><div class="chip cg" style="margin-bottom:10px">Some conflict and frustration</div><p style="font-size:13px;color:var(--text2)">Your social life does not meet all your needs consistently, and support can feel uneven.</p></div>
+        <div id="strainWriteupCards" class="g3 mb24" data-testid="strain-writeup-cards">
+          <div class="card"><div class="ct">Overall Strain — Medium</div><div class="chip cg" style="margin-bottom:10px">Moderate load detected</div><p style="font-size:13px;color:var(--text2)">Overall strain is currently moderate across the report context.</p></div>
+          <div class="card"><div class="ct">Vocational — Medium</div><div class="chip cg" style="margin-bottom:10px">Balanced but mixed</div><p style="font-size:13px;color:var(--text2)">Work-related strain appears present but manageable.</p></div>
+          <div class="card"><div class="ct">Environmental — Low</div><div class="chip cgn" style="margin-bottom:10px">External stress is limited</div><p style="font-size:13px;color:var(--text2)">Contextual and environmental factors currently show lower strain signals.</p></div>
+          <div class="card"><div class="ct">Physical — Medium</div><div class="chip cg" style="margin-bottom:10px">Body load is mixed</div><p style="font-size:13px;color:var(--text2)">Physical strain indicators suggest moderate stress in energy and regulation.</p></div>
+          <div class="card"><div class="ct">Interpersonal — Medium</div><div class="chip cg" style="margin-bottom:10px">Relational friction present</div><p style="font-size:13px;color:var(--text2)">Interpersonal dynamics appear to carry moderate strain.</p></div>
+          <div class="card"><div class="ct">Psychological — Low</div><div class="chip cgn" style="margin-bottom:10px">Internal pressure limited</div><p style="font-size:13px;color:var(--text2)">Psychological strain markers currently indicate a lower level of pressure.</p></div>
+          <div class="card"><div class="ct">Happiness — Low</div><div class="chip cgn" style="margin-bottom:10px">Mood strain is low</div><p style="font-size:13px;color:var(--text2)">Happiness-related strain signals are currently on the lower side.</p></div>
         </div>
 
         <div class="card mb24">
@@ -1647,6 +1715,7 @@ async function ingestAssignedReportIntoDashboard(data) {
     const feedbackGuideMatrix = extractFeedbackGuideFromReportContent(parsedProfile);
     const strainQualitativeWriteups = extractStrainQualitativeFromReportContent(parsedProfile);
     const developmentExercises = extractDevelopmentExercisesFromReportContent(parsedProfile);
+    const instinctConflictInsights = extractInstinctConflictInsightsFromReportContent(parsedProfile, instinct);
     const dataQualityDiagnostics = buildDataQualityDiagnostics({
       parsedProfile,
       parseDiagnostics: data?.parseDiagnostics || null,
@@ -1696,6 +1765,11 @@ async function ingestAssignedReportIntoDashboard(data) {
       feedbackGuideMatrix,
       strainQualitativeWriteups,
       developmentExercises,
+      instinctNarrativePrimary: instinctConflictInsights.instinctPrimary,
+      instinctNarrativeSecondary: instinctConflictInsights.instinctSecondary,
+      conflictStyleDetected: instinctConflictInsights.conflictStyle,
+      conflictNarrativePrimary: instinctConflictInsights.conflictPrimary,
+      conflictNarrativeSecondary: instinctConflictInsights.conflictSecondary,
       instinctScoresRaw,
       centerScoresRaw,
       strainScoresRaw,
@@ -1927,7 +2001,6 @@ async function exportDashboardPdf() {
       exportButton.textContent = previousButtonText;
     }
     if (profileChart) profileChart.resize();
-    if (strainChart) strainChart.resize();
     console.log("[report-export] Dashboard PDF export cleanup complete");
   };
 
@@ -1948,7 +2021,6 @@ async function exportDashboardPdf() {
     await waitForAnimationFrame();
     await waitForAnimationFrame();
     if (profileChart) profileChart.resize();
-    if (strainChart) strainChart.resize();
     cleanupSnapshots = snapshotChartsForExport();
     await waitForAnimationFrame();
 
@@ -2342,13 +2414,103 @@ const MASTER_SOURCE_COPY = {
 
 let REPORT = REPORT_EXAMPLES['8'];
 let profileChart;
-let strainChart;
 let reflectionDeck = {};
 let REPORT_MODULES = [];
 const PROFILE_TYPE_ORDER = ['8', '9', '1', '2', '3', '4', '5', '6', '7'];
+const PROFILE_SEGMENT_COLORS = {
+  base: '#c9ced3',
+  main: '#df3a2d',
+  release: '#b7d833',
+  stretch: '#005a9e',
+};
 let focusRequestCounter = 0;
 const FOCUS_AI_API_ROUTE = '/api/focus-rank';
 const FOCUS_AI_ENABLED = true;
+
+function toPoint(cx, cy, radius, angleDeg) {
+  const radians = (angleDeg - 90) * Math.PI / 180;
+  return { x: cx + radius * Math.cos(radians), y: cy + radius * Math.sin(radians) };
+}
+
+function donutSlicePath(cx, cy, innerRadius, outerRadius, startAngle, endAngle) {
+  const outerStart = toPoint(cx, cy, outerRadius, startAngle);
+  const outerEnd = toPoint(cx, cy, outerRadius, endAngle);
+  const innerEnd = toPoint(cx, cy, innerRadius, endAngle);
+  const innerStart = toPoint(cx, cy, innerRadius, startAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+  return [
+    `M ${outerStart.x} ${outerStart.y}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${outerEnd.x} ${outerEnd.y}`,
+    `L ${innerEnd.x} ${innerEnd.y}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${innerStart.x} ${innerStart.y}`,
+    'Z',
+  ].join(' ');
+}
+
+function renderProfileWheel() {
+  const wheelNode = document.getElementById('profileWheel');
+  if (!wheelNode) return;
+
+  const size = { width: 560, height: 320 };
+  const cx = 292;
+  const cy = 166;
+  const outerRadius = 142;
+  const innerRadius = 100;
+  const segmentAngle = 360 / PROFILE_TYPE_ORDER.length;
+  const startAngle = -170;
+  const releaseType = getLineTypeNumber(REPORT.release);
+  const stretchType = getLineTypeNumber(REPORT.stretch);
+  const mainType = String(REPORT.typeNumber || "8");
+  const mainIndex = Math.max(0, PROFILE_TYPE_ORDER.indexOf(mainType));
+  const releaseIndex = PROFILE_TYPE_ORDER.indexOf(releaseType);
+  const stretchIndex = PROFILE_TYPE_ORDER.indexOf(stretchType);
+  const nodeRadius = innerRadius - 10;
+  const lineStart = toPoint(cx, cy, outerRadius + 8, startAngle + (mainIndex + 0.5) * segmentAngle);
+  const releaseTarget = toPoint(cx, cy, nodeRadius, startAngle + ((releaseIndex >= 0 ? releaseIndex : mainIndex) + 0.5) * segmentAngle);
+  const stretchTarget = toPoint(cx, cy, nodeRadius, startAngle + ((stretchIndex >= 0 ? stretchIndex : mainIndex) + 0.5) * segmentAngle);
+  const ringMidRadius = (outerRadius + innerRadius) / 2;
+  const symbolPoints = PROFILE_TYPE_ORDER.map((_, index) => toPoint(cx, cy, nodeRadius, startAngle + (index + 0.5) * segmentAngle));
+  const starIndexOrder = [0, 3, 6, 1, 4, 7, 2, 5, 8];
+  const starPath = starIndexOrder.map((pointIndex, index) => `${index === 0 ? 'M' : 'L'} ${symbolPoints[pointIndex].x} ${symbolPoints[pointIndex].y}`).join(' ') + ' Z';
+
+  const segmentsMarkup = PROFILE_TYPE_ORDER.map((typeNumber, index) => {
+    const segmentStart = startAngle + index * segmentAngle;
+    const segmentEnd = segmentStart + segmentAngle;
+    const segmentCenterAngle = segmentStart + segmentAngle / 2;
+    const labelPoint = toPoint(cx, cy, ringMidRadius, segmentCenterAngle);
+    let fill = PROFILE_SEGMENT_COLORS.base;
+    if (typeNumber === mainType) fill = PROFILE_SEGMENT_COLORS.main;
+    else if (typeNumber === releaseType) fill = PROFILE_SEGMENT_COLORS.release;
+    else if (typeNumber === stretchType) fill = PROFILE_SEGMENT_COLORS.stretch;
+    return `
+      <path d="${donutSlicePath(cx, cy, innerRadius, outerRadius, segmentStart, segmentEnd)}" fill="${fill}" stroke="#ffffff" stroke-width="2"></path>
+      <text class="profile-wheel-type" x="${labelPoint.x}" y="${labelPoint.y}" transform="rotate(${segmentCenterAngle + 90}, ${labelPoint.x}, ${labelPoint.y})">${typeNumber}</text>
+    `;
+  }).join('');
+
+  wheelNode.innerHTML = `
+    <svg class="profile-wheel-svg" viewBox="0 0 ${size.width} ${size.height}" role="img" aria-label="Enneagram profile wheel">
+      <defs>
+        <linearGradient id="profileLineRelease" x1="${lineStart.x}" y1="${lineStart.y}" x2="${releaseTarget.x}" y2="${releaseTarget.y}" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#df3a2d"></stop>
+          <stop offset="100%" stop-color="#b7d833"></stop>
+        </linearGradient>
+        <linearGradient id="profileLineStretch" x1="${lineStart.x}" y1="${lineStart.y}" x2="${stretchTarget.x}" y2="${stretchTarget.y}" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#df3a2d"></stop>
+          <stop offset="100%" stop-color="#005a9e"></stop>
+        </linearGradient>
+      </defs>
+      ${segmentsMarkup}
+      <circle cx="${cx}" cy="${cy}" r="${innerRadius}" fill="#ffffff" stroke="#9aa2a9" stroke-width="5"></circle>
+      <path d="${starPath}" fill="none" stroke="#e9edf1" stroke-width="5"></path>
+      <path d="M ${symbolPoints[1].x} ${symbolPoints[1].y} L ${symbolPoints[4].x} ${symbolPoints[4].y} L ${symbolPoints[7].x} ${symbolPoints[7].y} Z" fill="none" stroke="#e9edf1" stroke-width="5"></path>
+      <path class="profile-wheel-line" d="M ${lineStart.x} ${lineStart.y} L ${releaseTarget.x} ${releaseTarget.y}" stroke="url(#profileLineRelease)" stroke-width="8"></path>
+      <path class="profile-wheel-line" d="M ${lineStart.x} ${lineStart.y} L ${stretchTarget.x} ${stretchTarget.y}" stroke="url(#profileLineStretch)" stroke-width="8"></path>
+    </svg>
+  `;
+
+  console.log('[profile-wheel] rendered', { mainType, releaseType, stretchType, profile: REPORT.profile });
+}
 
 function iconSvg(name, size = 14, color = 'currentColor') {
   const common = `width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"`;
@@ -2412,7 +2574,6 @@ function decorateInterfaceIcons() {
     'Verbal & Written Communication': 'communication',
     'Listening': 'users',
     'Giving & Receiving Feedback': 'pulse',
-    'Strain Radar': 'strain',
     'Strain Area Breakdown': 'chart',
     'Happiness — Low': 'pulse',
     'Vocational — Medium': 'target',
@@ -2918,6 +3079,94 @@ function setBarRow(barId, valueId, value, options = {}) {
   if (valueNode && options.color) valueNode.style.color = options.color;
 }
 
+function setCenterLevelChip(chipId, value) {
+  const chipNode = document.getElementById(chipId);
+  if (!chipNode) return;
+  const numeric = Number(value);
+  const hasValue = Number.isFinite(numeric);
+  const level = hasValue ? scoreBandLabel(numeric) : "N/A";
+  chipNode.textContent = level;
+  chipNode.classList.remove('center-chip-high', 'center-chip-medium', 'center-chip-low');
+  if (level === "High") chipNode.classList.add('center-chip-high');
+  else if (level === "Medium") chipNode.classList.add('center-chip-medium');
+  else chipNode.classList.add('center-chip-low');
+}
+
+const STRAIN_BREAKDOWN_ORDER = [
+  { key: 'happiness', label: 'Happiness', fallbackIndex: 0, barColor: 'var(--red)', valueColor: 'var(--red)' },
+  { key: 'vocational', label: 'Vocational', fallbackIndex: 1, barColor: 'var(--gold)' },
+  { key: 'interpersonal', label: 'Interpersonal', fallbackIndex: 2, barColor: 'var(--gold)' },
+  { key: 'physical', label: 'Physical', fallbackIndex: 3, barColor: 'var(--gold)' },
+  { key: 'environmental', label: 'Environmental', fallbackIndex: 4, barColor: 'var(--green)' },
+  { key: 'psychological', label: 'Psychological', fallbackIndex: 5, barColor: 'var(--green)' },
+];
+
+function renderStrainBreakdownRows(strainScoresRaw, fallbackStrainScores) {
+  const container = document.getElementById('strainBreakdownRows');
+  if (!container) return;
+
+  const rows = STRAIN_BREAKDOWN_ORDER.map((item) => {
+    const candidate = Number(strainScoresRaw?.[item.key] ?? fallbackStrainScores?.[item.fallbackIndex]);
+    const hasValue = Number.isFinite(candidate);
+    const score = hasValue ? Math.max(0, Math.min(100, Math.round(candidate))) : null;
+    return { ...item, hasValue, score };
+  }).sort((a, b) => {
+    if (a.hasValue && b.hasValue) return b.score - a.score || a.fallbackIndex - b.fallbackIndex;
+    if (a.hasValue) return -1;
+    if (b.hasValue) return 1;
+    return a.fallbackIndex - b.fallbackIndex;
+  });
+
+  console.log('[strain] sorted breakdown rows high-to-low', rows.map((row) => ({
+    key: row.key,
+    label: row.label,
+    score: row.score,
+    band: row.hasValue ? scoreBandLabel(row.score) : "N/A",
+  })));
+
+  container.innerHTML = rows.map((row) => {
+    const valueLabel = row.hasValue ? scoreBandLabel(row.score) : 'N/A';
+    const chipClass =
+      valueLabel === "High" ? "strain-chip-high" :
+      valueLabel === "Medium" ? "strain-chip-medium" :
+      "strain-chip-low";
+    return `<div class="brow"><div class="blbl">${row.label}</div><span class="chip ${chipClass}">${valueLabel}</span></div>`;
+  }).join("");
+}
+
+function getStrainCardVisual(level) {
+  if (level === "High") return { chipClass: "cr", chipLabel: "Higher strain detected" };
+  if (level === "Medium") return { chipClass: "cg", chipLabel: "Moderate strain detected" };
+  return { chipClass: "cgn", chipLabel: "Lower strain detected" };
+}
+
+function getStrainCardFallbackText(category, level) {
+  const normalized = String(level || "Low").toLowerCase();
+  const templates = {
+    "Overall Strain": `Overall strain is currently ${normalized} across the report context.`,
+    "Vocational": `Vocational strain appears ${normalized}, based on work-related signals.`,
+    "Environmental": `Environmental strain appears ${normalized}, based on external context signals.`,
+    "Physical": `Physical strain appears ${normalized}, based on energy and body-load signals.`,
+    "Interpersonal": `Interpersonal strain appears ${normalized}, based on social and relational signals.`,
+    "Psychological": `Psychological strain appears ${normalized}, based on internal pressure markers.`,
+    "Happiness": `Happiness-related strain appears ${normalized} in the current report context.`,
+  };
+  return templates[category] || "Not detected in assigned PDF.";
+}
+
+function getStrainValueByKey(strainScoresRaw, fallbackStrainScores, key) {
+  const orderLookup = {
+    happiness: 0,
+    vocational: 1,
+    interpersonal: 2,
+    physical: 3,
+    environmental: 4,
+    psychological: 5,
+  };
+  const candidate = Number(strainScoresRaw?.[key] ?? fallbackStrainScores?.[orderLookup[key]]);
+  return Number.isFinite(candidate) ? Math.max(0, Math.min(100, Math.round(candidate))) : null;
+}
+
 function scoreBandLabel(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "Low";
@@ -3257,6 +3506,64 @@ function extractDevelopmentExercisesFromReportContent(parsedProfile) {
   return matches.map((item, index) => ({ title: `Exercise ${index + 1}`, text: item }));
 }
 
+function extractInstinctConflictInsightsFromReportContent(parsedProfile, instinctLabel) {
+  const instinctSection = getSectionByTitle(parsedProfile, (title) => /subtype|instinct|interaction|conflict|styles/i.test(title));
+  const communicationSection = getSectionByTitle(parsedProfile, (title) => /communication|feedback/i.test(title));
+  const text = normalizeExtractedText(
+    [
+      getSectionCompositeText(parsedProfile, instinctSection),
+      getSectionCompositeText(parsedProfile, communicationSection),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.subtypesInstincts),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.communication),
+    ].join(" "),
+  );
+  const dominantCode = String(instinctLabel || "").toUpperCase().match(/\b(SX|SO|SP)\b/)?.[1] || "SX";
+  const instinctSpecificKeywords =
+    dominantCode === "SX"
+      ? ["one-to-one instinct", "one on one instinct", "sexual instinct", "SX"]
+      : dominantCode === "SO"
+        ? ["social instinct", "SO"]
+        : ["self-preservation instinct", "self preservation instinct", "SP"];
+
+  const instinctPrimary =
+    extractSnippetFromLabels(text, instinctSpecificKeywords) ||
+    extractSnippetFromLabels(text, ["27 Subtypes", "Instinct", "Instinctual"]) ||
+    null;
+  const instinctSecondary =
+    extractSnippetFromLabels(text, ["trusted people", "loyal", "protective friend", "connection", "intensity"]) ||
+    extractSnippetFromLabels(text, ["Relationship", "Relational", "close"]) ||
+    null;
+
+  const conflictStyleMatch = text.match(/\bpreferred\s+conflict(?:\s+processing)?\s+strategy\s+(?:is|:)?\s*(assertive|reactive|withdrawn|compliant|competency)\b/i);
+  const conflictStyle = String(conflictStyleMatch?.[1] || "").toLowerCase() || null;
+  const conflictPrimary =
+    conflictStyle
+      ? `Your preferred conflict processing strategy is ${conflictStyle}.`
+      : extractSnippetFromLabels(text, ["preferred conflict processing strategy", "Conflict Styles", "Reactive", "Assertive"]) || null;
+  const conflictSecondary =
+    extractSnippetFromLabels(text, ["A more regulated body", "positive regard", "feedback", "intensity", "reactive"]) ||
+    extractSnippetFromLabels(text, ["conflict", "feedback"]) ||
+    null;
+
+  console.log("[report-ingest] extracted instinct/conflict narratives", {
+    hasText: Boolean(text),
+    dominantCode,
+    conflictStyle,
+    instinctPrimary,
+    instinctSecondary,
+    conflictPrimary,
+    conflictSecondary,
+  });
+
+  return {
+    instinctPrimary,
+    instinctSecondary,
+    conflictStyle,
+    conflictPrimary,
+    conflictSecondary,
+  };
+}
+
 function buildDataQualityDiagnostics({ parsedProfile, parseDiagnostics, feedbackGuideMatrix, strainQualitativeWriteups, developmentExercises }) {
   const issues = [];
   const typeScores = parsedProfile?.typeScores || {};
@@ -3327,22 +3634,7 @@ function buildReflectionDeck(report) {
 }
 
 function updateCharts() {
-  if (profileChart) {
-    profileChart.data.datasets[0].data = REPORT.profile;
-    profileChart.data.datasets[0].backgroundColor = ['#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8', '#d4d0c8'];
-    const mainIndex = PROFILE_TYPE_ORDER.indexOf(REPORT.typeNumber);
-    const releaseIndex = PROFILE_TYPE_ORDER.indexOf(getLineTypeNumber(REPORT.release));
-    const stretchIndex = PROFILE_TYPE_ORDER.indexOf(getLineTypeNumber(REPORT.stretch));
-    if (mainIndex >= 0) profileChart.data.datasets[0].backgroundColor[mainIndex] = '#b02c34';
-    if (releaseIndex >= 0) profileChart.data.datasets[0].backgroundColor[releaseIndex] = '#9a6e1a';
-    if (stretchIndex >= 0) profileChart.data.datasets[0].backgroundColor[stretchIndex] = '#295c87';
-    profileChart.update();
-  }
-
-  if (strainChart) {
-    strainChart.data.datasets[0].data = REPORT.strain;
-    strainChart.update();
-  }
+  renderProfileWheel();
 }
 
 function applyReport(typeId) {
@@ -3422,6 +3714,11 @@ function buildPdfOnlyReport(payload) {
     viceDesc: "Loaded from assigned PDF report.",
     worldview: sanitizeSnippet(payload?.worldview, fallbackReport.worldview || fallbackText),
     focus: sanitizeSnippet(payload?.focus, fallbackReport.focus || fallbackText),
+    instinctNarrativePrimary: sanitizeSnippet(payload?.instinctNarrativePrimary, ""),
+    instinctNarrativeSecondary: sanitizeSnippet(payload?.instinctNarrativeSecondary, ""),
+    conflictStyleDetected: sanitizeSnippet(payload?.conflictStyleDetected, ""),
+    conflictNarrativePrimary: sanitizeSnippet(payload?.conflictNarrativePrimary, ""),
+    conflictNarrativeSecondary: sanitizeSnippet(payload?.conflictNarrativeSecondary, ""),
     selfTalk: sanitizeSnippet(payload?.metaQuote, fallbackReport.selfTalk || fallbackText),
     motivation1: sanitizeSnippet(payload?.reportSummary, "This dashboard is populated from your assigned PDF report."),
     motivation2: "If any field is missing, update the PDF content and re-import.",
@@ -3468,6 +3765,55 @@ function buildPdfOnlyReport(payload) {
   };
 }
 
+function getConflictStyleForDisplay(report) {
+  const detected = String(report?.conflictStyleDetected || "").trim().toLowerCase();
+  if (detected) return detected;
+  const style = String(report?.conflictStyle || "").trim().toLowerCase();
+  if (style) return style;
+  const assertive = Number(report?.interactionScores?.assertive);
+  const reactive = Number(report?.interactionScores?.reactive);
+  if (Number.isFinite(assertive) || Number.isFinite(reactive)) {
+    if (!Number.isFinite(reactive)) return "assertive";
+    if (!Number.isFinite(assertive)) return "reactive";
+    return reactive >= assertive ? "reactive" : "assertive";
+  }
+  return "reactive";
+}
+
+function buildInstinctCopyForDisplay(report) {
+  const typeNumber = String(report?.typeNumber || "?");
+  const instinctLabel = String(report?.instinct || "Unknown instinct");
+  const instinctCode = instinctLabel.toUpperCase().match(/\b(SX|SO|SP)\b/)?.[1] || "SX";
+  const lead = `You are an Enneagram type ${typeNumber} with an ${instinctCode} instinct.`;
+  const primary =
+    formatOptionalText(
+      report?.instinctNarrativePrimary,
+      instinctCode === "SX"
+        ? "The one-to-one instinct is concerned with intensity of experience and strong connection with specific people."
+        : instinctCode === "SO"
+          ? "The social instinct is concerned with belonging, contribution, and maintaining meaningful connections in groups."
+          : "The self-preservation instinct is concerned with practical stability, resources, and long-term personal sustainability.",
+    );
+  const secondary = formatOptionalText(
+    report?.instinctNarrativeSecondary,
+    report?.deep?.[2] || "This instinct pattern shapes how you connect, protect energy, and prioritize relationships.",
+  );
+  return { lead, primary, secondary };
+}
+
+function buildConflictCopyForDisplay(report) {
+  const style = getConflictStyleForDisplay(report);
+  const primary = formatOptionalText(
+    report?.conflictNarrativePrimary,
+    `Your preferred conflict processing strategy is ${style}.`,
+  );
+  const secondary = formatOptionalText(
+    report?.conflictNarrativeSecondary,
+    "A more regulated body and explicit positive regard can change the outcome dramatically.",
+  );
+  return { primary, secondary };
+}
+
 function renderReportFromState(isExampleMode) {
   setText('typeBadge', REPORT.typeNumber);
   setText('headerSubtitle', `Type ${REPORT.typeNumber} · ${REPORT.instinct}`);
@@ -3475,6 +3821,16 @@ function renderReportFromState(isExampleMode) {
   setText('mainTypeValue', currentCoreTypeLabel());
   setText('instinctValue', REPORT.instinct);
   setText('keywordValue', REPORT.keyword);
+  const instinctCopy = buildInstinctCopyForDisplay(REPORT);
+  const conflictCopy = buildConflictCopyForDisplay(REPORT);
+  setText('instinctSummaryLead', instinctCopy.lead);
+  setText('instinctNarrativePrimary', instinctCopy.primary);
+  setText('instinctNarrativeSecondary', instinctCopy.secondary);
+  setText('conflictNarrativePrimary', conflictCopy.primary);
+  setText('conflictNarrativeSecondary', conflictCopy.secondary);
+  setText('profileWheelBadgeType', REPORT.typeNumber);
+  setText('profileWheelBadgeKeyword', String(REPORT.keyword || '').toUpperCase());
+  setText('profileWheelBadgeInstinct', String(REPORT.instinct || '').split('—')[0].trim() || 'N/A');
   setText('releaseValue', formatTypeLine(REPORT.release));
   setText('stretchValue', formatTypeLine(REPORT.stretch));
   setText('integrationValue', REPORT.integration);
@@ -3589,26 +3945,12 @@ function renderReportFromState(isExampleMode) {
   );
 
   const centerScores = REPORT.centerScoresRaw || {};
-  setBarRow('centerBodyBar', 'centerBodyVal', centerScores.body ?? null, { valueFormatter: scoreBandLabel, nullLabel: "N/A" });
-  setBarRow('centerHeartBar', 'centerHeartVal', centerScores.heart ?? null, { valueFormatter: scoreBandLabel, nullLabel: "N/A" });
-  setBarRow('centerHeadBar', 'centerHeadVal', centerScores.head ?? null, { valueFormatter: scoreBandLabel, nullLabel: "N/A" });
-
-  const instinctScores = REPORT.instinctScoresRaw || {};
-  setBarRow('instinctSxBar', 'instinctSxVal', instinctScores.sexual ?? null, { nullLabel: "N/A" });
-  setBarRow('instinctSoBar', 'instinctSoVal', instinctScores.social ?? null, { nullLabel: "N/A" });
-  setBarRow('instinctSpBar', 'instinctSpVal', instinctScores.selfPreservation ?? null, { nullLabel: "N/A" });
-
-  const interaction = REPORT.interactionScores || {};
-  setBarRow('interactionAssertiveBar', 'interactionAssertiveVal', interaction.assertive ?? null, { nullLabel: "N/A" });
-  setBarRow('interactionReactiveBar', 'interactionReactiveVal', interaction.reactive ?? null, { nullLabel: "N/A" });
+  setCenterLevelChip('centerBodyChip', centerScores.body ?? null);
+  setCenterLevelChip('centerHeartChip', centerScores.heart ?? null);
+  setCenterLevelChip('centerHeadChip', centerScores.head ?? null);
 
   const strain = REPORT.strainScoresRaw || {};
-  setBarRow('strainHappinessBar', 'strainHappinessVal', strain.happiness ?? REPORT.strain?.[0] ?? null, { color: 'var(--red)', valueFormatter: scoreBandLabel, nullLabel: "N/A" });
-  setBarRow('strainVocationalBar', 'strainVocationalVal', strain.vocational ?? REPORT.strain?.[1] ?? null, { valueFormatter: scoreBandLabel, nullLabel: "N/A" });
-  setBarRow('strainInterpersonalBar', 'strainInterpersonalVal', strain.interpersonal ?? REPORT.strain?.[2] ?? null, { valueFormatter: scoreBandLabel, nullLabel: "N/A" });
-  setBarRow('strainPhysicalBar', 'strainPhysicalVal', strain.physical ?? REPORT.strain?.[3] ?? null, { valueFormatter: scoreBandLabel, nullLabel: "N/A" });
-  setBarRow('strainEnvironmentalBar', 'strainEnvironmentalVal', strain.environmental ?? REPORT.strain?.[4] ?? null, { valueFormatter: scoreBandLabel, nullLabel: "N/A" });
-  setBarRow('strainPsychologicalBar', 'strainPsychologicalVal', strain.psychological ?? REPORT.strain?.[5] ?? null, { valueFormatter: scoreBandLabel, nullLabel: "N/A" });
+  renderStrainBreakdownRows(strain, REPORT.strain);
   const overallNumeric = Number(strain.overall);
   const fallbackStrainValues = Array.isArray(REPORT.strain)
     ? REPORT.strain.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
@@ -3626,6 +3968,34 @@ function renderReportFromState(isExampleMode) {
     setText('strainOverallScore', "Overall level: NOT DETECTED");
     setText('strainOverallLabel', "Overall strain was not detected in the assigned report.");
   }
+
+  const narrativeMap = new Map(
+    strainNarratives.map((item) => [String(item.category || "").toLowerCase(), formatOptionalText(item.text, "Not detected in assigned PDF.")]),
+  );
+  const strainWriteupRows = [
+    { title: "Overall Strain", key: "overall", level: Number.isFinite(overall) ? scoreBandLabel(overall) : "Low" },
+    { title: "Vocational", key: "vocational", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "vocational")) },
+    { title: "Environmental", key: "environmental", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "environmental")) },
+    { title: "Physical", key: "physical", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "physical")) },
+    { title: "Interpersonal", key: "interpersonal", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "interpersonal")) },
+    { title: "Psychological", key: "psychological", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "psychological")) },
+    { title: "Happiness", key: "happiness", level: scoreBandLabel(getStrainValueByKey(strain, REPORT.strain, "happiness")) },
+  ];
+  setHtml(
+    'strainWriteupCards',
+    strainWriteupRows
+      .map((item) => {
+        const visual = getStrainCardVisual(item.level);
+        const detail =
+          item.key === "overall"
+            ? `Overall strain is ${String(item.level).toLowerCase()} in this report.`
+            : (narrativeMap.get(item.title.toLowerCase()) || getStrainCardFallbackText(item.title, item.level));
+        return `<div class="card"><div class="ct">${item.title} — ${item.level}</div><div class="chip ${visual.chipClass}" style="margin-bottom:10px">${visual.chipLabel}</div><p style="font-size:13px;color:var(--text2)">${detail}</p></div>`;
+      })
+      .join(""),
+  );
+  console.log('[strain] rendered write-up cards', strainWriteupRows);
+
   console.log('[charts] updated all chart and bar datasets', {
     profile: REPORT.profile,
     strain: REPORT.strain,
@@ -3698,63 +4068,6 @@ window.addEventListener('load', () => {
   if (focusSubmit) focusSubmit.addEventListener('click', runFocusFilter);
   const focusReset = document.getElementById('focusReset');
   if (focusReset) focusReset.addEventListener('click', resetFocusPrompt);
-
-  const pCtx = document.getElementById('profileChart');
-  if (pCtx) {
-    profileChart = new Chart(pCtx, {
-      type: 'bar',
-      data: {
-        labels: ['8','9','1','2','3','4','5','6','7'],
-        datasets: [{
-          data: REPORT.profile,
-          backgroundColor:['#b02c34','#d4d0c8','#d4d0c8','#9a6e1a','#d4d0c8','#d4d0c8','#295c87','#d4d0c8','#d4d0c8'],
-          borderRadius: 3,
-          borderSkipped: false
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color:'#7b8ea4', font: { size: 11 } } },
-          y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color:'#7b8ea4', font: { size: 11 } }, min: 0, max: 100 }
-        }
-      }
-    });
-  }
-
-  const sCtx = document.getElementById('strainChart');
-  if (sCtx) {
-    strainChart = new Chart(sCtx, {
-      type: 'radar',
-      data: {
-        labels: ['Happiness','Vocational','Interpersonal','Physical','Environmental','Psychological'],
-        datasets: [{
-          data: REPORT.strain,
-          backgroundColor: 'rgba(176,44,52,0.08)',
-          borderColor: '#b02c34',
-          borderWidth: 2,
-          pointBackgroundColor: '#b02c34',
-          pointRadius: 4
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          r: {
-            min: 0, max: 100,
-            grid: { color: 'rgba(0,0,0,0.07)' },
-            angleLines: { color: 'rgba(0,0,0,0.07)' },
-            ticks: { display: false },
-            pointLabels: { color: '#4f647e', font: { size: 11 } }
-          }
-        }
-      }
-    });
-  }
 
   const reportSelector = document.getElementById('reportSelector');
   reportSelector.addEventListener('change', event => {
