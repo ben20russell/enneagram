@@ -789,7 +789,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
       </div>
 
       <div id="sec-strain" class="sec">
-        <div class="mb24">
+        <div class="g2 mb24">
           <div class="card">
             <div class="ct">Strain Area Breakdown</div>
             <div style="margin-bottom:6px;padding-bottom:12px;border-bottom:1px solid var(--border)">
@@ -805,6 +805,19 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
               <div class="brow"><div class="blbl">Psychological</div><span class="chip strain-chip-low">Low</span></div>
             </div>
           </div>
+
+          <div class="card">
+            <div class="ct">Qualitative Strain Interpretations</div>
+            <p style="font-size:13px;color:var(--text3);margin-bottom:10px">Narrative interpretations extracted for each strain category.</p>
+            <div id="strainQualitativeList" class="tlist">
+              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Happiness:</strong> Not detected in assigned PDF.</div></div>
+              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Vocational:</strong> Not detected in assigned PDF.</div></div>
+              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Interpersonal:</strong> Not detected in assigned PDF.</div></div>
+              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Physical:</strong> Not detected in assigned PDF.</div></div>
+              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Environmental:</strong> Not detected in assigned PDF.</div></div>
+              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Psychological:</strong> Not detected in assigned PDF.</div></div>
+            </div>
+          </div>
         </div>
 
         <div id="strainWriteupCards" class="strain-cards-pack mb24" data-testid="strain-writeup-cards">
@@ -815,19 +828,6 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           <div class="card"><div class="ct">Interpersonal — Medium</div><div class="chip cg" style="margin-bottom:10px">Relational friction present</div><p style="font-size:13px;color:var(--text2)">Interpersonal dynamics appear to carry moderate strain.</p></div>
           <div class="card"><div class="ct">Psychological — Low</div><div class="chip cgn" style="margin-bottom:10px">Internal pressure limited</div><p style="font-size:13px;color:var(--text2)">Psychological strain markers currently indicate a lower level of pressure.</p></div>
           <div class="card"><div class="ct">Happiness — Low</div><div class="chip cgn" style="margin-bottom:10px">Mood strain is low</div><p style="font-size:13px;color:var(--text2)">Happiness-related strain signals are currently on the lower side.</p></div>
-        </div>
-
-        <div class="card mb24">
-          <div class="ct">Qualitative Strain Interpretations</div>
-          <p style="font-size:13px;color:var(--text3);margin-bottom:10px">Narrative interpretations extracted for each strain category.</p>
-          <div id="strainQualitativeList" class="tlist">
-            <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Happiness:</strong> Not detected in assigned PDF.</div></div>
-            <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Vocational:</strong> Not detected in assigned PDF.</div></div>
-            <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Interpersonal:</strong> Not detected in assigned PDF.</div></div>
-            <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Physical:</strong> Not detected in assigned PDF.</div></div>
-            <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Environmental:</strong> Not detected in assigned PDF.</div></div>
-            <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Psychological:</strong> Not detected in assigned PDF.</div></div>
-          </div>
         </div>
       </div>
 
@@ -866,14 +866,14 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
       <div id="sec-growth" class="sec">
         <div class="g2 mb24">
           <div class="card">
-            <div class="ct">Connected Line A — Type 2</div>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:10px">Connected Line A links Type 8 with Type 2 themes such as empathy, warmth, and relational care.</p>
+            <div class="ct">Release Point — Type 2</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px">Release Point links Type 8 with Type 2 themes such as empathy, warmth, and relational care.</p>
             <p style="font-size:14px;color:var(--text2)">Consciously identifying the positive traits you appreciate in others can release tension and unlock compassion beyond self-interest.</p>
             <div class="quote"><p>Release through surrender to the vulnerability of the power of love.</p></div>
           </div>
           <div class="card">
-            <div class="ct">Connected Line B — Type 5</div>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:10px">Connected Line B links Type 8 with Type 5 themes such as withdrawal, strategic distance, and analytic detachment under pressure.</p>
+            <div class="ct">Stretch Point — Type 5</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px">Stretch Point links Type 8 with Type 5 themes such as withdrawal, strategic distance, and analytic detachment under pressure.</p>
             <div class="ibox"><p>Making time to recharge alone helps prevent overdrive and makes it less likely that anger will fly off the handle.</p></div>
           </div>
         </div>
@@ -1750,11 +1750,15 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractSnippetFromLabels(pdfText, ["Subtype Keyword", "Subtype"]);
     connectedLineA =
       connectedLineA ||
-      extractLineTypeFromFlowSection(pdfText, "release") ||
+      extractLineTypeFromFlowSection(pdfText, "stress") ||
+      extractConnectedLineType(pdfText, "Stretch Point") ||
+      // Legacy iEQ9 wording fallback; display terminology stays "Stretch Point".
       extractConnectedLineType(pdfText, "Connected Line A");
     connectedLineB =
       connectedLineB ||
-      extractLineTypeFromFlowSection(pdfText, "stress") ||
+      extractLineTypeFromFlowSection(pdfText, "release") ||
+      extractConnectedLineType(pdfText, "Release Point") ||
+      // Legacy iEQ9 wording fallback; display terminology stays "Release Point".
       extractConnectedLineType(pdfText, "Connected Line B");
     if (!hasInformativeScoreMap(profileScores, 3)) {
       profileScores = normalizeScoreScale(extractEnneagramProfileScores(pdfText));
@@ -2833,8 +2837,8 @@ function decorateInterfaceIcons() {
     'Interpersonal — Medium': 'users',
     'Levels of Health and Integration': 'integration',
     'Wing Influence — Types 7 & 9': 'growth',
-    'Connected Line A — Type 2': 'spark',
-    'Connected Line B — Type 5': 'shield'
+    'Release Point — Type 2': 'spark',
+    'Stretch Point — Type 5': 'shield'
   };
 
   document.querySelectorAll('.nav button').forEach(button => {
@@ -4138,8 +4142,8 @@ function buildPdfOnlyReport(payload) {
   const typeName = sanitizeSnippet(payload?.typeName, fallbackText);
   const instinct = sanitizeSnippet(payload?.instinct, fallbackText);
   const keyword = sanitizeSnippet(payload?.subtypeKeyword, fallbackText);
-  const release = formatTypeLine(sanitizeSnippet(payload?.connectedLineA, "Type ?"));
-  const stretch = formatTypeLine(sanitizeSnippet(payload?.connectedLineB, "Type ?"));
+  const release = formatTypeLine(sanitizeSnippet(payload?.connectedLineB, "Type ?"));
+  const stretch = formatTypeLine(sanitizeSnippet(payload?.connectedLineA, "Type ?"));
   const integration = sanitizeSnippet(payload?.integrationLevel, fallbackText);
   const profile = buildPdfOnlyProfile(typeNumber, payload?.profileScores);
   const strainScoresRaw = payload?.strainScoresRaw && typeof payload.strainScoresRaw === "object"
