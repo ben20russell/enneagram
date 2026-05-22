@@ -161,7 +161,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .strain-cards-pack .card{display:inline-block;width:100%;margin:0 0 14px;break-inside:avoid}
 @media(max-width:980px){.strain-cards-pack{column-count:2}}
 @media(max-width:700px){.strain-cards-pack{column-count:1}}
-.center-chip-high{background:var(--red-lt);color:var(--red)}
+.center-chip-high{background:var(--green-lt);color:var(--green)}
 .center-chip-medium{background:var(--gold-lt);color:var(--gold)}
 .center-chip-low{background:var(--surface2);color:var(--text3)}
 .strain-chip-high{background:var(--red-lt);color:var(--red)}
@@ -339,10 +339,6 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
       </div>
 
       <div id="sec-overview" class="sec active">
-        <div class="card mb24" id="assignedIngestCard" data-testid="assigned-ingest-card" style="display:none">
-          <div class="ct">Assigned Report Ingest</div>
-          <p id="assignedIngestSummary" style="font-size:14px;color:var(--text2);line-height:1.65;margin:0"></p>
-        </div>
         <div class="g2 mb24">
           <div class="card">
             <div class="ct">Core Identity</div>
@@ -350,13 +346,17 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
               <div><div class="kvl">Main Type</div><div class="kvv red" id="mainTypeValue" data-testid="main-type">8 — Active Controller</div></div>
               <div><div class="kvl">Dominant Instinct</div><div class="kvv gold" id="instinctValue">SX — One-on-One</div></div>
               <div><div class="kvl">Subtype Keyword</div><div class="kvv" id="keywordValue">Possession</div></div>
-              <div><div class="kvl">Connected Line A</div><div class="kvv green" id="releaseValue">Type 2 · Considerate Helper</div></div>
-              <div><div class="kvl">Connected Line B</div><div class="kvv" id="stretchValue">Type 5 · Quiet Specialist</div></div>
+              <div><div class="kvl">Connected Line A</div><div class="kvv green" id="releaseValue">Type 2</div></div>
+              <div><div class="kvl">Connected Line B</div><div class="kvv" id="stretchValue">Type 5</div></div>
               <div><div class="kvl">Integration Level</div><div class="kvv red" id="integrationValue">Low</div></div>
             </div>
             <div class="div"></div>
-            <div class="subh" style="margin-top:0">Your Meta-Message</div>
-            <div class="quote"><p id="metaQuote">“Be honest and forthright, but don't waste my time.”</p></div>
+            <div class="ct" style="margin-bottom:10px">Basic Desire &amp; Key Motivations</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="motivationLine1">This style stems from the need to be strong and avoid vulnerability. Being direct, impactful, and justice-minded is central to how you move through the world.</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="motivationLine2">At your best you are empowering and encouraging. At your worst you can be experienced as domineering, aggressive, and unstoppable.</p>
+            <div style="display:flex;gap:7px;flex-wrap:wrap" id="traitChips">
+              <span class="chip cgn">Assertive</span><span class="chip cgn">Decisive</span><span class="chip cgn">Protective</span><span class="chip cgn">Independent</span><span class="chip cgn">Influential</span>
+            </div>
           </div>
           <div class="card">
             <div class="ct">Your Enneagram Profile</div>
@@ -375,36 +375,6 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           <div class="card"><div class="ct">Basic Fear</div><p style="font-size:15px;color:var(--text2)" id="coreFearValue">Helplessness or vulnerability. Total weakness. Being controlled by others.</p></div>
           <div class="card"><div class="ct">Basic Desire</div><p style="font-size:15px;color:var(--green);font-weight:600;margin-bottom:6px" id="giftsTitle">Strength, Direction, Aliveness</p><p style="font-size:13px;color:var(--text3)" id="giftsDesc">At your best others experience you as empowering and encouraging.</p></div>
           <div class="card"><div class="ct">Passion (Habit Energy)</div><p style="font-size:15px;color:var(--red);font-weight:600;margin-bottom:6px" id="viceTitle">Lust</p><p style="font-size:13px;color:var(--text3)" id="viceDesc">An insatiable push for control can lead to excess and make connection harder.</p></div>
-        </div>
-
-        <div class="g2 mb24">
-          <div class="card">
-            <div class="ct">Report Metadata</div>
-            <div class="kv-grid mb16">
-              <div><div class="kvl">Client Name</div><div class="kvv" id="clientNameValue">Ben Russell</div></div>
-              <div><div class="kvl">Report Date</div><div class="kvv" id="reportDateValue">26 Feb 2022</div></div>
-              <div><div class="kvl">Wing</div><div class="kvv" id="wingValue">Type 7</div></div>
-              <div><div class="kvl">Trifix</div><div class="kvv" id="trifixValue">Not detected</div></div>
-              <div><div class="kvl">Level of Development</div><div class="kvv" id="developmentLevelValue">Low</div></div>
-              <div><div class="kvl">Centre of Intelligence</div><div class="kvv" id="centerOfIntelligenceValue">Action Center</div></div>
-            </div>
-          </div>
-          <div class="card">
-            <div class="ct">Parsed Score Coverage</div>
-            <p style="font-size:13px;color:var(--text3);margin-bottom:12px">Raw parser score payload from your assigned PDF.</p>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="typeScoresValue">Type scores: Not detected</p>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="instinctScoresValue">Instinct scores: Not detected</p>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:0" id="centerScoresValue">Center scores: Not detected</p>
-          </div>
-        </div>
-
-        <div class="card mb24">
-          <div class="ct">Extracted Content Snapshot</div>
-          <p style="font-size:14px;color:var(--text2);margin-bottom:8px" id="extractedCountsValue">Pages: 0 · Sections: 0</p>
-          <p style="font-size:13px;color:var(--text3);margin-bottom:10px">First parsed section titles from report extraction:</p>
-          <div id="extractedSectionsList" style="display:flex;gap:7px;flex-wrap:wrap">
-            <span class="chip cgn">No parsed sections available</span>
-          </div>
         </div>
 
         <div class="card mb24">
@@ -433,15 +403,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </div>
         </div>
 
-        <div class="card mb24">
-          <div class="ct">Data Quality Diagnostics</div>
-          <p style="font-size:13px;color:var(--text3);margin-bottom:10px" id="diagnosticsSummary">No diagnostics loaded yet.</p>
-          <div id="diagnosticsIssues" class="tlist">
-            <div class="ti"><div class="tic neu">•</div><div class="tt">Waiting for assigned report diagnostics.</div></div>
-          </div>
-        </div>
-
-        <div class="g2 mb24">
+        <div class="mb24">
           <div class="card">
             <div class="ct">Core Belief &amp; Attention Pattern</div>
             <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="worldviewValue"><strong style="color:var(--text)">Worldview:</strong> The world is a tough and unjust place in which only the strong survive. Good things happen to those who take control.</p>
@@ -449,14 +411,6 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             <div style="background:var(--surface2);border-radius:var(--r-sm);padding:12px">
               <div class="kvl">Self-Talk</div>
               <div style="font-family:var(--font-display);font-size:17px;font-weight:600;color:var(--text)" id="selfTalkValue">I must be in control; I must be strong.</div>
-            </div>
-          </div>
-          <div class="card">
-            <div class="ct">Basic Desire &amp; Key Motivations</div>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="motivationLine1">This style stems from the need to be strong and avoid vulnerability. Being direct, impactful, and justice-minded is central to how you move through the world.</p>
-            <p style="font-size:14px;color:var(--text2);margin-bottom:12px" id="motivationLine2">At your best you are empowering and encouraging. At your worst you can be experienced as domineering, aggressive, and unstoppable.</p>
-            <div style="display:flex;gap:7px;flex-wrap:wrap" id="traitChips">
-              <span class="chip cgn">Assertive</span><span class="chip cgn">Decisive</span><span class="chip cgn">Protective</span><span class="chip cgn">Independent</span><span class="chip cgn">Influential</span>
             </div>
           </div>
         </div>
@@ -471,6 +425,48 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             <div>
               <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="deepP3">You collect a small group of trusted people around you and are a loyal, reliable and protective friend.</p>
               <p style="font-size:14px;color:var(--text2)" id="deepP4">On some level you are seeking a true equal — someone who can offer you the guidance, protection and challenge that you give to others.</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="overviewAdminDiagnostics" style="display:none">
+          <div class="card mb24">
+            <div class="ct">Report Metadata</div>
+            <div class="kv-grid mb16">
+              <div><div class="kvl">Client Name</div><div class="kvv" id="clientNameValue">Ben Russell</div></div>
+              <div><div class="kvl">Report Date</div><div class="kvv" id="reportDateValue">26 Feb 2022</div></div>
+              <div><div class="kvl">Trifix</div><div class="kvv" id="trifixValue">Not detected</div></div>
+              <div><div class="kvl">Level of Development</div><div class="kvv" id="developmentLevelValue">Low</div></div>
+            </div>
+          </div>
+
+          <div class="card mb24" id="assignedIngestCard" data-testid="assigned-ingest-card" style="display:none">
+            <div class="ct">Assigned Report Ingest</div>
+            <p id="assignedIngestSummary" style="font-size:14px;color:var(--text2);line-height:1.65;margin:0"></p>
+          </div>
+
+          <div class="card mb24">
+            <div class="ct">Parsed Score Coverage</div>
+            <p style="font-size:13px;color:var(--text3);margin-bottom:12px">Raw parser score payload from your assigned PDF.</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="typeScoresValue">Type scores: Not detected</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="instinctScoresValue">Instinct scores: Not detected</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:0" id="centerScoresValue">Center scores: Not detected</p>
+          </div>
+
+          <div class="card mb24">
+            <div class="ct">Extracted Content Snapshot</div>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:8px" id="extractedCountsValue">Pages: 0 · Sections: 0</p>
+            <p style="font-size:13px;color:var(--text3);margin-bottom:10px">First parsed section titles from report extraction:</p>
+            <div id="extractedSectionsList" style="display:flex;gap:7px;flex-wrap:wrap">
+              <span class="chip cgn">No parsed sections available</span>
+            </div>
+          </div>
+
+          <div class="card mb24">
+            <div class="ct">Data Quality Diagnostics</div>
+            <p style="font-size:13px;color:var(--text3);margin-bottom:10px" id="diagnosticsSummary">No diagnostics loaded yet.</p>
+            <div id="diagnosticsIssues" class="tlist">
+              <div class="ti"><div class="tic neu">•</div><div class="tt">Waiting for assigned report diagnostics.</div></div>
             </div>
           </div>
         </div>
@@ -936,6 +932,12 @@ function setMyReportOptionVisible(visible) {
   const option = getMyReportSelectorOption();
   if (!option) return;
   option.style.display = visible ? "block" : "none";
+}
+
+function setOverviewAdminDiagnosticsVisible(email) {
+  const container = document.getElementById("overviewAdminDiagnostics");
+  if (!container) return;
+  container.style.display = hasAdminAccess(email) ? "block" : "none";
 }
 
 function selectMyReportInSelector() {
@@ -1889,6 +1891,7 @@ function setSignedOutAuthUi() {
   setReportActiveChipVisible(false);
   setReportSwitchVisible(true);
   setMyReportOptionVisible(false);
+  setOverviewAdminDiagnosticsVisible(null);
   currentReportViewMode = "example";
   latestAssignedPdfReport = null;
   hideAssignedIngestCard();
@@ -1912,6 +1915,7 @@ function setSignedInAuthUi(user) {
   currentSignedInUser = user || null;
   closeAuthMenu();
   updateAdminPageLink(user?.email);
+  setOverviewAdminDiagnosticsVisible(user?.email);
   setExportPdfState({ visible: true, enabled: false });
   button.classList.remove("google");
   button.classList.add("avatar");
