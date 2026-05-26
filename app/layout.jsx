@@ -1,3 +1,4 @@
+import "./globals.css";
 import Providers from "./providers";
 
 export const metadata = {
@@ -13,7 +14,7 @@ export default function RootLayout({ children }) {
   console.log("[layout] rendering RootLayout");
   return (
     <html lang="en">
-      <body style={{ margin: 0 }}>
+      <body suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

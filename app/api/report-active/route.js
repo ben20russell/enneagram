@@ -105,7 +105,9 @@ export async function GET() {
       return NextResponse.json(
         {
           isAuthenticated: true,
+          hasAssignedReport: false,
           isReportActive: false,
+          isAssignedReportReady: false,
           isPdfRenderable: false,
           reportFileName: assignedReport?.reportPdf?.fileName || null,
         },
@@ -137,7 +139,9 @@ export async function GET() {
     return NextResponse.json(
       {
         isAuthenticated: true,
+        hasAssignedReport: hasAssignedPdfMetadata,
         isReportActive,
+        isAssignedReportReady: isReportActive,
         isPdfRenderable,
         reportFileName: assignedReport?.reportPdf?.fileName || null,
         reportSignedUrl: data?.signedUrl || null,
@@ -165,7 +169,9 @@ export async function GET() {
     return NextResponse.json(
       {
         isAuthenticated: true,
+        hasAssignedReport: false,
         isReportActive: false,
+        isAssignedReportReady: false,
         error: String(error?.message || "Unknown report-active check error"),
       },
       { status: 200 },

@@ -30,14 +30,20 @@ function checkNodeSyntax() {
 }
 
 function checkReportSelectorBinding() {
-  const reportPath = resolve("public/report.html");
-  const text = readFileSync(reportPath, "utf8");
-  const hasInlineOnChange = /id="reportSelector"[\s\S]*\sonchange=/.test(text);
-  const changeBindingCount = (text.match(/addEventListener\((["'])change\1,\s*onReportSelectorChange\)/g) || []).length;
-  const inputBindingCount = (text.match(/addEventListener\((["'])input\1,\s*onReportSelectorChange\)/g) || []).length;
+  const reportHtmlPath = resolve("public/report.html");
+  const reportScriptPath = resolve("public/report.js");
+  const html = readFileSync(reportHtmlPath, "utf8");
+  const script = readFileSync(reportScriptPath, "utf8");
+  const hasInlineOnChange = /id="reportSelector"[\s\S]*\sonchange=/.test(html);
+  const hasExternalReportScript = /<script\s+src="\/report\.js(?:\?[^"]*)?"\s*><\/script>/i.test(html);
+  const changeBindingCount = (script.match(/addEventListener\((["'])change\1,\s*onReportSelectorChange\)/g) || []).length;
+  const inputBindingCount = (script.match(/addEventListener\((["'])input\1,\s*onReportSelectorChange\)/g) || []).length;
 
   if (hasInlineOnChange) {
     fail("report selector should not use inline onchange binding");
+  }
+  if (!hasExternalReportScript) {
+    fail("report.html must load public/report.js as an external script");
   }
   if (changeBindingCount !== 1) {
     fail(`report selector change handler binding count is ${changeBindingCount}, expected 1`);
@@ -48,11 +54,13 @@ function checkReportSelectorBinding() {
 }
 
 function checkSearchPopoutDismiss() {
-  const reportPath = resolve("public/report.html");
-  const text = readFileSync(reportPath, "utf8");
-  const hasEscHandler = text.includes("event.key === 'Escape' && isSearchPopoutOpen()");
-  const hasOutsideClick = text.includes("document.addEventListener('pointerdown', event =>");
-  const hasCloseButton = text.includes("searchPopoutClose");
+  const reportHtmlPath = resolve("public/report.html");
+  const reportScriptPath = resolve("public/report.js");
+  const html = readFileSync(reportHtmlPath, "utf8");
+  const script = readFileSync(reportScriptPath, "utf8");
+  const hasEscHandler = script.includes("event.key === 'Escape' && isSearchPopoutOpen()");
+  const hasOutsideClick = script.includes("document.addEventListener('pointerdown', event =>");
+  const hasCloseButton = html.includes("searchPopoutClose") && script.includes("searchPopoutClose");
   if (!hasEscHandler || !hasOutsideClick || !hasCloseButton) {
     fail("search popout dismiss handlers are incomplete");
   }
