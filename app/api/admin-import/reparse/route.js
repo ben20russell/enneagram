@@ -5,7 +5,7 @@ import { hasAdminAccess, normalizeEmail } from "../../../../lib/adminAccess";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../../lib/supabaseAdmin";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 900;
 
 function getNonNullCount(obj) {
   if (!obj || typeof obj !== "object") return 0;
@@ -71,9 +71,10 @@ export async function POST(req) {
 
   const reportsTable = process.env.SUPABASE_REPORTS_TABLE || "reports";
   const supabase = getSupabaseAdmin();
+  let report = null;
 
   try {
-    const { data: report, error: reportErr } = await supabase
+    const { data: loadedReport, error: reportErr } = await supabase
       .from(reportsTable)
       .select("id,user_email,enneagram_type,results_data,report_pdf")
       .eq("id", reportId)
@@ -82,9 +83,10 @@ export async function POST(req) {
     if (reportErr) {
       throw new Error(`Failed to fetch report: ${reportErr.message}`);
     }
-    if (!report) {
+    if (!loadedReport) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 });
     }
+    report = loadedReport;
 
     const bucket = report?.report_pdf?.bucket || getSupabaseStorageBucket();
     const storagePath = report?.report_pdf?.storagePath;
@@ -99,7 +101,7 @@ export async function POST(req) {
     }
 
     const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
-    const { parsePdf } = await import("../../../../lib/parsePdf");
+    const { parsePdf } = await import("../../../../lib/parsePdf.js");
     const parsed = await parsePdf(pdfBuffer);
 
     const parseDiagnostics =
@@ -153,6 +155,11 @@ export async function POST(req) {
         parser: {
           provider: "azure-openai",
           model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
+        },
+        parseAttempt: {
+          at: new Date().toISOString(),
+          triggeredBy: requesterEmail,
+          ok: true,
         },
         parseDiagnostics: nextDiagnostics,
       },
@@ -223,6 +230,66 @@ export async function POST(req) {
       details,
       stack: error?.stack,
     });
+
+    if (report?.id) {
+      try {
+        const priorResults = report?.results_data && typeof report.results_data === "object"
+          ? report.results_data
+          : {};
+        const priorIngestion = priorResults?.ingestion && typeof priorResults.ingestion === "object"
+          ? priorResults.ingestion
+          : {};
+        const priorDiagnostics =
+          priorIngestion?.parseDiagnostics && typeof priorIngestion.parseDiagnostics === "object"
+            ? priorIngestion.parseDiagnostics
+            : {};
+
+        const nextResultsDataOnFailure = {
+          ...priorResults,
+          ingestion: {
+            ...priorIngestion,
+            status: "incomplete",
+            mode: "admin-import-auto",
+            ingestedAt: new Date().toISOString(),
+            reportId: report.id,
+            parseAttempt: {
+              at: new Date().toISOString(),
+              triggeredBy: requesterEmail,
+              ok: false,
+            },
+            parseDiagnostics: {
+              ...priorDiagnostics,
+              isComplete: false,
+              incompleteReason: `Reparse failed: ${details}`,
+              failedAt: new Date().toISOString(),
+            },
+          },
+          review: {
+            ...(priorResults?.review && typeof priorResults.review === "object" ? priorResults.review : {}),
+            status: "needs_review",
+            updatedAt: new Date().toISOString(),
+          },
+        };
+
+        const { error: failureUpdateErr } = await supabase
+          .from(reportsTable)
+          .update({ results_data: nextResultsDataOnFailure })
+          .eq("id", report.id);
+
+        if (failureUpdateErr) {
+          console.log("[admin-import:reparse] Failed to persist reparse error diagnostics", {
+            reportId: report.id,
+            details: failureUpdateErr.message,
+          });
+        }
+      } catch (persistError) {
+        console.log("[admin-import:reparse] Unexpected error persisting reparse failure diagnostics", {
+          reportId: report.id,
+          details: String(persistError?.message || persistError),
+        });
+      }
+    }
+
     return NextResponse.json(
       { error: "Failed to reparse report", details, reportId, reportsTable },
       { status: 500 },

@@ -7,7 +7,7 @@ import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 900;
 
 function sanitizeFileName(name) {
   return String(name || "report.pdf")
@@ -296,7 +296,7 @@ async function finalizeImport({
         throw new Error(`Failed to download uploaded PDF for parsing: ${downloadErr?.message || "unknown error"}`);
       }
       const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
-      const { parsePdf } = await import("../../../lib/parsePdf");
+      const { parsePdf } = await import("../../../lib/parsePdf.js");
       const parsed = await parsePdf(pdfBuffer);
       parsedPrimaryType = parsed?.primaryType ? String(parsed.primaryType) : parsedPrimaryType;
       resultsData = buildParsedResultsData({
