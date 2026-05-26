@@ -251,16 +251,10 @@ export default function AdminImportForm() {
 
       setTimeout(() => {
         if (!window.closed) {
-          setCloseHint(
-            "Your browser blocked automatic closing. Close this tab manually or use Return To Report.",
-          );
+          setCloseHint("Your browser blocked automatic closing. Close this tab manually.");
         }
       }, 120);
     }, 120);
-  }
-
-  function handleReturnToReport() {
-    window.location.assign("/report");
   }
 
   return (
@@ -389,23 +383,6 @@ export default function AdminImportForm() {
             }}
           >
             Close Window
-          </button>
-          <button
-            data-testid="admin-import-return-report"
-            type="button"
-            onClick={handleReturnToReport}
-            style={{
-              border: "1px solid #0a66d8",
-              borderRadius: "10px",
-              background: "#0a66d8",
-              color: "#ffffff",
-              padding: "10px 16px",
-              cursor: "pointer",
-              fontWeight: 700,
-              marginLeft: "8px",
-            }}
-          >
-            Return To Report
           </button>
           {closeHint ? (
             <p style={{ marginTop: "10px", color: "#334155" }} data-testid="admin-import-close-hint">
