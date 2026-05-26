@@ -7,7 +7,7 @@ import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 
 export const runtime = "nodejs";
-export const maxDuration = 900;
+export const maxDuration = 300;
 
 function sanitizeFileName(name) {
   return String(name || "report.pdf")

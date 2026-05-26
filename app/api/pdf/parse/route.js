@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { parsePdf } from "../../../../lib/parsePdf.js";
 
 export const runtime = "nodejs";
-export const maxDuration = 900;
+export const maxDuration = 300;
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
 
 function isPdfFile(file) {
