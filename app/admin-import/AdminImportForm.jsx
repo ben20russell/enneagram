@@ -242,6 +242,14 @@ export default function AdminImportForm() {
       let finalizeRes;
       let finalizeData = {};
       let finalizeRawBody = "";
+      const finalizePayload = {
+        reportId: initData.reportId,
+        userEmail: initData.userEmail,
+        safeFileName: initData.safeFileName,
+        storagePath: initData.storagePath,
+        mimeType: initData.mimeType || "application/pdf",
+        sizeBytes: initData.sizeBytes || reportPdf.size,
+      };
 
       try {
         finalizeRes = await fetch("/api/admin-import", {
@@ -249,14 +257,7 @@ export default function AdminImportForm() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            reportId: initData.reportId,
-            userEmail: initData.userEmail,
-            safeFileName: initData.safeFileName,
-            storagePath: initData.storagePath,
-            mimeType: initData.mimeType || "application/pdf",
-            sizeBytes: initData.sizeBytes || reportPdf.size,
-          }),
+          body: JSON.stringify(finalizePayload),
           signal: finalizeTimeout.controller.signal,
         });
         finalizeRawBody = await finalizeRes.text();
@@ -290,19 +291,86 @@ export default function AdminImportForm() {
           fileInput.value = "";
         }
       } else {
-        const finalizedErrorMessage = [finalizeData?.error, finalizeData?.details]
-          .filter((value) => typeof value === "string" && value.trim().length > 0)
-          .join(": ");
-        const finalizedHttpMessage = `HTTP ${finalizeRes.status} ${finalizeRes.statusText || ""}`.trim();
-        const finalizedRawPreview = finalizeRawBody
-          ? finalizeRawBody.replace(/\s+/g, " ").trim().slice(0, 180)
-          : "";
-        setStatus(
-          finalizedErrorMessage ||
-            (finalizedRawPreview
-              ? `Failed to finalize import (${finalizedHttpMessage}): ${finalizedRawPreview}`
-              : `Failed to finalize import (${finalizedHttpMessage}).`),
-        );
+        const isNextErrorHtml =
+          finalizeRawBody.includes("__next_error__") ||
+          finalizeRawBody.toLowerCase().startsWith("<!doctype html");
+
+        if (isNextErrorHtml) {
+          console.log("[admin-import-page] Primary finalize returned Next.js html error page; retrying lite route");
+          const liteTimeout = createTimeoutController(FINALIZE_REQUEST_TIMEOUT_MS);
+          let liteRes;
+          let liteData = {};
+          let liteRawBody = "";
+
+          try {
+            liteRes = await fetch("/api/admin-import/finalize-lite", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(finalizePayload),
+              signal: liteTimeout.controller.signal,
+            });
+            liteRawBody = await liteRes.text();
+            if (liteRawBody) {
+              try {
+                liteData = JSON.parse(liteRawBody);
+              } catch (_error) {
+                liteData = {};
+              }
+            }
+          } finally {
+            clearTimeoutController(liteTimeout.timeoutId);
+          }
+
+          console.log("[admin-import-page] Lite finalize response", {
+            ok: liteRes.ok,
+            status: liteRes.status,
+            statusText: liteRes.statusText,
+            data: liteData,
+            rawBodyPreview: liteRawBody ? liteRawBody.slice(0, 280) : null,
+          });
+
+          if (liteRes.ok) {
+            setStatus(`Success! Report assigned to ${normalizedEmail}.`);
+            setDidUploadSucceed(true);
+            playCompletionSound();
+            setEmail("");
+            setReportPdf(null);
+            const fileInput = document.getElementById("admin-import-pdf");
+            if (fileInput) {
+              fileInput.value = "";
+            }
+          } else {
+            const liteErrorMessage = [liteData?.error, liteData?.details]
+              .filter((value) => typeof value === "string" && value.trim().length > 0)
+              .join(": ");
+            const liteHttpMessage = `HTTP ${liteRes.status} ${liteRes.statusText || ""}`.trim();
+            const liteRawPreview = liteRawBody
+              ? liteRawBody.replace(/\s+/g, " ").trim().slice(0, 180)
+              : "";
+            setStatus(
+              liteErrorMessage ||
+                (liteRawPreview
+                  ? `Failed to finalize import (${liteHttpMessage}): ${liteRawPreview}`
+                  : `Failed to finalize import (${liteHttpMessage}).`),
+            );
+          }
+        } else {
+          const finalizedErrorMessage = [finalizeData?.error, finalizeData?.details]
+            .filter((value) => typeof value === "string" && value.trim().length > 0)
+            .join(": ");
+          const finalizedHttpMessage = `HTTP ${finalizeRes.status} ${finalizeRes.statusText || ""}`.trim();
+          const finalizedRawPreview = finalizeRawBody
+            ? finalizeRawBody.replace(/\s+/g, " ").trim().slice(0, 180)
+            : "";
+          setStatus(
+            finalizedErrorMessage ||
+              (finalizedRawPreview
+                ? `Failed to finalize import (${finalizedHttpMessage}): ${finalizedRawPreview}`
+                : `Failed to finalize import (${finalizedHttpMessage}).`),
+          );
+        }
       }
     } catch (error) {
       console.log("[admin-import-page] Import failed", error);
