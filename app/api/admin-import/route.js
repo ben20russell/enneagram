@@ -3,10 +3,10 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { createReport, getReportById } from "../../../lib/reportsStore";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabaseAdmin";
-import { parsePdf } from "../../../lib/parsePdf";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 
+export const runtime = "nodejs";
 export const maxDuration = 300;
 
 function sanitizeFileName(name) {
@@ -278,56 +278,66 @@ async function finalizeImport({
     mimeType,
   });
   let parsedPrimaryType = inferTypeFromFileName(safeFileName).detectedType;
+  const shouldParseOnFinalize =
+    String(process.env.ADMIN_IMPORT_PARSE_ON_FINALIZE || "").toLowerCase() === "true";
 
-  try {
-    console.log("[admin-import] Starting parse for imported report", {
-      reportId,
-      userEmail,
-      bucket,
-      storagePath,
-      fileName: safeFileName,
-      sizeBytes,
-    });
-    const { data: fileBlob, error: downloadErr } = await supabaseAdmin.storage.from(bucket).download(storagePath);
-    if (downloadErr || !fileBlob) {
-      throw new Error(`Failed to download uploaded PDF for parsing: ${downloadErr?.message || "unknown error"}`);
-    }
-    const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
-    const parsed = await parsePdf(pdfBuffer);
-    parsedPrimaryType = parsed?.primaryType ? String(parsed.primaryType) : parsedPrimaryType;
-    resultsData = buildParsedResultsData({
-      reportId,
-      safeFileName,
-      storagePath,
-      bucket,
-      sizeBytes,
-      mimeType,
-      parsed,
-    });
-    console.log("[admin-import] Parse completed", {
-      reportId,
-      parsedPrimaryType,
-      parseStatus: resultsData?.ingestion?.status || null,
-      parsePages: resultsData?.ingestion?.parseDiagnostics?.extraction?.pages ?? null,
-      parseMinExpectedPages: resultsData?.ingestion?.parseDiagnostics?.extraction?.minExpectedPages ?? null,
-    });
-  } catch (error) {
-    console.log("[admin-import] Parse failed; keeping metadata-only import", {
-      reportId,
-      details: String(error?.message || error),
-    });
-    resultsData = {
-      ...resultsData,
-      ingestion: {
-        ...(resultsData.ingestion || {}),
-        status: "incomplete",
-        parseDiagnostics: {
-          ...(resultsData?.ingestion?.parseDiagnostics || {}),
-          isComplete: false,
-          incompleteReason: `Parsing failed: ${String(error?.message || "unknown parse error")}`,
+  if (shouldParseOnFinalize) {
+    try {
+      console.log("[admin-import] Starting parse for imported report", {
+        reportId,
+        userEmail,
+        bucket,
+        storagePath,
+        fileName: safeFileName,
+        sizeBytes,
+      });
+      const { data: fileBlob, error: downloadErr } = await supabaseAdmin.storage.from(bucket).download(storagePath);
+      if (downloadErr || !fileBlob) {
+        throw new Error(`Failed to download uploaded PDF for parsing: ${downloadErr?.message || "unknown error"}`);
+      }
+      const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
+      const { parsePdf } = await import("../../../lib/parsePdf");
+      const parsed = await parsePdf(pdfBuffer);
+      parsedPrimaryType = parsed?.primaryType ? String(parsed.primaryType) : parsedPrimaryType;
+      resultsData = buildParsedResultsData({
+        reportId,
+        safeFileName,
+        storagePath,
+        bucket,
+        sizeBytes,
+        mimeType,
+        parsed,
+      });
+      console.log("[admin-import] Parse completed", {
+        reportId,
+        parsedPrimaryType,
+        parseStatus: resultsData?.ingestion?.status || null,
+        parsePages: resultsData?.ingestion?.parseDiagnostics?.extraction?.pages ?? null,
+        parseMinExpectedPages: resultsData?.ingestion?.parseDiagnostics?.extraction?.minExpectedPages ?? null,
+      });
+    } catch (error) {
+      console.log("[admin-import] Parse failed; keeping metadata-only import", {
+        reportId,
+        details: String(error?.message || error),
+      });
+      resultsData = {
+        ...resultsData,
+        ingestion: {
+          ...(resultsData.ingestion || {}),
+          status: "incomplete",
+          parseDiagnostics: {
+            ...(resultsData?.ingestion?.parseDiagnostics || {}),
+            isComplete: false,
+            incompleteReason: `Parsing failed: ${String(error?.message || "unknown parse error")}`,
+          },
         },
-      },
-    };
+      };
+    }
+  } else {
+    console.log("[admin-import] Skipping parse during finalize; using metadata-only import", {
+      reportId,
+      parseFlagEnv: process.env.ADMIN_IMPORT_PARSE_ON_FINALIZE || null,
+    });
   }
 
   const report = await createReport({
