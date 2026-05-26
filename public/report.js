@@ -64,8 +64,9 @@ function setReportSwitchVisible(visible) {
   control.style.display = visible ? "flex" : "none";
 }
 
-function canViewExampleReports({ email, isReportActive }) {
-  return !Boolean(isReportActive) || hasAdminAccess(email);
+function canViewExampleReports({ email, isAuthenticated }) {
+  if (!Boolean(isAuthenticated)) return true;
+  return hasAdminAccess(email);
 }
 
 let assignedReportIngested = false;
@@ -1088,7 +1089,12 @@ async function refreshReportActiveUi() {
       latestReportActiveData = null;
       setExportPdfState({ visible: true, enabled: Boolean(currentSignedInUser) });
       setReportActiveChipVisible(false);
-      setReportSwitchVisible(true);
+      setReportSwitchVisible(
+        canViewExampleReports({
+          email: currentSignedInUser?.email,
+          isAuthenticated: Boolean(currentSignedInUser),
+        }),
+      );
       setMyReportOptionVisible(false);
       latestAssignedPdfReport = null;
       if (currentReportViewMode !== "example") {
@@ -1100,12 +1106,9 @@ async function refreshReportActiveUi() {
     const data = await response.json().catch(() => ({}));
     const isReady = Boolean(data?.isAuthenticated) && Boolean(data?.isReportActive);
     const hasAssignedReportAvailable = isAssignedReportAvailable(data);
-    const shouldShowExampleReports = canViewExampleReports({
-      email: currentSignedInUser?.email,
-      isReportActive: isReady,
-    });
     latestReportActiveData = data;
     const isAdmin = hasAdminAccess(currentSignedInUser?.email);
+    const shouldShowExampleReports = !Boolean(data?.isAuthenticated) || isAdmin;
     const canExportDashboardPdf =
       Boolean(data?.isAuthenticated) && (Boolean(hasAssignedReportAvailable) || Boolean(shouldShowExampleReports));
     setMyReportOptionVisible(hasAssignedReportAvailable);
@@ -1121,11 +1124,9 @@ async function refreshReportActiveUi() {
       reviewStatus: data?.reviewStatus || null,
     });
     if (hasAssignedReportAvailable) {
+      currentReportViewMode = "my-report";
+      selectMyReportInSelector();
       ingestAssignedReportIntoDashboard(data);
-      if (isReady && isAdmin) {
-        currentReportViewMode = "my-report";
-        selectMyReportInSelector();
-      }
     } else {
       latestAssignedPdfReport = null;
       if (currentReportViewMode !== "example") {
@@ -1137,7 +1138,12 @@ async function refreshReportActiveUi() {
     latestReportActiveData = null;
     setExportPdfState({ visible: true, enabled: Boolean(currentSignedInUser) });
     setReportActiveChipVisible(false);
-    setReportSwitchVisible(true);
+    setReportSwitchVisible(
+      canViewExampleReports({
+        email: currentSignedInUser?.email,
+        isAuthenticated: Boolean(currentSignedInUser),
+      }),
+    );
     setMyReportOptionVisible(false);
     latestAssignedPdfReport = null;
     if (currentReportViewMode !== "example") {
@@ -1204,6 +1210,7 @@ function setSignedInAuthUi(user) {
   closeAuthMenu();
   updateAdminPageLink(user?.email);
   setOverviewAdminDiagnosticsVisible(user?.email);
+  setReportSwitchVisible(hasAdminAccess(user?.email));
   setExportPdfState({ visible: true, enabled: true });
   button.classList.remove("google");
   button.classList.add("avatar");

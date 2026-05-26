@@ -17,9 +17,9 @@
     "vite": "^7.1.0"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.70",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.1",
-    "@napi-rs/canvas": "^0.1.70",
     "next": "^16.2.6",
     "next-auth": "^4.24.14",
     "pdf-lib": "^1.17.1",
