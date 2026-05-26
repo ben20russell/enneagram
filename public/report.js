@@ -1099,6 +1099,8 @@ async function refreshReportActiveUi() {
       latestAssignedPdfReport = null;
       if (currentReportViewMode !== "example") {
         applySelectedExampleReportOrFallback();
+      } else if (!exampleReportInitialized) {
+        applyRandomExampleReport();
       }
       return;
     }
@@ -1131,6 +1133,8 @@ async function refreshReportActiveUi() {
       latestAssignedPdfReport = null;
       if (currentReportViewMode !== "example") {
         applySelectedExampleReportOrFallback();
+      } else if (!exampleReportInitialized) {
+        applyRandomExampleReport();
       }
     }
   } catch (error) {
@@ -1148,6 +1152,8 @@ async function refreshReportActiveUi() {
     latestAssignedPdfReport = null;
     if (currentReportViewMode !== "example") {
       applySelectedExampleReportOrFallback();
+    } else if (!exampleReportInitialized) {
+      applyRandomExampleReport();
     }
   }
 }
