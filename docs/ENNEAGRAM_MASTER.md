@@ -2,7 +2,7 @@
 
 This repository's canonical Enneagram reference is:
 
-- Source PDF: `/Users/brussell/Downloads/The Wisdom of the Enneagram. The Complete Guide to Psychological and Spiritual Growth for the Nine Personality Types by Don Richard Riso and Russ Hudson.pdf`
+- Source PDF: `docs/sources/The Wisdom of the Enneagram. The Complete Guide to Psychological and Spiritual Growth for the Nine Personality Types by Don Richard Riso and Russ Hudson.pdf`
 - Extracted text: `docs/enneagram-master-source.txt`
 
 ## Ingestion Details

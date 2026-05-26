@@ -1,6 +1,6 @@
 {
   "title": "The Wisdom of the Enneagram",
-  "source_file": "The Wisdom of the Enneagram. The Complete Guide to Psychological and Spiritual Growth for the Nine Personality Types by Don Richard Riso and Russ Hudson.pdf",
+  "source_file": "docs/sources/The Wisdom of the Enneagram. The Complete Guide to Psychological and Spiritual Growth for the Nine Personality Types by Don Richard Riso and Russ Hudson.pdf",
   "extraction_engine": "pypdf",
   "page_count": 401,
   "pages": [
