@@ -1776,8 +1776,8 @@ let REPORT_MODULES = [];
 const PROFILE_SEGMENT_COLORS = {
   base: '#c9ced3',
   main: '#0067df',
-  release: '#12b981',
-  stretch: '#1f8ec8',
+  release: '#1f8ec8',
+  stretch: '#12b981',
 };
 let focusRequestCounter = 0;
 const FOCUS_AI_API_ROUTE = '/api/focus-rank';
@@ -3285,15 +3285,64 @@ function buildDataQualityDiagnostics({ parsedProfile, parseDiagnostics, feedback
     issues.push("Development exercises not found in structured report content.");
   }
 
+  const formatParserEvent = (entry, fallbackLabel) => {
+    if (!entry) return null;
+    if (typeof entry === "string") return `${fallbackLabel}: ${entry}`;
+    const message = String(entry?.message || fallbackLabel);
+    const details = entry?.details == null ? "" : ` (${String(entry.details)})`;
+    return `${fallbackLabel}: ${message}${details}`;
+  };
+
   const parserWarnings = Array.isArray(parseDiagnostics?.warnings) ? parseDiagnostics.warnings : [];
   const parserErrors = Array.isArray(parseDiagnostics?.errors) ? parseDiagnostics.errors : [];
-  parserWarnings.forEach((warning) => issues.push(`Parser warning: ${String(warning)}`));
-  parserErrors.forEach((error) => issues.push(`Parser error: ${String(error)}`));
+  parserWarnings.forEach((warning) => {
+    const formatted = formatParserEvent(warning, "Parser warning");
+    if (formatted) issues.push(formatted);
+  });
+  parserErrors.forEach((error) => {
+    const formatted = formatParserEvent(error, "Parser error");
+    if (formatted) issues.push(formatted);
+  });
 
   const pages = Number(parseDiagnostics?.extraction?.pages || 0);
+  const detectedTotalPages = Number(parseDiagnostics?.extraction?.detectedTotalPages || 0);
+  const minExpectedPages = Number(parseDiagnostics?.extraction?.minExpectedPages || 0);
   const sections = Number(parseDiagnostics?.extraction?.sections || 0);
-  const summary = `Parser status: ${parseDiagnostics?.isComplete ? "complete" : "incomplete"} · Pages: ${pages} · Sections: ${sections}`;
-  return { summary, issues };
+  const typeScoresPopulated = Number.isFinite(Number(parseDiagnostics?.scoreCoverage?.typeScoresNonNull))
+    ? Number(parseDiagnostics.scoreCoverage.typeScoresNonNull)
+    : Object.values(typeScores).filter((value) => value != null && Number.isFinite(Number(value))).length;
+  const typeScoresTotal = Number.isFinite(Number(parseDiagnostics?.scoreCoverage?.typeScoresTotal))
+    ? Number(parseDiagnostics.scoreCoverage.typeScoresTotal)
+    : 9;
+
+  if (detectedTotalPages > 0 && pages < detectedTotalPages) {
+    issues.push(`Page extraction mismatch: extracted ${pages} pages, detected ${detectedTotalPages} pages.`);
+  }
+  if (typeScoresPopulated < typeScoresTotal) {
+    issues.push(`Type score coverage incomplete: ${typeScoresPopulated}/${typeScoresTotal} populated.`);
+  }
+
+  const summary = [
+    `Parser status: ${parseDiagnostics?.isComplete ? "complete" : "incomplete"}`,
+    `Extracted pages: ${pages}`,
+    `Detected pages: ${detectedTotalPages > 0 ? detectedTotalPages : "not available"}`,
+    `Expected minimum pages: ${minExpectedPages > 0 ? minExpectedPages : "not set"}`,
+    `Sections: ${sections}`,
+    `Type scores populated: ${typeScoresPopulated}/${typeScoresTotal}`,
+  ].join(" · ");
+
+  return {
+    summary,
+    issues,
+    verification: {
+      extractedPages: pages,
+      detectedTotalPages: detectedTotalPages > 0 ? detectedTotalPages : null,
+      minExpectedPages: minExpectedPages > 0 ? minExpectedPages : null,
+      sections,
+      typeScoresPopulated,
+      typeScoresTotal,
+    },
+  };
 }
 
 function buildReflectionDeck(report) {

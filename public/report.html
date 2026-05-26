@@ -167,7 +167,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 @media(max-width:700px){.g2,.g3{grid-template-columns:1fr}}
 .mb16{margin-bottom:16px}.mb24{margin-bottom:24px}.mb32{margin-bottom:32px}
 .kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.kvl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:2px}
-.kvv{font-size:14px;color:var(--text);line-height:1.4;font-weight:600}.kvv.red{color:var(--red);font-weight:600}.kvv.gold{color:var(--gold);font-weight:600}.kvv.green{color:var(--green);font-weight:600}
+.kvv{font-size:14px;color:var(--text);line-height:1.4;font-weight:600}.kvv.red{color:var(--red);font-weight:600}.kvv.gold{color:var(--gold);font-weight:600}.kvv.green{color:var(--green);font-weight:600}.kvv.blue{color:var(--blue);font-weight:600}
 .div{height:1px;background:var(--border);margin:16px 0}.quote{border-left:3px solid var(--blue);padding:3px 0 3px 16px;margin:12px 0}.quote p{font-size:17px;font-weight:500;color:var(--text2);line-height:1.45;overflow-wrap:anywhere}
 .brow{display:flex;align-items:center;gap:10px;margin-bottom:10px}.brow:last-child{margin-bottom:0}.blbl{font-size:13px;color:var(--text2);min-width:130px;flex-shrink:0}.btrk{flex:1;height:4px;background:var(--surface3);border-radius:100px;overflow:hidden}.bfil{height:100%;border-radius:100px}.bval{font-size:12px;font-weight:500;color:var(--text);min-width:36px;text-align:right}
 .chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:500;line-height:1.4}.cr{background:var(--red-lt);color:var(--red)}.cg{background:var(--gold-lt);color:var(--gold)}.cgn{background:var(--green-lt);color:var(--green)}.cb{background:var(--blue-lt);color:var(--blue)}.cx{background:var(--surface2);color:var(--text3)}
@@ -448,8 +448,8 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
               <div><div class="kvl">Dominant Instinct</div><div class="kvv gold" id="instinctValue">SX — One-on-One</div></div>
               <div><div class="kvl">Subtype Keyword</div><div class="kvv" id="keywordValue">Possession</div></div>
               <div><div class="kvl">Integration Level</div><div class="kvv red" id="integrationValue">Low</div></div>
-              <div><div class="kvl">Release Point</div><div class="kvv green" id="releaseValue">Type 2</div></div>
-              <div><div class="kvl">Stretch Point</div><div class="kvv" id="stretchValue">Type 5</div></div>
+              <div><div class="kvl">Stretch Point</div><div class="kvv green" id="stretchValue">Type 5</div></div>
+              <div><div class="kvl">Release Point</div><div class="kvv blue" id="releaseValue">Type 2</div></div>
             </div>
             <div class="div"></div>
             <div class="ct" style="margin-bottom:10px">Basic Desire &amp; Key Motivations</div>
@@ -544,6 +544,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           <div class="card mb24">
             <div class="ct">Extracted Content Snapshot</div>
             <p style="font-size:14px;color:var(--text2);margin-bottom:8px" id="extractedCountsValue">Pages: 0 · Sections: 0</p>
+            <p style="font-size:14px;color:var(--text2);margin-bottom:8px" id="extractedVerificationValue">Detected pages: Not available · Type scores populated: 0/9</p>
             <p style="font-size:13px;color:var(--text3);margin-bottom:10px">First parsed section titles from report extraction:</p>
             <div id="extractedSectionsList" style="display:flex;gap:7px;flex-wrap:wrap">
               <span class="chip cgn">No parsed sections available</span>
@@ -939,6 +940,6 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
   <footer class="site-footer">© 2026 The Kapalaran Group LLC | All rights reserved | <a href="/privacy" target="_top" data-testid="privacy-policy-link">Privacy Policy</a></footer>
 </div>
 
-<script src="/report.js?v=20260526-5"></script>
+<script src="/report.js?v=20260526-6"></script>
 </body>
 </html>
