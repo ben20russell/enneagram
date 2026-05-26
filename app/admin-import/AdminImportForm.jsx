@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 
 const API_REQUEST_TIMEOUT_MS = 90_000;
+const FINALIZE_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const UPLOAD_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 
 let supabaseBrowserClient;
@@ -171,7 +172,7 @@ export default function AdminImportForm() {
 
       setStatus("Finalizing import...");
 
-      const finalizeTimeout = createTimeoutController(API_REQUEST_TIMEOUT_MS);
+      const finalizeTimeout = createTimeoutController(FINALIZE_REQUEST_TIMEOUT_MS);
       let finalizeRes;
       let finalizeData;
 
