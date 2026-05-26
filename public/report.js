@@ -1086,7 +1086,7 @@ async function refreshReportActiveUi() {
 
     if (!response.ok) {
       latestReportActiveData = null;
-      setExportPdfState({ visible: true, enabled: false });
+      setExportPdfState({ visible: true, enabled: Boolean(currentSignedInUser) });
       setReportActiveChipVisible(false);
       setReportSwitchVisible(true);
       setMyReportOptionVisible(false);
@@ -1106,8 +1106,10 @@ async function refreshReportActiveUi() {
     });
     latestReportActiveData = data;
     const isAdmin = hasAdminAccess(currentSignedInUser?.email);
+    const canExportDashboardPdf =
+      Boolean(data?.isAuthenticated) && (Boolean(hasAssignedReportAvailable) || Boolean(shouldShowExampleReports));
     setMyReportOptionVisible(hasAssignedReportAvailable);
-    setExportPdfState({ visible: true, enabled: isReady });
+    setExportPdfState({ visible: true, enabled: canExportDashboardPdf });
     setReportActiveChipVisible(isReady);
     setReportSwitchVisible(shouldShowExampleReports);
     console.log("[report-switch] visibility refreshed", {
@@ -1133,7 +1135,7 @@ async function refreshReportActiveUi() {
   } catch (error) {
     console.log("[auth] Failed to refresh report-active status:", error);
     latestReportActiveData = null;
-    setExportPdfState({ visible: true, enabled: false });
+    setExportPdfState({ visible: true, enabled: Boolean(currentSignedInUser) });
     setReportActiveChipVisible(false);
     setReportSwitchVisible(true);
     setMyReportOptionVisible(false);
@@ -1202,7 +1204,7 @@ function setSignedInAuthUi(user) {
   closeAuthMenu();
   updateAdminPageLink(user?.email);
   setOverviewAdminDiagnosticsVisible(user?.email);
-  setExportPdfState({ visible: true, enabled: false });
+  setExportPdfState({ visible: true, enabled: true });
   button.classList.remove("google");
   button.classList.add("avatar");
   button.setAttribute("href", "#");
