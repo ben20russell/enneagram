@@ -232,20 +232,31 @@ export default function AdminImportForm() {
   function handleCloseWindow() {
     console.log("[admin-import-page] Close window requested");
     setCloseHint("");
-    if (!window.opener) {
-      setCloseHint(
-        "This tab was opened directly, so your browser blocks auto-close. Use the button below or close the tab manually.",
-      );
-      return;
+    try {
+      window.close();
+      console.log("[admin-import-page] Primary window.close() attempted");
+    } catch (error) {
+      console.log("[admin-import-page] Primary window.close() attempt threw", error);
     }
-    window.close();
+
     setTimeout(() => {
-      if (!window.closed) {
-        setCloseHint(
-          "Your browser blocked automatic closing. You can close this tab manually.",
-        );
+      if (window.closed) return;
+      try {
+        window.open("", "_self");
+        window.close();
+        console.log("[admin-import-page] Secondary _self window.close() attempted");
+      } catch (error) {
+        console.log("[admin-import-page] Secondary _self window.close() attempt threw", error);
       }
-    }, 200);
+
+      setTimeout(() => {
+        if (!window.closed) {
+          setCloseHint(
+            "Your browser blocked automatic closing. Close this tab manually or use Return To Report.",
+          );
+        }
+      }, 120);
+    }, 120);
   }
 
   function handleReturnToReport() {

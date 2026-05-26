@@ -106,7 +106,6 @@ export default function LoginButton() {
                   data-testid="admin-import-link"
                   href="/admin-import"
                   target="_blank"
-                  rel="noopener noreferrer"
                   onClick={() => setIsMenuOpen(false)}
                   style={{
                     textDecoration: "none",
