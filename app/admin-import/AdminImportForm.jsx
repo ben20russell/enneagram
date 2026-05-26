@@ -1,11 +1,12 @@
 "use client";
 
 import { createClient } from "@supabase/supabase-js";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const API_REQUEST_TIMEOUT_MS = 90_000;
 const FINALIZE_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const UPLOAD_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const ASSIGN_REPORT_COMPLETE_SOUND_PATH = "/assign-report-complete.wav";
 
 let supabaseBrowserClient;
 
@@ -49,6 +50,8 @@ export default function AdminImportForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [didUploadSucceed, setDidUploadSucceed] = useState(false);
   const [closeHint, setCloseHint] = useState("");
+  const completionSoundRef = useRef(null);
+  const completionSoundUnlockedRef = useRef(false);
 
   const isFormValid = useMemo(() => {
     return !!email.trim() && !!reportPdf;
@@ -71,6 +74,68 @@ export default function AdminImportForm() {
     });
   }, [missingPublicEnvVars]);
 
+  function unlockCompletionSound() {
+    if (completionSoundUnlockedRef.current) {
+      return;
+    }
+
+    const completionSoundEl = completionSoundRef.current;
+    if (!completionSoundEl) {
+      console.log("[admin-import-page] Completion sound element missing during unlock");
+      return;
+    }
+
+    completionSoundEl.muted = true;
+    completionSoundEl.currentTime = 0;
+
+    const unlockPromise = completionSoundEl.play();
+    if (unlockPromise && typeof unlockPromise.then === "function") {
+      unlockPromise
+        .then(() => {
+          completionSoundEl.pause();
+          completionSoundEl.currentTime = 0;
+          completionSoundEl.muted = false;
+          completionSoundUnlockedRef.current = true;
+          console.log("[admin-import-page] Completion sound unlocked");
+        })
+        .catch((unlockError) => {
+          completionSoundEl.muted = false;
+          console.log("[admin-import-page] Completion sound unlock skipped", unlockError);
+        });
+      return;
+    }
+
+    completionSoundEl.pause();
+    completionSoundEl.currentTime = 0;
+    completionSoundEl.muted = false;
+    completionSoundUnlockedRef.current = true;
+    console.log("[admin-import-page] Completion sound unlocked without promise");
+  }
+
+  function playCompletionSound() {
+    const completionSoundEl = completionSoundRef.current;
+    if (!completionSoundEl) {
+      console.log("[admin-import-page] Completion sound element missing on success");
+      return;
+    }
+
+    completionSoundEl.currentTime = 0;
+    const playPromise = completionSoundEl.play();
+
+    if (playPromise && typeof playPromise.then === "function") {
+      playPromise
+        .then(() => {
+          console.log("[admin-import-page] Completion sound played");
+        })
+        .catch((playError) => {
+          console.log("[admin-import-page] Completion sound playback failed", playError);
+        });
+      return;
+    }
+
+    console.log("[admin-import-page] Completion sound play invoked");
+  }
+
   async function handleImport(e) {
     e.preventDefault();
     setDidUploadSucceed(false);
@@ -84,6 +149,7 @@ export default function AdminImportForm() {
 
     setIsSubmitting(true);
     setStatus("Preparing upload...");
+    unlockCompletionSound();
 
     console.log("[admin-import-page] Starting signed upload flow", {
       userEmail: normalizedEmail,
@@ -206,6 +272,7 @@ export default function AdminImportForm() {
       if (finalizeRes.ok) {
         setStatus(`Success! Report assigned to ${normalizedEmail}.`);
         setDidUploadSucceed(true);
+        playCompletionSound();
         setEmail("");
         setReportPdf(null);
         const fileInput = document.getElementById("admin-import-pdf");
@@ -213,7 +280,10 @@ export default function AdminImportForm() {
           fileInput.value = "";
         }
       } else {
-        setStatus(finalizeData?.error || "Failed to finalize import.");
+        const finalizedErrorMessage = [finalizeData?.error, finalizeData?.details]
+          .filter((value) => typeof value === "string" && value.trim().length > 0)
+          .join(": ");
+        setStatus(finalizedErrorMessage || "Failed to finalize import.");
       }
     } catch (error) {
       console.log("[admin-import-page] Import failed", error);
@@ -263,6 +333,14 @@ export default function AdminImportForm() {
       style={{ maxWidth: "900px", margin: "0 auto", padding: "24px", textAlign: "center" }}
     >
       <h1 data-testid="admin-import-title">Manual Report Importer</h1>
+      <audio
+        data-testid="admin-import-complete-sound"
+        ref={completionSoundRef}
+        preload="auto"
+        src={ASSIGN_REPORT_COMPLETE_SOUND_PATH}
+        aria-hidden="true"
+        style={{ display: "none" }}
+      />
       <p data-testid="admin-import-description" style={{ color: "#475569", marginTop: "8px" }}>
         Use this hidden page to upload a PDF report and assign it to a specific user email.
       </p>
