@@ -3657,6 +3657,18 @@ function renderReportFromState(isExampleMode) {
     head: 'Head'
   }, REPORT.centerScoresRaw)}`);
   setText('extractedCountsValue', `Pages: ${Number(REPORT.extractedPageCount || 0)} · Sections: ${Number(REPORT.extractedSectionCount || 0)}`);
+  const diagnosticsSnapshot = REPORT.dataQualityDiagnostics?.verification || null;
+  const detectedPages = Number(diagnosticsSnapshot?.detectedTotalPages || 0);
+  const typeScoresPopulated = Number.isFinite(Number(diagnosticsSnapshot?.typeScoresPopulated))
+    ? Number(diagnosticsSnapshot.typeScoresPopulated)
+    : Object.values(REPORT.typeScoresRaw || {}).filter((value) => value != null && Number.isFinite(Number(value))).length;
+  const typeScoresTotal = Number.isFinite(Number(diagnosticsSnapshot?.typeScoresTotal))
+    ? Number(diagnosticsSnapshot.typeScoresTotal)
+    : 9;
+  setText(
+    'extractedVerificationValue',
+    `Detected pages: ${detectedPages > 0 ? detectedPages : "Not available"} · Type scores populated: ${typeScoresPopulated}/${typeScoresTotal}`,
+  );
   const sectionTags = Array.isArray(REPORT.extractedSectionTitles)
     ? REPORT.extractedSectionTitles.filter(Boolean).slice(0, 10)
     : [];
