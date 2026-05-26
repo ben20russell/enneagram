@@ -136,6 +136,44 @@ export default function AdminImportForm() {
     console.log("[admin-import-page] Completion sound play invoked");
   }
 
+  async function triggerBackgroundParse(reportId) {
+    const normalizedReportId = String(reportId || "").trim();
+    if (!normalizedReportId) {
+      console.log("[admin-import-page] Skipping background parse trigger because reportId is missing");
+      return;
+    }
+
+    try {
+      console.log("[admin-import-page] Triggering background parse", { reportId: normalizedReportId });
+      const response = await fetch("/api/admin-import/reparse", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ reportId: normalizedReportId }),
+      });
+      const rawBody = await response.text();
+      let data = {};
+      if (rawBody) {
+        try {
+          data = JSON.parse(rawBody);
+        } catch (_error) {
+          data = {};
+        }
+      }
+
+      console.log("[admin-import-page] Background parse trigger response", {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        data,
+        rawBodyPreview: rawBody ? rawBody.slice(0, 240) : null,
+      });
+    } catch (error) {
+      console.log("[admin-import-page] Background parse trigger failed", error);
+    }
+  }
+
   async function handleImport(e) {
     e.preventDefault();
     setDidUploadSucceed(false);
@@ -284,6 +322,7 @@ export default function AdminImportForm() {
         setStatus(`Success! Report assigned to ${normalizedEmail}.`);
         setDidUploadSucceed(true);
         playCompletionSound();
+        void triggerBackgroundParse(finalizeData?.id || finalizePayload.reportId);
         setEmail("");
         setReportPdf(null);
         const fileInput = document.getElementById("admin-import-pdf");
@@ -335,6 +374,7 @@ export default function AdminImportForm() {
             setStatus(`Success! Report assigned to ${normalizedEmail}.`);
             setDidUploadSucceed(true);
             playCompletionSound();
+            void triggerBackgroundParse(liteData?.id || finalizePayload.reportId);
             setEmail("");
             setReportPdf(null);
             const fileInput = document.getElementById("admin-import-pdf");
