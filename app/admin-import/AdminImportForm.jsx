@@ -43,6 +43,21 @@ function clearTimeoutController(timeoutId) {
   clearTimeout(timeoutId);
 }
 
+function getDurationParts(durationMs) {
+  const normalizedDurationMs = Number.isFinite(durationMs) ? Math.max(0, durationMs) : 0;
+  const totalSeconds = Math.floor(normalizedDurationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return { minutes, seconds, totalSeconds };
+}
+
+function formatDurationText(durationMs) {
+  const { minutes, seconds, totalSeconds } = getDurationParts(durationMs);
+  const minuteLabel = minutes === 1 ? "minute" : "minutes";
+  const secondLabel = seconds === 1 ? "second" : "seconds";
+  return `${minutes} ${minuteLabel} ${seconds} ${secondLabel} (${totalSeconds}s)`;
+}
+
 export default function AdminImportForm() {
   const [email, setEmail] = useState("");
   const [reportPdf, setReportPdf] = useState(null);
@@ -50,6 +65,9 @@ export default function AdminImportForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [didUploadSucceed, setDidUploadSucceed] = useState(false);
   const [closeHint, setCloseHint] = useState("");
+  const [assignStartedAtMs, setAssignStartedAtMs] = useState(null);
+  const [assignElapsedMs, setAssignElapsedMs] = useState(0);
+  const [lastAssignDurationMs, setLastAssignDurationMs] = useState(null);
   const completionSoundRef = useRef(null);
   const completionSoundUnlockedRef = useRef(false);
 
@@ -64,6 +82,11 @@ export default function AdminImportForm() {
     return missing;
   }, []);
 
+  const activeDurationMs =
+    isSubmitting && Number.isFinite(assignStartedAtMs) ? assignElapsedMs : lastAssignDurationMs;
+  const { minutes: durationMinutes, seconds: durationSeconds, totalSeconds: durationTotalSeconds } =
+    getDurationParts(activeDurationMs);
+
   useEffect(() => {
     console.log("[admin-import-page] Public env status", {
       hasNextPublicSupabaseUrl: !missingPublicEnvVars.includes("NEXT_PUBLIC_SUPABASE_URL"),
@@ -73,6 +96,27 @@ export default function AdminImportForm() {
       missingPublicEnvVars,
     });
   }, [missingPublicEnvVars]);
+
+  useEffect(() => {
+    if (!isSubmitting || !Number.isFinite(assignStartedAtMs)) {
+      return undefined;
+    }
+
+    const updateElapsed = () => {
+      setAssignElapsedMs(Date.now() - assignStartedAtMs);
+    };
+
+    updateElapsed();
+    const intervalId = setInterval(updateElapsed, 1000);
+    console.log("[admin-import-page] Assignment timer interval started", {
+      assignStartedAtMs,
+    });
+
+    return () => {
+      clearInterval(intervalId);
+      console.log("[admin-import-page] Assignment timer interval cleared");
+    };
+  }, [isSubmitting, assignStartedAtMs]);
 
   function unlockCompletionSound() {
     if (completionSoundUnlockedRef.current) {
@@ -184,10 +228,18 @@ export default function AdminImportForm() {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    const importStartedAtMs = Date.now();
 
+    setAssignStartedAtMs(importStartedAtMs);
+    setAssignElapsedMs(0);
+    setLastAssignDurationMs(null);
     setIsSubmitting(true);
     setStatus("Preparing upload...");
     unlockCompletionSound();
+    console.log("[admin-import-page] Assignment timer started", {
+      importStartedAtMs,
+      normalizedEmail,
+    });
 
     console.log("[admin-import-page] Starting signed upload flow", {
       userEmail: normalizedEmail,
@@ -319,7 +371,17 @@ export default function AdminImportForm() {
       });
 
       if (finalizeRes.ok) {
-        setStatus(`Success! Report assigned to ${normalizedEmail}.`);
+        const elapsedMs = Date.now() - importStartedAtMs;
+        const durationText = formatDurationText(elapsedMs);
+        setAssignElapsedMs(elapsedMs);
+        setLastAssignDurationMs(elapsedMs);
+        setStatus(`Success! Report assigned to ${normalizedEmail} in ${durationText}.`);
+        console.log("[admin-import-page] Assignment completed", {
+          normalizedEmail,
+          elapsedMs,
+          durationText,
+          finalizeRoute: "primary",
+        });
         setDidUploadSucceed(true);
         playCompletionSound();
         void triggerBackgroundParse(finalizeData?.id || finalizePayload.reportId);
@@ -371,7 +433,17 @@ export default function AdminImportForm() {
           });
 
           if (liteRes.ok) {
-            setStatus(`Success! Report assigned to ${normalizedEmail}.`);
+            const elapsedMs = Date.now() - importStartedAtMs;
+            const durationText = formatDurationText(elapsedMs);
+            setAssignElapsedMs(elapsedMs);
+            setLastAssignDurationMs(elapsedMs);
+            setStatus(`Success! Report assigned to ${normalizedEmail} in ${durationText}.`);
+            console.log("[admin-import-page] Assignment completed", {
+              normalizedEmail,
+              elapsedMs,
+              durationText,
+              finalizeRoute: "lite",
+            });
             setDidUploadSucceed(true);
             playCompletionSound();
             void triggerBackgroundParse(liteData?.id || finalizePayload.reportId);
@@ -422,7 +494,17 @@ export default function AdminImportForm() {
         setStatus("Network error while importing. Please try again.");
       }
     } finally {
+      const elapsedMs = Date.now() - importStartedAtMs;
+      const durationText = formatDurationText(elapsedMs);
+      setAssignElapsedMs(elapsedMs);
+      setLastAssignDurationMs(elapsedMs);
+      setAssignStartedAtMs(null);
       setIsSubmitting(false);
+      console.log("[admin-import-page] Assignment timer stopped", {
+        normalizedEmail,
+        elapsedMs,
+        durationText,
+      });
     }
   }
 
@@ -570,6 +652,16 @@ export default function AdminImportForm() {
       <p data-testid="admin-import-status" style={{ marginTop: "14px", fontWeight: 600 }}>
         {status}
       </p>
+
+      {activeDurationMs != null ? (
+        <p
+          data-testid="admin-import-duration-counter"
+          style={{ marginTop: "8px", color: "#334155", fontWeight: 600 }}
+        >
+          {isSubmitting ? "Elapsed assignment time:" : "Last assignment time:"}{" "}
+          {durationMinutes} minutes {durationSeconds} seconds ({durationTotalSeconds}s)
+        </p>
+      ) : null}
 
       {didUploadSucceed ? (
         <div style={{ marginTop: "18px" }}>
