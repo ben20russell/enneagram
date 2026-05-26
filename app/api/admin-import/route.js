@@ -511,12 +511,15 @@ export async function POST(req) {
     return await handleLegacyMultipart(req, requesterEmail);
   } catch (error) {
     const details = String(error?.message || "Unknown import error");
+    const reportsTable = process.env.SUPABASE_REPORTS_TABLE || "reports";
     console.log("[admin-import] Failed to import report:", {
       details,
+      reportsTable,
+      contentType,
       stack: error?.stack,
     });
     return NextResponse.json(
-      { error: "Failed to import", details },
+      { error: "Failed to import", details, reportsTable, contentType },
       { status: 500 },
     );
   }

@@ -240,7 +240,8 @@ export default function AdminImportForm() {
 
       const finalizeTimeout = createTimeoutController(FINALIZE_REQUEST_TIMEOUT_MS);
       let finalizeRes;
-      let finalizeData;
+      let finalizeData = {};
+      let finalizeRawBody = "";
 
       try {
         finalizeRes = await fetch("/api/admin-import", {
@@ -258,7 +259,14 @@ export default function AdminImportForm() {
           }),
           signal: finalizeTimeout.controller.signal,
         });
-        finalizeData = await finalizeRes.json().catch(() => ({}));
+        finalizeRawBody = await finalizeRes.text();
+        if (finalizeRawBody) {
+          try {
+            finalizeData = JSON.parse(finalizeRawBody);
+          } catch (_error) {
+            finalizeData = {};
+          }
+        }
       } finally {
         clearTimeoutController(finalizeTimeout.timeoutId);
       }
@@ -266,7 +274,9 @@ export default function AdminImportForm() {
       console.log("[admin-import-page] Finalize response", {
         ok: finalizeRes.ok,
         status: finalizeRes.status,
+        statusText: finalizeRes.statusText,
         data: finalizeData,
+        rawBodyPreview: finalizeRawBody ? finalizeRawBody.slice(0, 280) : null,
       });
 
       if (finalizeRes.ok) {
@@ -283,7 +293,16 @@ export default function AdminImportForm() {
         const finalizedErrorMessage = [finalizeData?.error, finalizeData?.details]
           .filter((value) => typeof value === "string" && value.trim().length > 0)
           .join(": ");
-        setStatus(finalizedErrorMessage || "Failed to finalize import.");
+        const finalizedHttpMessage = `HTTP ${finalizeRes.status} ${finalizeRes.statusText || ""}`.trim();
+        const finalizedRawPreview = finalizeRawBody
+          ? finalizeRawBody.replace(/\s+/g, " ").trim().slice(0, 180)
+          : "";
+        setStatus(
+          finalizedErrorMessage ||
+            (finalizedRawPreview
+              ? `Failed to finalize import (${finalizedHttpMessage}): ${finalizedRawPreview}`
+              : `Failed to finalize import (${finalizedHttpMessage}).`),
+        );
       }
     } catch (error) {
       console.log("[admin-import-page] Import failed", error);
