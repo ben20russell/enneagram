@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 function run(command) {
@@ -66,9 +66,30 @@ function checkSearchPopoutDismiss() {
   }
 }
 
+function checkEnvironmentFileSafety() {
+  let trackedEnv = "";
+  try {
+    trackedEnv = run("git ls-files .env");
+  } catch (error) {
+    trackedEnv = "";
+  }
+
+  const trackedEnvInIndex = trackedEnv.split("\n").map((line) => line.trim()).includes(".env");
+  const trackedEnvExistsLocally = trackedEnvInIndex && existsSync(resolve(".env"));
+
+  if (trackedEnvExistsLocally) {
+    fail(".env is tracked in git. Move secrets to .env.local and configure Vercel environment variables.");
+  }
+
+  if (!existsSync(resolve(".env.example"))) {
+    fail(".env.example is missing. Add it with placeholder keys for local setup.");
+  }
+}
+
 checkNodeSyntax();
 checkReportSelectorBinding();
 checkSearchPopoutDismiss();
+checkEnvironmentFileSafety();
 
 if (process.exitCode) {
   process.exit(process.exitCode);
