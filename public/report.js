@@ -1275,10 +1275,6 @@ function snapshotChartsForExport() {
   };
 }
 
-function waitForAnimationFrame() {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
-}
-
 async function exportDashboardPdf() {
   closeAuthMenu();
   console.log("[report-export] Export dashboard PDF requested from account dropdown");
@@ -1318,13 +1314,13 @@ async function exportDashboardPdf() {
     document.body.setAttribute("data-export-title", exportTitle);
     document.body.classList.add("exporting-dashboard-pdf");
 
-    await waitForAnimationFrame();
-    await waitForAnimationFrame();
     if (profileChart) profileChart.resize();
     cleanupSnapshots = snapshotChartsForExport();
-    await waitForAnimationFrame();
 
-    console.log("[report-export] Opening print dialog for dashboard PDF", { exportTitle });
+    console.log("[report-export] Opening print dialog for dashboard PDF", {
+      exportTitle,
+      trigger: "synchronous-user-click",
+    });
     window.addEventListener("afterprint", onAfterPrint, { once: true });
     window.print();
 
