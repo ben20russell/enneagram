@@ -680,6 +680,126 @@ function toFiniteScoreOrNull(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function getParsedProfileStrainScores(parsedProfile) {
+  if (!parsedProfile || typeof parsedProfile !== "object") return null;
+
+  const orderedKeys = ["happiness", "vocational", "interpersonal", "physical", "environmental", "psychological"];
+  const blank = {
+    happiness: null,
+    vocational: null,
+    interpersonal: null,
+    physical: null,
+    environmental: null,
+    psychological: null,
+    overall: null,
+  };
+
+  function canonicalizeStrainKey(rawKey) {
+    const compact = String(rawKey || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z]/g, "");
+    if (!compact) return null;
+    const normalized = compact.endsWith("strain") ? compact.slice(0, -6) : compact;
+    if (normalized === "happiness" || normalized === "happy") return "happiness";
+    if (normalized === "vocational" || normalized === "occupation" || normalized === "occupational" || normalized === "career" || normalized === "work") return "vocational";
+    if (normalized === "interpersonal" || normalized === "relationship" || normalized === "relationships" || normalized === "relational") return "interpersonal";
+    if (normalized === "physical" || normalized === "body" || normalized === "somatic") return "physical";
+    if (normalized === "environmental" || normalized === "environment" || normalized === "external" || normalized === "context") return "environmental";
+    if (normalized === "psychological" || normalized === "mental" || normalized === "mind") return "psychological";
+    if (normalized === "overall" || normalized === "total") return "overall";
+    return null;
+  }
+
+  function normalizeStrainScoreValue(rawValue) {
+    const numeric = toFiniteScoreOrNull(rawValue);
+    if (!Number.isFinite(numeric)) return null;
+
+    let normalized = Number(numeric);
+    if (normalized >= 1 && normalized <= 3) {
+      if (normalized >= 2.5) normalized = 80;
+      else if (normalized >= 1.5) normalized = 55;
+      else normalized = 25;
+    } else if (normalized > 3 && normalized <= 10) {
+      normalized = normalized * 10;
+    }
+
+    normalized = Math.max(0, Math.min(100, Math.round(normalized)));
+    return normalized;
+  }
+
+  function mapCandidateSource(candidate) {
+    if (!candidate) return null;
+    if (Array.isArray(candidate)) {
+      const mapped = { ...blank };
+      orderedKeys.forEach((key, index) => {
+        mapped[key] = normalizeStrainScoreValue(candidate[index]);
+      });
+      const finiteValues = orderedKeys
+        .map((key) => mapped[key])
+        .filter((value) => Number.isFinite(value));
+      if (!finiteValues.length) return null;
+      mapped.overall = Math.round(finiteValues.reduce((sum, value) => sum + Number(value), 0) / finiteValues.length);
+      return mapped;
+    }
+    if (typeof candidate !== "object") return null;
+
+    const mapped = { ...blank };
+    Object.entries(candidate).forEach(([rawKey, rawValue]) => {
+      const key = canonicalizeStrainKey(rawKey);
+      if (!key) return;
+      const value = normalizeStrainScoreValue(rawValue);
+      if (value == null) return;
+      mapped[key] = value;
+    });
+    const finiteValues = orderedKeys
+      .map((key) => mapped[key])
+      .filter((value) => Number.isFinite(value));
+    if (!finiteValues.length && !Number.isFinite(mapped.overall)) return null;
+    if (!Number.isFinite(mapped.overall) && finiteValues.length) {
+      mapped.overall = Math.round(finiteValues.reduce((sum, value) => sum + Number(value), 0) / finiteValues.length);
+    }
+    return mapped;
+  }
+
+  const candidateSources = [
+    parsedProfile?.strainScores,
+    parsedProfile?.strain_scores,
+    parsedProfile?.strainProfile,
+    parsedProfile?.strain_profile,
+    parsedProfile?.strainLevels,
+    parsedProfile?.strain_levels,
+    parsedProfile?.strain,
+  ];
+
+  const merged = { ...blank };
+  let hasValue = false;
+  candidateSources.forEach((source) => {
+    const mapped = mapCandidateSource(source);
+    if (!mapped) return;
+
+    orderedKeys.forEach((key) => {
+      if (merged[key] == null && mapped[key] != null) {
+        merged[key] = mapped[key];
+      }
+    });
+    if (merged.overall == null && mapped.overall != null) {
+      merged.overall = mapped.overall;
+    }
+    hasValue = true;
+  });
+
+  if (!hasValue) return null;
+  const finiteValues = orderedKeys
+    .map((key) => merged[key])
+    .filter((value) => Number.isFinite(value));
+  if (!finiteValues.length && !Number.isFinite(merged.overall)) return null;
+  if (!Number.isFinite(merged.overall) && finiteValues.length) {
+    merged.overall = Math.round(finiteValues.reduce((sum, value) => sum + Number(value), 0) / finiteValues.length);
+  }
+  return merged;
+}
+
 function extractLevelForLabel(text, label) {
   const normalized = normalizeExtractedText(text);
   if (!normalized) return null;
@@ -965,7 +1085,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       : [];
     let instinctScoresRaw = normalizeScoreScale(parsedProfile?.instinctScores || null);
     let centerScoresRaw = normalizeScoreScale(parsedProfile?.centerScores || null);
-    let strainScoresRaw = null;
+    let strainScoresRaw = getParsedProfileStrainScores(parsedProfile);
     let interactionScores = null;
     const likelyProReport = isLikelyProReport({
       reportFileName: data?.reportFileName,
@@ -1048,7 +1168,10 @@ async function ingestAssignedReportIntoDashboard(data) {
     }
     integrationLevel =
       integrationLevel || extractIntegrationFromPdfText(pdfText) || extractSnippet(pdfText, "Integration Level");
-    strainScoresRaw = extractStrainScoresFromPdfText(pdfText);
+    const extractedStrainScores = extractStrainScoresFromPdfText(pdfText);
+    if (!hasInformativeScoreMap(strainScoresRaw, 1) && hasInformativeScoreMap(extractedStrainScores, 1)) {
+      strainScoresRaw = extractedStrainScores;
+    }
     const assertiveRaw = Number((extractSnippetFromLabels(pdfText, ["Assertive"]) || "").match(/\d{1,3}/)?.[0] || NaN);
     const reactiveRaw = Number((extractSnippetFromLabels(pdfText, ["Reactive"]) || "").match(/\d{1,3}/)?.[0] || NaN);
     interactionScores = {
@@ -1096,7 +1219,7 @@ async function ingestAssignedReportIntoDashboard(data) {
         qualitative: qualitativeStrainScores,
       });
       strainScoresRaw = qualitativeStrainScores;
-    } else if (!strainScoresRaw && likelyProReport) {
+    } else if (!hasInformativeScoreMap(strainScoresRaw, 1) && likelyProReport) {
       strainScoresRaw = qualitativeStrainScores;
     }
     const coreIdentityBlock = extractCoreIdentityBlock(reportContentText) || extractCoreIdentityBlock(pdfText);
@@ -3421,20 +3544,31 @@ function extractBulletStrainNarrative({ text, category, nextCategories = [] }) {
   const nextBoundary = nextCategories.length
     ? `${nextCategories.map((next) => `${escapeRegex(next)}\\s+strain`).join("|")}|overall\\s+strain\\s+level|the\\s+lines\\s+connecting|copyright\\s*\\d{2,4}|$`
     : "overall\\s+strain\\s+level|the\\s+lines\\s+connecting|copyright\\s*\\d{2,4}|$";
-  const sectionPattern = new RegExp(
-    `${escapeRegex(category)}\\s+strain[\\s\\S]{0,240}?perceived\\s+level\\s+of\\s+${escapeRegex(category)}\\s+strain\\s+is\\s+(LOW|MEDIUM|HIGH|MODERATE)\\.?([\\s\\S]{0,1800}?)(?=\\s*(?:${nextBoundary}))`,
-    "i",
-  );
-  const sectionMatch = normalized.match(sectionPattern);
-  if (!sectionMatch?.[1]) return null;
+  const patterns = [
+    // Full section path: "<Category> Strain ... Ben your perceived level of <Category> strain is <LEVEL> ... bullets ..."
+    new RegExp(
+      `${escapeRegex(category)}\\s+strain[\\s\\S]{0,1800}?perceived\\s+level\\s+of\\s+${escapeRegex(category)}\\s+strain\\s+is\\s+(LOW|MEDIUM|HIGH|MODERATE)\\.?([\\s\\S]{0,2400}?)(?=\\s*(?:${nextBoundary}))`,
+      "i",
+    ),
+    // Direct path: "Ben your perceived level of <Category> strain is <LEVEL> ... bullets ..."
+    new RegExp(
+      `Ben\\s+your\\s+perceived\\s+level\\s+of\\s+${escapeRegex(category)}\\s+strain\\s+is\\s+(LOW|MEDIUM|HIGH|MODERATE)\\.?([\\s\\S]{0,2400}?)(?=\\s*(?:${nextBoundary}))`,
+      "i",
+    ),
+  ];
 
-  const level = String(sectionMatch[1] || "").toUpperCase();
-  const bulletItems = extractBulletItemsFromText(sectionMatch[2] || "", 6);
-  if (!bulletItems.length) return null;
+  for (const sectionPattern of patterns) {
+    const sectionMatch = normalized.match(sectionPattern);
+    if (!sectionMatch?.[1]) continue;
+    const level = String(sectionMatch[1] || "").toUpperCase();
+    const bulletItems = extractBulletItemsFromText(sectionMatch[2] || "", 6);
+    if (!bulletItems.length) continue;
+    return cleanPdfExtractedValue(
+      `${category} strain is ${level}. ${bulletItems.map((item) => `• ${item}`).join(" ")}`,
+    );
+  }
 
-  return cleanPdfExtractedValue(
-    `${category} strain is ${level}. ${bulletItems.map((item) => `• ${item}`).join(" ")}`,
-  );
+  return null;
 }
 
 function isLowQualityStrainNarrative(value, category) {
@@ -3947,9 +4081,7 @@ function buildPdfOnlyReport(payload) {
   }
   const integration = sanitizeSnippet(payload?.integrationLevel, fallbackText);
   const profile = buildPdfOnlyProfile(typeNumber, payload?.profileScores);
-  const strainScoresRaw = payload?.strainScoresRaw && typeof payload.strainScoresRaw === "object"
-    ? payload.strainScoresRaw
-    : null;
+  const strainScoresRaw = getParsedProfileStrainScores({ strainScores: payload?.strainScoresRaw });
   const strain = strainScoresRaw
     ? [
         toFiniteScoreOrNull(strainScoresRaw.happiness),
