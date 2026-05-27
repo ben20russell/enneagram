@@ -238,92 +238,164 @@ export default function AdminImportForm() {
 
     try {
       console.log("[admin-import-page] Parsing assigned report inline", { reportId: normalizedReportId });
-      let response = await fetch("/api/admin-import/reparse", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ reportId: normalizedReportId }),
-      });
-      let rawBody = await response.text();
-      let data = {};
-      if (rawBody) {
-        try {
-          data = JSON.parse(rawBody);
-        } catch (_error) {
-          data = {};
-        }
-      }
-
-      const isInitialNextErrorHtml =
-        rawBody.includes("__next_error__") ||
-        rawBody.toLowerCase().startsWith("<!doctype html");
-      if (!response.ok && isInitialNextErrorHtml) {
-        console.log(
-          "[admin-import-page] Reparse route returned Next.js HTML error page; retrying via /api/admin-import action=reparse",
-        );
-        const fallbackResponse = await fetch("/api/admin-import", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
+      const parseAttemptPlans = [
+        {
+          endpoint: "/api/admin-import",
+          label: "admin-import-action-reparse",
+          payload: {
             action: "reparse",
             reportId: normalizedReportId,
-          }),
+          },
+        },
+        {
+          endpoint: "/api/admin-import/reparse",
+          label: "admin-import-reparse-legacy",
+          payload: {
+            reportId: normalizedReportId,
+          },
+        },
+      ];
+
+      const attemptSummaries = [];
+      let response = null;
+      let rawBody = "";
+      let data = {};
+      let selectedAttemptLabel = null;
+      let selectedAttemptEndpoint = null;
+
+      for (const parseAttemptPlan of parseAttemptPlans) {
+        const { endpoint, label, payload } = parseAttemptPlan;
+        console.log("[admin-import-page] Parse attempt started", {
+          label,
+          endpoint,
+          reportId: normalizedReportId,
         });
-        const fallbackRawBody = await fallbackResponse.text();
-        let fallbackData = {};
-        if (fallbackRawBody) {
-          try {
-            fallbackData = JSON.parse(fallbackRawBody);
-          } catch (_error) {
-            fallbackData = {};
+
+        try {
+          const attemptResponse = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+          const attemptRawBody = await attemptResponse.text();
+          let attemptData = {};
+          if (attemptRawBody) {
+            try {
+              attemptData = JSON.parse(attemptRawBody);
+            } catch (_error) {
+              attemptData = {};
+            }
           }
+          const isNextErrorHtml =
+            attemptRawBody.includes("__next_error__") ||
+            attemptRawBody.toLowerCase().startsWith("<!doctype html");
+          attemptSummaries.push({
+            label,
+            endpoint,
+            ok: attemptResponse.ok,
+            status: attemptResponse.status,
+            isNextErrorHtml,
+          });
+
+          console.log("[admin-import-page] Parse attempt response", {
+            label,
+            endpoint,
+            ok: attemptResponse.ok,
+            status: attemptResponse.status,
+            statusText: attemptResponse.statusText,
+            isNextErrorHtml,
+            data: attemptData,
+            rawBodyPreview: attemptRawBody ? attemptRawBody.slice(0, 240) : null,
+          });
+
+          response = attemptResponse;
+          rawBody = attemptRawBody;
+          data = attemptData;
+          selectedAttemptLabel = label;
+          selectedAttemptEndpoint = endpoint;
+
+          if (attemptResponse.ok) {
+            break;
+          }
+
+          if (isNextErrorHtml) {
+            continue;
+          }
+
+          // We got a structured non-HTML parse error; stop retrying and surface details as-is.
+          break;
+        } catch (attemptError) {
+          const attemptDetails = String(attemptError?.message || "Unknown parse attempt network error");
+          attemptSummaries.push({
+            label,
+            endpoint,
+            ok: false,
+            status: null,
+            isNextErrorHtml: false,
+            networkError: attemptDetails,
+          });
+          console.log("[admin-import-page] Parse attempt network failure", {
+            label,
+            endpoint,
+            details: attemptDetails,
+          });
+          response = null;
+          rawBody = "";
+          data = {};
+          selectedAttemptLabel = label;
+          selectedAttemptEndpoint = endpoint;
+          continue;
         }
-
-        console.log("[admin-import-page] Reparse fallback response", {
-          ok: fallbackResponse.ok,
-          status: fallbackResponse.status,
-          statusText: fallbackResponse.statusText,
-          fallbackData,
-          rawBodyPreview: fallbackRawBody ? fallbackRawBody.slice(0, 240) : null,
-        });
-
-        response = fallbackResponse;
-        rawBody = fallbackRawBody;
-        data = fallbackData;
       }
 
       console.log("[admin-import-page] Inline parse response", {
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
+        ok: response?.ok || false,
+        status: response?.status || null,
+        statusText: response?.statusText || null,
         data,
         rawBodyPreview: rawBody ? rawBody.slice(0, 240) : null,
+        selectedAttemptLabel,
+        selectedAttemptEndpoint,
+        attemptSummaries,
       });
 
       const elapsedMs = Date.now() - parseTimerStartedAtMs;
       const durationText = formatDurationText(elapsedMs);
-      if (response.ok) {
+      if (response?.ok) {
         const parseState = String(data?.parseStatus || "unknown");
         setParseStatus(`Parsing complete in ${durationText}. Status: ${parseState}.`);
       } else {
         const parseErrorMessage = [data?.error, data?.details]
           .filter((value) => typeof value === "string" && value.trim().length > 0)
           .join(": ");
-        const parseHttpMessage = `HTTP ${response.status} ${response.statusText || ""}`.trim();
+        const parseHttpMessage = response
+          ? `HTTP ${response.status} ${response.statusText || ""}`.trim()
+          : "No HTTP response";
         const isNextErrorHtml =
           rawBody.includes("__next_error__") ||
           rawBody.toLowerCase().startsWith("<!doctype html");
         const parseRawPreview = rawBody ? rawBody.replace(/\s+/g, " ").trim().slice(0, 180) : "";
+        const attemptsText = attemptSummaries
+          .map((attempt) => {
+            const statusPart = attempt.status == null ? "no-status" : `HTTP ${attempt.status}`;
+            if (attempt.networkError) {
+              return `${attempt.label} (${statusPart}): ${attempt.networkError}`;
+            }
+            if (attempt.isNextErrorHtml) {
+              return `${attempt.label} (${statusPart}): next-error-html`;
+            }
+            return `${attempt.label} (${statusPart})`;
+          })
+          .join(" | ");
         setParseStatus(
           parseErrorMessage ||
             (isNextErrorHtml
-              ? `Parsing failed in ${durationText} (${parseHttpMessage}): Server runtime error page returned. Check Vercel logs for /api/admin-import/reparse.`
+              ? `Parsing failed in ${durationText} (${parseHttpMessage}): Server runtime error page returned. Attempts: ${attemptsText || "none"}.`
               : parseRawPreview
-                ? `Parsing failed in ${durationText} (${parseHttpMessage}): ${parseRawPreview}`
-                : `Parsing failed in ${durationText} (${parseHttpMessage}).`),
+                ? `Parsing failed in ${durationText} (${parseHttpMessage}): ${parseRawPreview}${attemptsText ? ` | Attempts: ${attemptsText}` : ""}`
+                : `Parsing failed in ${durationText} (${parseHttpMessage}).${attemptsText ? ` Attempts: ${attemptsText}` : ""}`),
         );
       }
     } catch (error) {
