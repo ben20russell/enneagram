@@ -208,9 +208,6 @@ export default function AdminImportForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [didUploadSucceed, setDidUploadSucceed] = useState(false);
   const [closeHint, setCloseHint] = useState("");
-  const [assignStartedAtMs, setAssignStartedAtMs] = useState(null);
-  const [assignElapsedMs, setAssignElapsedMs] = useState(0);
-  const [lastAssignDurationMs, setLastAssignDurationMs] = useState(null);
   const [parseStatus, setParseStatus] = useState("");
   const [isParsing, setIsParsing] = useState(false);
   const [parseStartedAtMs, setParseStartedAtMs] = useState(null);
@@ -232,10 +229,6 @@ export default function AdminImportForm() {
     return missing;
   }, []);
 
-  const activeDurationMs =
-    isSubmitting && Number.isFinite(assignStartedAtMs) ? assignElapsedMs : lastAssignDurationMs;
-  const { minutes: durationMinutes, seconds: durationSeconds, totalSeconds: durationTotalSeconds } =
-    getDurationParts(activeDurationMs);
   const activeParseDurationMs =
     isParsing && Number.isFinite(parseStartedAtMs) ? parseElapsedMs : lastParseDurationMs;
   const {
@@ -262,27 +255,6 @@ export default function AdminImportForm() {
       rememberedEmails: remembered,
     });
   }, []);
-
-  useEffect(() => {
-    if (!isSubmitting || !Number.isFinite(assignStartedAtMs)) {
-      return undefined;
-    }
-
-    const updateElapsed = () => {
-      setAssignElapsedMs(Date.now() - assignStartedAtMs);
-    };
-
-    updateElapsed();
-    const intervalId = setInterval(updateElapsed, 1000);
-    console.log("[admin-import-page] Assignment timer interval started", {
-      assignStartedAtMs,
-    });
-
-    return () => {
-      clearInterval(intervalId);
-      console.log("[admin-import-page] Assignment timer interval cleared");
-    };
-  }, [isSubmitting, assignStartedAtMs]);
 
   useEffect(() => {
     if (!isParsing || !Number.isFinite(parseStartedAtMs)) {
@@ -745,32 +717,6 @@ export default function AdminImportForm() {
       });
       return mergedEmails;
     });
-    const importStartedAtMs = Date.now();
-    let hasStoppedAssignmentTimer = false;
-
-    const stopAssignmentTimer = (reason) => {
-      if (hasStoppedAssignmentTimer) {
-        return null;
-      }
-      const elapsedMs = Date.now() - importStartedAtMs;
-      const durationText = formatDurationText(elapsedMs);
-      setAssignElapsedMs(elapsedMs);
-      setLastAssignDurationMs(elapsedMs);
-      setAssignStartedAtMs(null);
-      setIsSubmitting(false);
-      hasStoppedAssignmentTimer = true;
-      console.log("[admin-import-page] Assignment timer stopped", {
-        normalizedEmail,
-        elapsedMs,
-        durationText,
-        reason,
-      });
-      return { elapsedMs, durationText };
-    };
-
-    setAssignStartedAtMs(importStartedAtMs);
-    setAssignElapsedMs(0);
-    setLastAssignDurationMs(null);
     setParseStatus("");
     setIsParsing(false);
     setParseStartedAtMs(null);
@@ -781,10 +727,6 @@ export default function AdminImportForm() {
     setIsSubmitting(true);
     setStatus("Preparing upload...");
     unlockCompletionSound();
-    console.log("[admin-import-page] Assignment timer started", {
-      importStartedAtMs,
-      normalizedEmail,
-    });
 
     console.log("[admin-import-page] Starting signed upload flow", {
       userEmail: normalizedEmail,
@@ -916,13 +858,9 @@ export default function AdminImportForm() {
       });
 
       if (finalizeRes.ok) {
-        const assignmentStop = stopAssignmentTimer("primary-finalize-success");
-        const durationText = assignmentStop?.durationText || formatDurationText(Date.now() - importStartedAtMs);
-        setStatus(`Success! Report assigned to ${normalizedEmail} in ${durationText}.`);
+        setStatus(`Success! Report assigned to ${normalizedEmail}.`);
         console.log("[admin-import-page] Assignment completed", {
           normalizedEmail,
-          elapsedMs: assignmentStop?.elapsedMs ?? null,
-          durationText,
           finalizeRoute: "primary",
         });
         setDidUploadSucceed(true);
@@ -975,13 +913,9 @@ export default function AdminImportForm() {
           });
 
           if (liteRes.ok) {
-            const assignmentStop = stopAssignmentTimer("lite-finalize-success");
-            const durationText = assignmentStop?.durationText || formatDurationText(Date.now() - importStartedAtMs);
-            setStatus(`Success! Report assigned to ${normalizedEmail} in ${durationText}.`);
+            setStatus(`Success! Report assigned to ${normalizedEmail}.`);
             console.log("[admin-import-page] Assignment completed", {
               normalizedEmail,
-              elapsedMs: assignmentStop?.elapsedMs ?? null,
-              durationText,
               finalizeRoute: "lite",
             });
             setDidUploadSucceed(true);
@@ -1033,7 +967,7 @@ export default function AdminImportForm() {
         setStatus("Network error while importing. Please try again.");
       }
     } finally {
-      stopAssignmentTimer("handle-import-finally");
+      setIsSubmitting(false);
     }
   }
 
@@ -1197,16 +1131,6 @@ export default function AdminImportForm() {
       <p data-testid="admin-import-status" style={{ marginTop: "14px", fontWeight: 600 }}>
         {status}
       </p>
-
-      {activeDurationMs != null ? (
-        <p
-          data-testid="admin-import-duration-counter"
-          style={{ marginTop: "8px", color: "#334155", fontWeight: 600 }}
-        >
-          {isSubmitting ? "Elapsed assignment time:" : "Last assignment time:"}{" "}
-          {durationMinutes} minutes {durationSeconds} seconds ({durationTotalSeconds}s)
-        </p>
-      ) : null}
 
       {parseStatus ? (
         <p data-testid="admin-import-parse-status" style={{ marginTop: "8px", fontWeight: 600 }}>
