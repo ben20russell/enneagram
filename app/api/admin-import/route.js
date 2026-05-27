@@ -375,14 +375,249 @@ async function finalizeImport({
   );
 }
 
-async function handleFinalizeJson(req, requesterEmail) {
-  let body;
+async function reparseImportedReport({ requesterEmail, reportId }) {
+  const normalizedReportId = String(reportId || "").trim();
+  if (!normalizedReportId) {
+    return NextResponse.json({ error: "Missing reportId" }, { status: 400 });
+  }
+
+  const reportsTable = process.env.SUPABASE_REPORTS_TABLE || "reports";
+  const supabase = getSupabaseAdmin();
+  let report = null;
+
   try {
-    body = await req.json();
-    console.log("[admin-import] Parsed JSON finalize payload");
+    const { data: loadedReport, error: reportErr } = await supabase
+      .from(reportsTable)
+      .select("id,user_email,enneagram_type,results_data,report_pdf")
+      .eq("id", normalizedReportId)
+      .maybeSingle();
+
+    if (reportErr) {
+      throw new Error(`Failed to fetch report: ${reportErr.message}`);
+    }
+    if (!loadedReport) {
+      return NextResponse.json({ error: "Report not found" }, { status: 404 });
+    }
+    report = loadedReport;
+
+    const bucket = report?.report_pdf?.bucket || getSupabaseStorageBucket();
+    const storagePath = report?.report_pdf?.storagePath;
+    const fileName = report?.report_pdf?.fileName || null;
+    if (!storagePath) {
+      return NextResponse.json({ error: "Report has no stored PDF path" }, { status: 400 });
+    }
+
+    const { data: fileBlob, error: downloadErr } = await supabase.storage.from(bucket).download(storagePath);
+    if (downloadErr || !fileBlob) {
+      throw new Error(`Failed to download report PDF: ${downloadErr?.message || "unknown error"}`);
+    }
+
+    const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
+    const { parsePdf } = await import("../../../lib/parsePdf.js");
+    const parsed = await parsePdf(pdfBuffer);
+
+    const parseDiagnostics =
+      parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
+        ? parsed._parseDiagnostics
+        : null;
+    const parseReview =
+      parsed && typeof parsed === "object" && parsed._review && typeof parsed._review === "object"
+        ? parsed._review
+        : null;
+
+    const recomputed = computeCompletenessFromParsed(parsed, parseDiagnostics);
+    const nextDiagnostics = {
+      ...(parseDiagnostics || {}),
+      isComplete: recomputed.isComplete,
+      incompleteReason: recomputed.incompleteReason,
+      extraction: {
+        ...(parseDiagnostics?.extraction || {}),
+        pages: recomputed.pages,
+        minExpectedPages: recomputed.minPages,
+      },
+      scoreCoverage: {
+        ...(parseDiagnostics?.scoreCoverage || {}),
+        typeScoresNonNull: recomputed.typeNonNull,
+        typeScoresTotal: 9,
+        instinctScoresNonNull: recomputed.instinctNonNull,
+        instinctScoresTotal: 3,
+        centerScoresNonNull: recomputed.centerNonNull,
+        centerScoresTotal: 3,
+      },
+      completedAt: new Date().toISOString(),
+    };
+
+    const parseStatus = recomputed.isComplete ? "complete" : "incomplete";
+    const reviewStatus = parseReview?.status || (recomputed.isComplete ? "auto_approved" : "needs_review");
+
+    const priorResults = report?.results_data && typeof report.results_data === "object" ? report.results_data : {};
+    const priorDashboardContext =
+      priorResults?.dashboardContext && typeof priorResults.dashboardContext === "object"
+        ? priorResults.dashboardContext
+        : {};
+
+    const nextResultsData = {
+      ...priorResults,
+      ingestion: {
+        ...(priorResults?.ingestion || {}),
+        status: parseStatus === "complete" && reviewStatus !== "needs_review" ? "ready" : "incomplete",
+        mode: "admin-import-auto",
+        ingestedAt: new Date().toISOString(),
+        reportId: report.id,
+        parser: {
+          provider: "azure-openai",
+          model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
+        },
+        parseAttempt: {
+          at: new Date().toISOString(),
+          triggeredBy: requesterEmail,
+          ok: true,
+        },
+        parseDiagnostics: nextDiagnostics,
+      },
+      review: {
+        ...(priorResults?.review || {}),
+        ...(parseReview || {}),
+        status: reviewStatus,
+        updatedAt: new Date().toISOString(),
+      },
+      dashboardContext: {
+        ...priorDashboardContext,
+        detectedType: parsed?.primaryType
+          ? String(parsed.primaryType)
+          : inferTypeFromFileName(fileName).detectedType,
+        detectedTypeSource: `azure-openai:${process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini"}`,
+        sourceFileName: fileName,
+        basicFear: parsed?.coreFear || null,
+        basicDesire: parsed?.coreDesire || null,
+        passion: priorDashboardContext?.passion || null,
+        integrationLevel: parsed?.integrationLevel || null,
+        instinct: parsed?.instinctualVariant || null,
+        reportSummary: parsed?.reportSummary || null,
+      },
+      extractedContent: {
+        ...(priorResults?.extractedContent || {}),
+        documentSummary: parsed?.reportContent?.documentSummary || null,
+        pages: Array.isArray(parsed?.reportContent?.pages) ? parsed.reportContent.pages : [],
+        sections: Array.isArray(parsed?.reportContent?.sections) ? parsed.reportContent.sections : [],
+        extractedAt: new Date().toISOString(),
+        parserVersion: nextDiagnostics?.parserVersion || "multi-pass-v3",
+      },
+      parsedProfile: parsed,
+    };
+
+    const { error: updateErr } = await supabase
+      .from(reportsTable)
+      .update({
+        results_data: nextResultsData,
+        enneagram_type: parsed?.primaryType ? String(parsed.primaryType) : report.enneagram_type,
+      })
+      .eq("id", report.id);
+
+    if (updateErr) {
+      throw new Error(`Failed to update report parse results: ${updateErr.message}`);
+    }
+
+    console.log("[admin-import] Reparse completed and saved", {
+      reportId: report.id,
+      parseStatus,
+      reviewStatus,
+      parsePages: nextDiagnostics?.extraction?.pages ?? null,
+      parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        reportId: report.id,
+        parseStatus,
+        reviewStatus,
+        parsePages: nextDiagnostics?.extraction?.pages ?? null,
+        parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
+      },
+      { status: 200 },
+    );
   } catch (error) {
-    console.log("[admin-import] Failed to parse JSON finalize payload", error);
-    return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
+    const details = String(error?.message || "Unknown reparse error");
+    console.log("[admin-import] Failed to reparse report", {
+      reportId: normalizedReportId,
+      details,
+      stack: error?.stack,
+    });
+
+    if (report?.id) {
+      try {
+        const priorResults = report?.results_data && typeof report.results_data === "object"
+          ? report.results_data
+          : {};
+        const priorIngestion = priorResults?.ingestion && typeof priorResults.ingestion === "object"
+          ? priorResults.ingestion
+          : {};
+        const priorDiagnostics =
+          priorIngestion?.parseDiagnostics && typeof priorIngestion.parseDiagnostics === "object"
+            ? priorIngestion.parseDiagnostics
+            : {};
+
+        const nextResultsDataOnFailure = {
+          ...priorResults,
+          ingestion: {
+            ...priorIngestion,
+            status: "incomplete",
+            mode: "admin-import-auto",
+            ingestedAt: new Date().toISOString(),
+            reportId: report.id,
+            parseAttempt: {
+              at: new Date().toISOString(),
+              triggeredBy: requesterEmail,
+              ok: false,
+            },
+            parseDiagnostics: {
+              ...priorDiagnostics,
+              isComplete: false,
+              incompleteReason: `Reparse failed: ${details}`,
+              failedAt: new Date().toISOString(),
+            },
+          },
+          review: {
+            ...(priorResults?.review && typeof priorResults.review === "object" ? priorResults.review : {}),
+            status: "needs_review",
+            updatedAt: new Date().toISOString(),
+          },
+        };
+
+        const { error: failureUpdateErr } = await supabase
+          .from(reportsTable)
+          .update({ results_data: nextResultsDataOnFailure })
+          .eq("id", report.id);
+
+        if (failureUpdateErr) {
+          console.log("[admin-import] Failed to persist reparse error diagnostics", {
+            reportId: report.id,
+            details: failureUpdateErr.message,
+          });
+        }
+      } catch (persistError) {
+        console.log("[admin-import] Unexpected error persisting reparse failure diagnostics", {
+          reportId: report.id,
+          details: String(persistError?.message || persistError),
+        });
+      }
+    }
+
+    return NextResponse.json(
+      { error: "Failed to reparse report", details, reportId: normalizedReportId, reportsTable },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleFinalizeJson(body, requesterEmail) {
+  const action = String(body?.action || "").trim().toLowerCase();
+  if (action === "reparse") {
+    return reparseImportedReport({
+      requesterEmail,
+      reportId: body?.reportId,
+    });
   }
 
   const reportId = String(body?.reportId || "").trim();
@@ -515,7 +750,18 @@ export async function POST(req) {
 
   try {
     if (contentType.includes("application/json")) {
-      return await handleFinalizeJson(req, requesterEmail);
+      let body;
+      try {
+        body = await req.json();
+        console.log("[admin-import] Parsed JSON payload", {
+          action: String(body?.action || "").trim().toLowerCase() || "finalize",
+        });
+      } catch (error) {
+        console.log("[admin-import] Failed to parse JSON payload", error);
+        return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
+      }
+
+      return await handleFinalizeJson(body, requesterEmail);
     }
 
     return await handleLegacyMultipart(req, requesterEmail);

@@ -238,14 +238,14 @@ export default function AdminImportForm() {
 
     try {
       console.log("[admin-import-page] Parsing assigned report inline", { reportId: normalizedReportId });
-      const response = await fetch("/api/admin-import/reparse", {
+      let response = await fetch("/api/admin-import/reparse", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ reportId: normalizedReportId }),
       });
-      const rawBody = await response.text();
+      let rawBody = await response.text();
       let data = {};
       if (rawBody) {
         try {
@@ -253,6 +253,46 @@ export default function AdminImportForm() {
         } catch (_error) {
           data = {};
         }
+      }
+
+      const isInitialNextErrorHtml =
+        rawBody.includes("__next_error__") ||
+        rawBody.toLowerCase().startsWith("<!doctype html");
+      if (!response.ok && isInitialNextErrorHtml) {
+        console.log(
+          "[admin-import-page] Reparse route returned Next.js HTML error page; retrying via /api/admin-import action=reparse",
+        );
+        const fallbackResponse = await fetch("/api/admin-import", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "reparse",
+            reportId: normalizedReportId,
+          }),
+        });
+        const fallbackRawBody = await fallbackResponse.text();
+        let fallbackData = {};
+        if (fallbackRawBody) {
+          try {
+            fallbackData = JSON.parse(fallbackRawBody);
+          } catch (_error) {
+            fallbackData = {};
+          }
+        }
+
+        console.log("[admin-import-page] Reparse fallback response", {
+          ok: fallbackResponse.ok,
+          status: fallbackResponse.status,
+          statusText: fallbackResponse.statusText,
+          fallbackData,
+          rawBodyPreview: fallbackRawBody ? fallbackRawBody.slice(0, 240) : null,
+        });
+
+        response = fallbackResponse;
+        rawBody = fallbackRawBody;
+        data = fallbackData;
       }
 
       console.log("[admin-import-page] Inline parse response", {
