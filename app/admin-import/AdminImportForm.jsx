@@ -7,6 +7,10 @@ const API_REQUEST_TIMEOUT_MS = 90_000;
 const FINALIZE_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const UPLOAD_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const ASSIGN_REPORT_COMPLETE_SOUND_PATH = "/assign-report-complete.wav";
+const DASHBOARD_SANS_FONT_FAMILY =
+  "\"Plus Jakarta Sans\", system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif";
+const DASHBOARD_DISPLAY_FONT_FAMILY =
+  "\"Space Grotesk\", \"Plus Jakarta Sans\", system-ui, sans-serif";
 
 let supabaseBrowserClient;
 
@@ -68,6 +72,11 @@ export default function AdminImportForm() {
   const [assignStartedAtMs, setAssignStartedAtMs] = useState(null);
   const [assignElapsedMs, setAssignElapsedMs] = useState(0);
   const [lastAssignDurationMs, setLastAssignDurationMs] = useState(null);
+  const [parseStatus, setParseStatus] = useState("");
+  const [isParsing, setIsParsing] = useState(false);
+  const [parseStartedAtMs, setParseStartedAtMs] = useState(null);
+  const [parseElapsedMs, setParseElapsedMs] = useState(0);
+  const [lastParseDurationMs, setLastParseDurationMs] = useState(null);
   const completionSoundRef = useRef(null);
   const completionSoundUnlockedRef = useRef(false);
 
@@ -86,6 +95,13 @@ export default function AdminImportForm() {
     isSubmitting && Number.isFinite(assignStartedAtMs) ? assignElapsedMs : lastAssignDurationMs;
   const { minutes: durationMinutes, seconds: durationSeconds, totalSeconds: durationTotalSeconds } =
     getDurationParts(activeDurationMs);
+  const activeParseDurationMs =
+    isParsing && Number.isFinite(parseStartedAtMs) ? parseElapsedMs : lastParseDurationMs;
+  const {
+    minutes: parseDurationMinutes,
+    seconds: parseDurationSeconds,
+    totalSeconds: parseDurationTotalSeconds,
+  } = getDurationParts(activeParseDurationMs);
 
   useEffect(() => {
     console.log("[admin-import-page] Public env status", {
@@ -117,6 +133,27 @@ export default function AdminImportForm() {
       console.log("[admin-import-page] Assignment timer interval cleared");
     };
   }, [isSubmitting, assignStartedAtMs]);
+
+  useEffect(() => {
+    if (!isParsing || !Number.isFinite(parseStartedAtMs)) {
+      return undefined;
+    }
+
+    const updateParseElapsed = () => {
+      setParseElapsedMs(Date.now() - parseStartedAtMs);
+    };
+
+    updateParseElapsed();
+    const intervalId = setInterval(updateParseElapsed, 1000);
+    console.log("[admin-import-page] Parse timer interval started", {
+      parseStartedAtMs,
+    });
+
+    return () => {
+      clearInterval(intervalId);
+      console.log("[admin-import-page] Parse timer interval cleared");
+    };
+  }, [isParsing, parseStartedAtMs]);
 
   function unlockCompletionSound() {
     if (completionSoundUnlockedRef.current) {
@@ -184,8 +221,20 @@ export default function AdminImportForm() {
     const normalizedReportId = String(reportId || "").trim();
     if (!normalizedReportId) {
       console.log("[admin-import-page] Skipping background parse trigger because reportId is missing");
+      setParseStatus("Parsing skipped: missing report id.");
       return;
     }
+
+    const parseTimerStartedAtMs = Date.now();
+    setIsParsing(true);
+    setParseStartedAtMs(parseTimerStartedAtMs);
+    setParseElapsedMs(0);
+    setLastParseDurationMs(null);
+    setParseStatus("Parsing report in background...");
+    console.log("[admin-import-page] Parse timer started", {
+      reportId: normalizedReportId,
+      parseTimerStartedAtMs,
+    });
 
     try {
       console.log("[admin-import-page] Triggering background parse", { reportId: normalizedReportId });
@@ -213,8 +262,43 @@ export default function AdminImportForm() {
         data,
         rawBodyPreview: rawBody ? rawBody.slice(0, 240) : null,
       });
+
+      const elapsedMs = Date.now() - parseTimerStartedAtMs;
+      const durationText = formatDurationText(elapsedMs);
+      if (response.ok) {
+        const parseState = String(data?.parseStatus || "unknown");
+        setParseStatus(`Parsing complete in ${durationText}. Status: ${parseState}.`);
+      } else {
+        const parseErrorMessage = [data?.error, data?.details]
+          .filter((value) => typeof value === "string" && value.trim().length > 0)
+          .join(": ");
+        const parseHttpMessage = `HTTP ${response.status} ${response.statusText || ""}`.trim();
+        const parseRawPreview = rawBody ? rawBody.replace(/\s+/g, " ").trim().slice(0, 180) : "";
+        setParseStatus(
+          parseErrorMessage ||
+            (parseRawPreview
+              ? `Parsing failed in ${durationText} (${parseHttpMessage}): ${parseRawPreview}`
+              : `Parsing failed in ${durationText} (${parseHttpMessage}).`),
+        );
+      }
     } catch (error) {
       console.log("[admin-import-page] Background parse trigger failed", error);
+      const elapsedMs = Date.now() - parseTimerStartedAtMs;
+      const durationText = formatDurationText(elapsedMs);
+      const details = String(error?.message || "Unknown parse network error");
+      setParseStatus(`Parsing failed in ${durationText}: ${details}`);
+    } finally {
+      const elapsedMs = Date.now() - parseTimerStartedAtMs;
+      const durationText = formatDurationText(elapsedMs);
+      setParseElapsedMs(elapsedMs);
+      setLastParseDurationMs(elapsedMs);
+      setParseStartedAtMs(null);
+      setIsParsing(false);
+      console.log("[admin-import-page] Parse timer stopped", {
+        reportId: normalizedReportId,
+        elapsedMs,
+        durationText,
+      });
     }
   }
 
@@ -233,6 +317,11 @@ export default function AdminImportForm() {
     setAssignStartedAtMs(importStartedAtMs);
     setAssignElapsedMs(0);
     setLastAssignDurationMs(null);
+    setParseStatus("");
+    setIsParsing(false);
+    setParseStartedAtMs(null);
+    setParseElapsedMs(0);
+    setLastParseDurationMs(null);
     setIsSubmitting(true);
     setStatus("Preparing upload...");
     unlockCompletionSound();
@@ -539,9 +628,17 @@ export default function AdminImportForm() {
   return (
     <div
       data-testid="admin-import-page"
-      style={{ maxWidth: "900px", margin: "0 auto", padding: "24px", textAlign: "center" }}
+      style={{
+        maxWidth: "900px",
+        margin: "0 auto",
+        padding: "24px",
+        textAlign: "center",
+        fontFamily: DASHBOARD_SANS_FONT_FAMILY,
+      }}
     >
-      <h1 data-testid="admin-import-title">Manual Report Importer</h1>
+      <h1 data-testid="admin-import-title" style={{ fontFamily: DASHBOARD_DISPLAY_FONT_FAMILY }}>
+        Manual Report Importer
+      </h1>
       <audio
         data-testid="admin-import-complete-sound"
         ref={completionSoundRef}
@@ -660,6 +757,22 @@ export default function AdminImportForm() {
         >
           {isSubmitting ? "Elapsed assignment time:" : "Last assignment time:"}{" "}
           {durationMinutes} minutes {durationSeconds} seconds ({durationTotalSeconds}s)
+        </p>
+      ) : null}
+
+      {parseStatus ? (
+        <p data-testid="admin-import-parse-status" style={{ marginTop: "8px", fontWeight: 600 }}>
+          {parseStatus}
+        </p>
+      ) : null}
+
+      {activeParseDurationMs != null ? (
+        <p
+          data-testid="admin-import-parse-duration-counter"
+          style={{ marginTop: "8px", color: "#334155", fontWeight: 600 }}
+        >
+          {isParsing ? "Elapsed parsing time:" : "Last parsing time:"} {parseDurationMinutes} minutes{" "}
+          {parseDurationSeconds} seconds ({parseDurationTotalSeconds}s)
         </p>
       ) : null}
 
