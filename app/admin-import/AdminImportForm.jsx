@@ -350,6 +350,162 @@ export default function AdminImportForm() {
         }
       }
 
+      const fallbackSourcePdf = reportPdf instanceof File ? reportPdf : null;
+
+      if (!response?.ok && fallbackSourcePdf) {
+        console.log("[admin-import-page] Server parse attempts failed; trying PDF parse fallback", {
+          reportId: normalizedReportId,
+          sourceFileName: fallbackSourcePdf.name,
+          sourceFileSize: fallbackSourcePdf.size,
+          sourceFileType: fallbackSourcePdf.type,
+        });
+
+        const pdfParseFormData = new FormData();
+        pdfParseFormData.append("report", fallbackSourcePdf);
+        pdfParseFormData.append("clientId", normalizedReportId);
+        pdfParseFormData.append("mode", "admin-inline-safe");
+
+        try {
+          const pdfParseResponse = await fetch("/api/pdf/parse", {
+            method: "POST",
+            body: pdfParseFormData,
+          });
+          const pdfParseRawBody = await pdfParseResponse.text();
+          let pdfParseData = {};
+          if (pdfParseRawBody) {
+            try {
+              pdfParseData = JSON.parse(pdfParseRawBody);
+            } catch (_error) {
+              pdfParseData = {};
+            }
+          }
+          const pdfParseIsNextErrorHtml =
+            pdfParseRawBody.includes("__next_error__") ||
+            pdfParseRawBody.toLowerCase().startsWith("<!doctype html");
+          attemptSummaries.push({
+            label: "pdf-parse-route",
+            endpoint: "/api/pdf/parse",
+            ok: pdfParseResponse.ok,
+            status: pdfParseResponse.status,
+            isNextErrorHtml: pdfParseIsNextErrorHtml,
+          });
+
+          console.log("[admin-import-page] PDF parse fallback response", {
+            ok: pdfParseResponse.ok,
+            status: pdfParseResponse.status,
+            statusText: pdfParseResponse.statusText,
+            isNextErrorHtml: pdfParseIsNextErrorHtml,
+            data: pdfParseData,
+            rawBodyPreview: pdfParseRawBody ? pdfParseRawBody.slice(0, 240) : null,
+          });
+
+          if (pdfParseResponse.ok) {
+            const parsedPayload =
+              pdfParseData?.data && typeof pdfParseData.data === "object" ? pdfParseData.data : null;
+
+            if (parsedPayload) {
+              try {
+                const applyParsedResponse = await fetch("/api/admin-import/apply-parsed", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    reportId: normalizedReportId,
+                    parsed: parsedPayload,
+                    sourceFileName: fallbackSourcePdf.name || parsedPayload?.sourceFile || null,
+                  }),
+                });
+                const applyParsedRawBody = await applyParsedResponse.text();
+                let applyParsedData = {};
+                if (applyParsedRawBody) {
+                  try {
+                    applyParsedData = JSON.parse(applyParsedRawBody);
+                  } catch (_error) {
+                    applyParsedData = {};
+                  }
+                }
+                const applyParsedIsNextErrorHtml =
+                  applyParsedRawBody.includes("__next_error__") ||
+                  applyParsedRawBody.toLowerCase().startsWith("<!doctype html");
+                attemptSummaries.push({
+                  label: "admin-import-apply-parsed",
+                  endpoint: "/api/admin-import/apply-parsed",
+                  ok: applyParsedResponse.ok,
+                  status: applyParsedResponse.status,
+                  isNextErrorHtml: applyParsedIsNextErrorHtml,
+                });
+
+                console.log("[admin-import-page] Apply parsed fallback response", {
+                  ok: applyParsedResponse.ok,
+                  status: applyParsedResponse.status,
+                  statusText: applyParsedResponse.statusText,
+                  isNextErrorHtml: applyParsedIsNextErrorHtml,
+                  data: applyParsedData,
+                  rawBodyPreview: applyParsedRawBody ? applyParsedRawBody.slice(0, 240) : null,
+                });
+
+                response = applyParsedResponse;
+                rawBody = applyParsedRawBody;
+                data = applyParsedData;
+                selectedAttemptLabel = "admin-import-apply-parsed";
+                selectedAttemptEndpoint = "/api/admin-import/apply-parsed";
+              } catch (applyParsedError) {
+                const details = String(
+                  applyParsedError?.message || "Unknown apply-parsed fallback network error",
+                );
+                attemptSummaries.push({
+                  label: "admin-import-apply-parsed",
+                  endpoint: "/api/admin-import/apply-parsed",
+                  ok: false,
+                  status: null,
+                  isNextErrorHtml: false,
+                  networkError: details,
+                });
+                response = null;
+                rawBody = "";
+                data = {};
+                selectedAttemptLabel = "admin-import-apply-parsed";
+                selectedAttemptEndpoint = "/api/admin-import/apply-parsed";
+                console.log("[admin-import-page] Apply parsed fallback network failure", {
+                  details,
+                });
+              }
+            } else {
+              response = pdfParseResponse;
+              rawBody = pdfParseRawBody;
+              data = pdfParseData;
+              selectedAttemptLabel = "pdf-parse-route";
+              selectedAttemptEndpoint = "/api/pdf/parse";
+            }
+          } else {
+            response = pdfParseResponse;
+            rawBody = pdfParseRawBody;
+            data = pdfParseData;
+            selectedAttemptLabel = "pdf-parse-route";
+            selectedAttemptEndpoint = "/api/pdf/parse";
+          }
+        } catch (pdfParseError) {
+          const details = String(pdfParseError?.message || "Unknown pdf parse fallback network error");
+          attemptSummaries.push({
+            label: "pdf-parse-route",
+            endpoint: "/api/pdf/parse",
+            ok: false,
+            status: null,
+            isNextErrorHtml: false,
+            networkError: details,
+          });
+          response = null;
+          rawBody = "";
+          data = {};
+          selectedAttemptLabel = "pdf-parse-route";
+          selectedAttemptEndpoint = "/api/pdf/parse";
+          console.log("[admin-import-page] PDF parse fallback network failure", {
+            details,
+          });
+        }
+      }
+
       console.log("[admin-import-page] Inline parse response", {
         ok: response?.ok || false,
         status: response?.status || null,

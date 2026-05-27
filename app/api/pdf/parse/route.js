@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
 const DEFAULT_ROUTE_IMAGE_PAGE_LIMIT = 24;
+const ADMIN_INLINE_SAFE_MODE = "admin-inline-safe";
 
 function isPdfFile(file) {
   return file instanceof File && file.type === "application/pdf";
@@ -15,6 +16,7 @@ export async function POST(req) {
     const formData = await req.formData();
     const report = formData.get("report");
     const clientId = String(formData.get("clientId") || "").trim() || null;
+    const mode = String(formData.get("mode") || "").trim().toLowerCase();
 
     if (!(report instanceof File)) {
       return NextResponse.json(
@@ -50,6 +52,12 @@ export async function POST(req) {
     const parsed = await parsePdf(buffer, {
       imagePrimaryFullDocMaxPages: routeImagePageLimit,
       requireChartScoresForComplete: false,
+      ...(mode === ADMIN_INLINE_SAFE_MODE
+        ? {
+            disableImagePipeline: true,
+            disableImageScoreRescue: true,
+          }
+        : {}),
     });
     const parseStatus = parsed?._parseStatus || "complete";
 
