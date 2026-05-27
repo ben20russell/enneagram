@@ -62,6 +62,31 @@ function formatDurationText(durationMs) {
   return `${minutes} ${minuteLabel} ${seconds} ${secondLabel} (${totalSeconds}s)`;
 }
 
+function parseJsonSafely(rawBody) {
+  if (!rawBody) return {};
+
+  try {
+    return JSON.parse(rawBody);
+  } catch (_error) {
+    return {};
+  }
+}
+
+function isNextErrorHtmlBody(rawBody) {
+  return rawBody.includes("__next_error__") || rawBody.toLowerCase().startsWith("<!doctype html");
+}
+
+function formatAttemptSummary(attempt) {
+  const statusPart = attempt.status == null ? "no-status" : `HTTP ${attempt.status}`;
+  if (attempt.networkError) {
+    return `${attempt.label} (${statusPart}): ${attempt.networkError}`;
+  }
+  if (attempt.isNextErrorHtml) {
+    return `${attempt.label} (${statusPart}): next-error-html`;
+  }
+  return `${attempt.label} (${statusPart})`;
+}
+
 export default function AdminImportForm() {
   const [email, setEmail] = useState("");
   const [reportPdf, setReportPdf] = useState(null);
@@ -263,6 +288,89 @@ export default function AdminImportForm() {
       let selectedAttemptLabel = null;
       let selectedAttemptEndpoint = null;
 
+      const setSelectedAttemptResult = ({
+        label,
+        endpoint,
+        nextResponse,
+        nextRawBody,
+        nextData,
+      }) => {
+        response = nextResponse;
+        rawBody = nextRawBody;
+        data = nextData;
+        selectedAttemptLabel = label;
+        selectedAttemptEndpoint = endpoint;
+      };
+
+      const recordAttemptResponse = ({
+        label,
+        endpoint,
+        attemptResponse,
+        attemptRawBody,
+        attemptData,
+        responseLogPrefix,
+      }) => {
+        const attemptIsNextErrorHtml = isNextErrorHtmlBody(attemptRawBody);
+        attemptSummaries.push({
+          label,
+          endpoint,
+          ok: attemptResponse.ok,
+          status: attemptResponse.status,
+          isNextErrorHtml: attemptIsNextErrorHtml,
+        });
+
+        console.log(responseLogPrefix, {
+          label,
+          endpoint,
+          ok: attemptResponse.ok,
+          status: attemptResponse.status,
+          statusText: attemptResponse.statusText,
+          isNextErrorHtml: attemptIsNextErrorHtml,
+          data: attemptData,
+          rawBodyPreview: attemptRawBody ? attemptRawBody.slice(0, 240) : null,
+        });
+
+        setSelectedAttemptResult({
+          label,
+          endpoint,
+          nextResponse: attemptResponse,
+          nextRawBody: attemptRawBody,
+          nextData: attemptData,
+        });
+
+        return attemptIsNextErrorHtml;
+      };
+
+      const recordAttemptNetworkFailure = ({
+        label,
+        endpoint,
+        details,
+        networkLogPrefix,
+      }) => {
+        attemptSummaries.push({
+          label,
+          endpoint,
+          ok: false,
+          status: null,
+          isNextErrorHtml: false,
+          networkError: details,
+        });
+
+        console.log(networkLogPrefix, {
+          label,
+          endpoint,
+          details,
+        });
+
+        setSelectedAttemptResult({
+          label,
+          endpoint,
+          nextResponse: null,
+          nextRawBody: "",
+          nextData: {},
+        });
+      };
+
       for (const parseAttemptPlan of parseAttemptPlans) {
         const { endpoint, label, payload } = parseAttemptPlan;
         console.log("[admin-import-page] Parse attempt started", {
@@ -280,41 +388,15 @@ export default function AdminImportForm() {
             body: JSON.stringify(payload),
           });
           const attemptRawBody = await attemptResponse.text();
-          let attemptData = {};
-          if (attemptRawBody) {
-            try {
-              attemptData = JSON.parse(attemptRawBody);
-            } catch (_error) {
-              attemptData = {};
-            }
-          }
-          const isNextErrorHtml =
-            attemptRawBody.includes("__next_error__") ||
-            attemptRawBody.toLowerCase().startsWith("<!doctype html");
-          attemptSummaries.push({
+          const attemptData = parseJsonSafely(attemptRawBody);
+          const isNextErrorHtml = recordAttemptResponse({
             label,
             endpoint,
-            ok: attemptResponse.ok,
-            status: attemptResponse.status,
-            isNextErrorHtml,
+            attemptResponse,
+            attemptRawBody,
+            attemptData,
+            responseLogPrefix: "[admin-import-page] Parse attempt response",
           });
-
-          console.log("[admin-import-page] Parse attempt response", {
-            label,
-            endpoint,
-            ok: attemptResponse.ok,
-            status: attemptResponse.status,
-            statusText: attemptResponse.statusText,
-            isNextErrorHtml,
-            data: attemptData,
-            rawBodyPreview: attemptRawBody ? attemptRawBody.slice(0, 240) : null,
-          });
-
-          response = attemptResponse;
-          rawBody = attemptRawBody;
-          data = attemptData;
-          selectedAttemptLabel = label;
-          selectedAttemptEndpoint = endpoint;
 
           if (attemptResponse.ok) {
             break;
@@ -328,24 +410,12 @@ export default function AdminImportForm() {
           break;
         } catch (attemptError) {
           const attemptDetails = String(attemptError?.message || "Unknown parse attempt network error");
-          attemptSummaries.push({
-            label,
-            endpoint,
-            ok: false,
-            status: null,
-            isNextErrorHtml: false,
-            networkError: attemptDetails,
-          });
-          console.log("[admin-import-page] Parse attempt network failure", {
+          recordAttemptNetworkFailure({
             label,
             endpoint,
             details: attemptDetails,
+            networkLogPrefix: "[admin-import-page] Parse attempt network failure",
           });
-          response = null;
-          rawBody = "";
-          data = {};
-          selectedAttemptLabel = label;
-          selectedAttemptEndpoint = endpoint;
           continue;
         }
       }
@@ -371,32 +441,14 @@ export default function AdminImportForm() {
             body: pdfParseFormData,
           });
           const pdfParseRawBody = await pdfParseResponse.text();
-          let pdfParseData = {};
-          if (pdfParseRawBody) {
-            try {
-              pdfParseData = JSON.parse(pdfParseRawBody);
-            } catch (_error) {
-              pdfParseData = {};
-            }
-          }
-          const pdfParseIsNextErrorHtml =
-            pdfParseRawBody.includes("__next_error__") ||
-            pdfParseRawBody.toLowerCase().startsWith("<!doctype html");
-          attemptSummaries.push({
+          const pdfParseData = parseJsonSafely(pdfParseRawBody);
+          recordAttemptResponse({
             label: "pdf-parse-route",
             endpoint: "/api/pdf/parse",
-            ok: pdfParseResponse.ok,
-            status: pdfParseResponse.status,
-            isNextErrorHtml: pdfParseIsNextErrorHtml,
-          });
-
-          console.log("[admin-import-page] PDF parse fallback response", {
-            ok: pdfParseResponse.ok,
-            status: pdfParseResponse.status,
-            statusText: pdfParseResponse.statusText,
-            isNextErrorHtml: pdfParseIsNextErrorHtml,
-            data: pdfParseData,
-            rawBodyPreview: pdfParseRawBody ? pdfParseRawBody.slice(0, 240) : null,
+            attemptResponse: pdfParseResponse,
+            attemptRawBody: pdfParseRawBody,
+            attemptData: pdfParseData,
+            responseLogPrefix: "[admin-import-page] PDF parse fallback response",
           });
 
           if (pdfParseResponse.ok) {
@@ -417,91 +469,51 @@ export default function AdminImportForm() {
                   }),
                 });
                 const applyParsedRawBody = await applyParsedResponse.text();
-                let applyParsedData = {};
-                if (applyParsedRawBody) {
-                  try {
-                    applyParsedData = JSON.parse(applyParsedRawBody);
-                  } catch (_error) {
-                    applyParsedData = {};
-                  }
-                }
-                const applyParsedIsNextErrorHtml =
-                  applyParsedRawBody.includes("__next_error__") ||
-                  applyParsedRawBody.toLowerCase().startsWith("<!doctype html");
-                attemptSummaries.push({
+                const applyParsedData = parseJsonSafely(applyParsedRawBody);
+                recordAttemptResponse({
                   label: "admin-import-apply-parsed",
                   endpoint: "/api/admin-import/apply-parsed",
-                  ok: applyParsedResponse.ok,
-                  status: applyParsedResponse.status,
-                  isNextErrorHtml: applyParsedIsNextErrorHtml,
+                  attemptResponse: applyParsedResponse,
+                  attemptRawBody: applyParsedRawBody,
+                  attemptData: applyParsedData,
+                  responseLogPrefix: "[admin-import-page] Apply parsed fallback response",
                 });
-
-                console.log("[admin-import-page] Apply parsed fallback response", {
-                  ok: applyParsedResponse.ok,
-                  status: applyParsedResponse.status,
-                  statusText: applyParsedResponse.statusText,
-                  isNextErrorHtml: applyParsedIsNextErrorHtml,
-                  data: applyParsedData,
-                  rawBodyPreview: applyParsedRawBody ? applyParsedRawBody.slice(0, 240) : null,
-                });
-
-                response = applyParsedResponse;
-                rawBody = applyParsedRawBody;
-                data = applyParsedData;
-                selectedAttemptLabel = "admin-import-apply-parsed";
-                selectedAttemptEndpoint = "/api/admin-import/apply-parsed";
               } catch (applyParsedError) {
                 const details = String(
                   applyParsedError?.message || "Unknown apply-parsed fallback network error",
                 );
-                attemptSummaries.push({
+                recordAttemptNetworkFailure({
                   label: "admin-import-apply-parsed",
                   endpoint: "/api/admin-import/apply-parsed",
-                  ok: false,
-                  status: null,
-                  isNextErrorHtml: false,
-                  networkError: details,
-                });
-                response = null;
-                rawBody = "";
-                data = {};
-                selectedAttemptLabel = "admin-import-apply-parsed";
-                selectedAttemptEndpoint = "/api/admin-import/apply-parsed";
-                console.log("[admin-import-page] Apply parsed fallback network failure", {
                   details,
+                  networkLogPrefix: "[admin-import-page] Apply parsed fallback network failure",
                 });
               }
             } else {
-              response = pdfParseResponse;
-              rawBody = pdfParseRawBody;
-              data = pdfParseData;
-              selectedAttemptLabel = "pdf-parse-route";
-              selectedAttemptEndpoint = "/api/pdf/parse";
+              setSelectedAttemptResult({
+                label: "pdf-parse-route",
+                endpoint: "/api/pdf/parse",
+                nextResponse: pdfParseResponse,
+                nextRawBody: pdfParseRawBody,
+                nextData: pdfParseData,
+              });
             }
           } else {
-            response = pdfParseResponse;
-            rawBody = pdfParseRawBody;
-            data = pdfParseData;
-            selectedAttemptLabel = "pdf-parse-route";
-            selectedAttemptEndpoint = "/api/pdf/parse";
+            setSelectedAttemptResult({
+              label: "pdf-parse-route",
+              endpoint: "/api/pdf/parse",
+              nextResponse: pdfParseResponse,
+              nextRawBody: pdfParseRawBody,
+              nextData: pdfParseData,
+            });
           }
         } catch (pdfParseError) {
           const details = String(pdfParseError?.message || "Unknown pdf parse fallback network error");
-          attemptSummaries.push({
+          recordAttemptNetworkFailure({
             label: "pdf-parse-route",
             endpoint: "/api/pdf/parse",
-            ok: false,
-            status: null,
-            isNextErrorHtml: false,
-            networkError: details,
-          });
-          response = null;
-          rawBody = "";
-          data = {};
-          selectedAttemptLabel = "pdf-parse-route";
-          selectedAttemptEndpoint = "/api/pdf/parse";
-          console.log("[admin-import-page] PDF parse fallback network failure", {
             details,
+            networkLogPrefix: "[admin-import-page] PDF parse fallback network failure",
           });
         }
       }
@@ -533,18 +545,7 @@ export default function AdminImportForm() {
           rawBody.includes("__next_error__") ||
           rawBody.toLowerCase().startsWith("<!doctype html");
         const parseRawPreview = rawBody ? rawBody.replace(/\s+/g, " ").trim().slice(0, 180) : "";
-        const attemptsText = attemptSummaries
-          .map((attempt) => {
-            const statusPart = attempt.status == null ? "no-status" : `HTTP ${attempt.status}`;
-            if (attempt.networkError) {
-              return `${attempt.label} (${statusPart}): ${attempt.networkError}`;
-            }
-            if (attempt.isNextErrorHtml) {
-              return `${attempt.label} (${statusPart}): next-error-html`;
-            }
-            return `${attempt.label} (${statusPart})`;
-          })
-          .join(" | ");
+        const attemptsText = attemptSummaries.map(formatAttemptSummary).join(" | ");
         setParseStatus(
           parseErrorMessage ||
             (isNextErrorHtml
