@@ -139,8 +139,17 @@ function selectMyReportInSelector() {
   selector.value = "my-report";
 }
 
+function stripPdfFooterNoiseFragments(rawText) {
+  return String(rawText || "")
+    .replace(/Copyright\s*\d{4}\s*[-–]\s*\d{4}[\s\S]*?\d+\s*of\s*\d+/gis, " ")
+    .replace(
+      /Integrative\s*Enneagram(?:\s*Solutions)?\s*Ben\s*Russell[\s\S]{0,120}?\d+\s*of\s*\d+/gis,
+      " ",
+    );
+}
+
 function normalizeExtractedText(rawText) {
-  return String(rawText || "").replace(/\s+/g, " ").trim();
+  return stripPdfFooterNoiseFragments(rawText).replace(/\s+/g, " ").trim();
 }
 
 function inferTypeFromPdfText(pdfText) {
@@ -281,7 +290,7 @@ function extractLabeledSectionValue(pdfText, label, nextLabels) {
 
 function cleanPdfExtractedValue(value) {
   return sanitizeSnippet(
-    String(value || "")
+    stripPdfFooterNoiseFragments(String(value || ""))
       .replace(/\u0000/g, "")
       .replace(/([a-z])([A-Z])/g, "$1 $2")
       .replace(/\s+([.,;:!?])/g, "$1"),
@@ -429,7 +438,7 @@ function extractEnneagramProfileScores(pdfText) {
 
 function hasInformativeScoreMap(scoreMap, minPositive = 2) {
   if (!scoreMap || typeof scoreMap !== "object") return false;
-  const values = Object.values(scoreMap).map((value) => Number(value));
+  const values = Object.values(scoreMap).map((value) => toFiniteScoreOrNull(value));
   const finiteValues = values.filter((value) => Number.isFinite(value));
   if (!finiteValues.length) return false;
   const positiveCount = finiteValues.filter((value) => value > 0).length;
@@ -440,8 +449,7 @@ function normalizeScoreScale(scoreMap) {
   if (!scoreMap || typeof scoreMap !== "object") return null;
   const cleaned = {};
   Object.entries(scoreMap).forEach(([key, value]) => {
-    const numeric = Number(value);
-    cleaned[key] = Number.isFinite(numeric) ? numeric : null;
+    cleaned[key] = toFiniteScoreOrNull(value);
   });
   const values = Object.values(cleaned).filter((value) => Number.isFinite(value));
   if (!values.length) return cleaned;
@@ -449,12 +457,54 @@ function normalizeScoreScale(scoreMap) {
   if (max <= 10) {
     const scaled = {};
     Object.entries(cleaned).forEach(([key, value]) => {
-      const numeric = Number(value);
+      const numeric = toFiniteScoreOrNull(value);
       scaled[key] = Number.isFinite(numeric) ? Math.round(numeric * 10) : null;
     });
     return scaled;
   }
   return cleaned;
+}
+
+function scoreMapHasVariance(scoreMap, keys = null) {
+  if (!scoreMap || typeof scoreMap !== "object") return false;
+  const sourceKeys = Array.isArray(keys) && keys.length ? keys : Object.keys(scoreMap);
+  const values = sourceKeys
+    .map((key) => toFiniteScoreOrNull(scoreMap[key]))
+    .filter((value) => Number.isFinite(value));
+  if (values.length < 2) return false;
+  return new Set(values.map((value) => Math.round(Number(value)))).size >= 2;
+}
+
+function shouldPreferQualitativeScoreMap(existingScores, qualitativeScores, options) {
+  const safeOptions = options && typeof options === "object" ? options : {};
+  const minPositive = Number(safeOptions.minPositive || 2);
+  if (!hasInformativeScoreMap(qualitativeScores, minPositive)) return false;
+  if (!hasInformativeScoreMap(existingScores, minPositive)) return true;
+
+  const existingHasVariance = scoreMapHasVariance(existingScores);
+  const qualitativeHasVariance = scoreMapHasVariance(qualitativeScores);
+  if (!existingHasVariance && qualitativeHasVariance) return true;
+
+  const existingValues = Object.values(existingScores || {})
+    .map((value) => toFiniteScoreOrNull(value))
+    .filter((value) => Number.isFinite(value));
+  const qualitativeValues = Object.values(qualitativeScores || {})
+    .map((value) => toFiniteScoreOrNull(value))
+    .filter((value) => Number.isFinite(value));
+  const existingMax = existingValues.length ? Math.max(...existingValues) : null;
+  const qualitativeMax = qualitativeValues.length ? Math.max(...qualitativeValues) : null;
+
+  // Prefer qualitative values if existing extraction collapsed to uniformly low values.
+  if (
+    Number.isFinite(existingMax) &&
+    Number.isFinite(qualitativeMax) &&
+    existingMax <= 30 &&
+    qualitativeMax >= 55
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 const CC_FINGERPRINT = {
@@ -526,6 +576,23 @@ function getLevelVisualScore(level) {
   return null;
 }
 
+function toFiniteScoreOrNull(value) {
+  if (value == null) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const levelScore = getLevelVisualScore(trimmed);
+    if (levelScore != null) return levelScore;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  const levelScore = getLevelVisualScore(value);
+  if (levelScore != null) return levelScore;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function extractLevelForLabel(text, label) {
   const normalized = normalizeExtractedText(text);
   if (!normalized) return null;
@@ -534,10 +601,43 @@ function extractLevelForLabel(text, label) {
   return match?.[1] ? String(match[1]).toUpperCase() : null;
 }
 
+function extractLabelLevelPairs(text, labels, options = {}) {
+  const normalized = normalizeExtractedText(text);
+  if (!normalized) return {};
+  const maxGap = Number.isFinite(Number(options?.maxGap)) ? Number(options.maxGap) : 64;
+  const labelGroup = (Array.isArray(labels) ? labels : [])
+    .map((label) => escapeRegex(label))
+    .filter(Boolean)
+    .join("|");
+  if (!labelGroup) return {};
+
+  const out = {};
+  const pattern = new RegExp(`\\b(${labelGroup})\\b[^A-Za-z]{0,${maxGap}}(LOW|MEDIUM|HIGH|MODERATE)\\b`, "gi");
+  let match;
+  while ((match = pattern.exec(normalized)) !== null) {
+    const label = String(match[1] || "").toLowerCase();
+    const level = String(match[2] || "").toUpperCase();
+    if (!label || !level) continue;
+    out[label] = level;
+  }
+  return out;
+}
+
 function buildCenterScoresFromQualitativeText(text) {
-  const action = getLevelVisualScore(extractLevelForLabel(text, "Action Center of Expression"));
-  const feeling = getLevelVisualScore(extractLevelForLabel(text, "Feeling Center of Expression"));
-  const thinking = getLevelVisualScore(extractLevelForLabel(text, "Thinking Center of Expression"));
+  const pairedLevels = extractLabelLevelPairs(text, [
+    "Action Center of Expression",
+    "Feeling Center of Expression",
+    "Thinking Center of Expression",
+  ]);
+  const action = getLevelVisualScore(
+    pairedLevels["action center of expression"] || extractLevelForLabel(text, "Action Center of Expression"),
+  );
+  const feeling = getLevelVisualScore(
+    pairedLevels["feeling center of expression"] || extractLevelForLabel(text, "Feeling Center of Expression"),
+  );
+  const thinking = getLevelVisualScore(
+    pairedLevels["thinking center of expression"] || extractLevelForLabel(text, "Thinking Center of Expression"),
+  );
   const scores = {
     body: action,
     heart: feeling,
@@ -547,13 +647,27 @@ function buildCenterScoresFromQualitativeText(text) {
 }
 
 function buildStrainScoresFromQualitativeText(text) {
+  const pairedLevels = extractLabelLevelPairs(text, [
+    "Happiness strain",
+    "Vocational strain",
+    "Interpersonal strain",
+    "Physical strain",
+    "Environmental strain",
+    "Psychological strain",
+  ]);
   const scores = {
-    happiness: getLevelVisualScore(extractLevelForLabel(text, "Happiness strain")),
-    vocational: getLevelVisualScore(extractLevelForLabel(text, "Vocational strain")),
-    interpersonal: getLevelVisualScore(extractLevelForLabel(text, "Interpersonal strain")),
-    physical: getLevelVisualScore(extractLevelForLabel(text, "Physical strain")),
-    environmental: getLevelVisualScore(extractLevelForLabel(text, "Environmental strain")),
-    psychological: getLevelVisualScore(extractLevelForLabel(text, "Psychological strain")),
+    happiness: getLevelVisualScore(pairedLevels["happiness strain"] || extractLevelForLabel(text, "Happiness strain")),
+    vocational: getLevelVisualScore(pairedLevels["vocational strain"] || extractLevelForLabel(text, "Vocational strain")),
+    interpersonal: getLevelVisualScore(
+      pairedLevels["interpersonal strain"] || extractLevelForLabel(text, "Interpersonal strain"),
+    ),
+    physical: getLevelVisualScore(pairedLevels["physical strain"] || extractLevelForLabel(text, "Physical strain")),
+    environmental: getLevelVisualScore(
+      pairedLevels["environmental strain"] || extractLevelForLabel(text, "Environmental strain"),
+    ),
+    psychological: getLevelVisualScore(
+      pairedLevels["psychological strain"] || extractLevelForLabel(text, "Psychological strain"),
+    ),
   };
   const values = Object.values(scores).filter((value) => Number.isFinite(Number(value)));
   if (!values.length) return null;
@@ -821,9 +935,15 @@ async function ingestAssignedReportIntoDashboard(data) {
     }
     typeName = typeName || cleanupTypeName(extractTypeNameFromPdfText(pdfText, detectedType));
     instinct = instinct || extractInstinctFromPdfText(pdfText);
+    const canonicalSubtypeKeyword =
+      sanitizeSnippet(MASTER_SOURCE_COPY?.[String(detectedType || "")]?.keyword, null) ||
+      sanitizeSnippet(REPORT_EXAMPLES?.[String(detectedType || "")]?.keyword, null);
     subtypeKeyword =
       extractSubtypeKeywordFromPdfText(pdfText, detectedType) ||
-      extractSnippetFromLabels(pdfText, ["Subtype Keyword", "Subtype"]);
+      extractSnippetFromLabels(pdfText, ["Subtype Keyword", "Subtype"]) ||
+      extractSnippetFromLabels(reportContentText, ["Subtype Keyword", "Subtype", "Keyword"]) ||
+      subtypeKeyword ||
+      canonicalSubtypeKeyword;
     connectedLineA =
       connectedLineA ||
       extractLineTypeFromFlowSection(pdfText, "stress") ||
@@ -865,14 +985,32 @@ async function ingestAssignedReportIntoDashboard(data) {
       strainScoresRaw = null;
     }
 
-    if (!hasInformativeScoreMap(centerScoresRaw, 2) && likelyProReport) {
-      centerScoresRaw = buildCenterScoresFromQualitativeText(reportContentText);
+    const qualitativeCenterScores = likelyProReport
+      ? normalizeScoreScale(buildCenterScoresFromQualitativeText(reportContentText || pdfText))
+      : null;
+    if (shouldPreferQualitativeScoreMap(centerScoresRaw, qualitativeCenterScores, { minPositive: 2 })) {
+      console.log("[report-ingest] overriding parsed center scores with qualitative center levels", {
+        existing: centerScoresRaw,
+        qualitative: qualitativeCenterScores,
+      });
+      centerScoresRaw = qualitativeCenterScores;
+    } else if (!hasInformativeScoreMap(centerScoresRaw, 2) && likelyProReport) {
+      centerScoresRaw = qualitativeCenterScores;
     }
     if (!hasInformativeScoreMap(instinctScoresRaw, 1) && likelyProReport) {
       instinctScoresRaw = buildInstinctVisualScores({ instinct, reportContentText });
     }
-    if (!strainScoresRaw && likelyProReport) {
-      strainScoresRaw = buildStrainScoresFromQualitativeText(reportContentText);
+    const qualitativeStrainScores = likelyProReport
+      ? normalizeScoreScale(buildStrainScoresFromQualitativeText(reportContentText || pdfText))
+      : null;
+    if (shouldPreferQualitativeScoreMap(strainScoresRaw, qualitativeStrainScores, { minPositive: 1 })) {
+      console.log("[report-ingest] overriding parsed strain scores with qualitative strain levels", {
+        existing: strainScoresRaw,
+        qualitative: qualitativeStrainScores,
+      });
+      strainScoresRaw = qualitativeStrainScores;
+    } else if (!strainScoresRaw && likelyProReport) {
+      strainScoresRaw = qualitativeStrainScores;
     }
     const coreIdentityBlock = extractCoreIdentityBlock(reportContentText) || extractCoreIdentityBlock(pdfText);
     const worldviewFromCoreBlock =
@@ -979,7 +1117,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       corePatternTitle = `Type ${detectedType || "?"} Core Pattern`;
     }
 
-    const proInsights = buildProInsightsFromPdfText(pdfText);
+    const proInsights = buildProInsightsFromSources(parsedProfile, pdfText);
     const feedbackGuideMatrix = mergeFeedbackGuideRows(
       extractFeedbackGuideFromReportContent(parsedProfile),
       extractFeedbackGuideMatrix(pdfText),
@@ -2601,7 +2739,8 @@ function setHtml(id, value) {
 function formatScoreObject(labelMap, scores) {
   if (!scores || typeof scores !== 'object') return "Not detected";
   const entries = Object.entries(scores)
-    .filter(([, value]) => Number.isFinite(Number(value)))
+    .map(([key, value]) => [key, toFiniteScoreOrNull(value)])
+    .filter(([, value]) => Number.isFinite(value))
     .map(([key, value]) => `${labelMap[key] || key}: ${Number(value)}`);
   return entries.length ? entries.join(" · ") : "Not detected";
 }
@@ -2614,7 +2753,7 @@ function formatOptionalText(value, fallback = "Not detected") {
 function setBarRow(barId, valueId, value, options = {}) {
   const barNode = document.getElementById(barId);
   const valueNode = document.getElementById(valueId);
-  const numeric = Number(value);
+  const numeric = toFiniteScoreOrNull(value);
   const hasValue = Number.isFinite(numeric);
   const safeValue = hasValue ? Math.max(0, Math.min(100, Math.round(numeric))) : 0;
   if (barNode) barNode.style.width = `${safeValue}%`;
@@ -2630,9 +2769,10 @@ function setBarRow(barId, valueId, value, options = {}) {
 function setCenterLevelChip(chipId, value) {
   const chipNode = document.getElementById(chipId);
   if (!chipNode) return;
-  const numeric = Number(value);
+  const numeric = toFiniteScoreOrNull(value);
   const hasValue = Number.isFinite(numeric);
-  const level = hasValue ? scoreBandLabel(numeric) : "N/A";
+  const safeValue = hasValue ? Math.max(0, Math.min(100, Math.round(numeric))) : null;
+  const level = hasValue ? scoreBandLabel(safeValue) : "N/A";
   chipNode.textContent = level;
   chipNode.classList.remove('center-chip-high', 'center-chip-medium', 'center-chip-low');
   if (level === "High") chipNode.classList.add('center-chip-high');
@@ -2659,7 +2799,7 @@ function renderStrainBreakdownRows(strainScoresRaw, fallbackStrainScores) {
   if (!container) return;
 
   const rows = STRAIN_BREAKDOWN_ORDER.map((item) => {
-    const candidate = Number(strainScoresRaw?.[item.key] ?? fallbackStrainScores?.[item.fallbackIndex]);
+    const candidate = toFiniteScoreOrNull(strainScoresRaw?.[item.key] ?? fallbackStrainScores?.[item.fallbackIndex]);
     const hasValue = Number.isFinite(candidate);
     const score = hasValue ? Math.max(0, Math.min(100, Math.round(candidate))) : null;
     const band = hasValue ? scoreBandLabel(score) : "N/A";
@@ -2685,7 +2825,8 @@ function renderStrainBreakdownRows(strainScoresRaw, fallbackStrainScores) {
     const chipClass =
       valueLabel === "High" ? "strain-chip-high" :
       valueLabel === "Medium" ? "strain-chip-medium" :
-      "strain-chip-low";
+      valueLabel === "Low" ? "strain-chip-low" :
+      "cx";
     return `<div class="brow"><div class="blbl">${row.label}</div><span class="chip ${chipClass}">${valueLabel}</span></div>`;
   }).join("");
 }
@@ -2693,10 +2834,13 @@ function renderStrainBreakdownRows(strainScoresRaw, fallbackStrainScores) {
 function getStrainCardVisual(level) {
   if (level === "High") return { chipClass: "cr", chipLabel: "Higher strain detected" };
   if (level === "Medium") return { chipClass: "cg", chipLabel: "Moderate strain detected" };
+  if (level === "Low") return { chipClass: "cgn", chipLabel: "Lower strain detected" };
+  if (level === "N/A") return { chipClass: "cx", chipLabel: "Not detected" };
   return { chipClass: "cgn", chipLabel: "Lower strain detected" };
 }
 
 function getStrainCardFallbackText(category, level) {
+  if (level === "N/A") return "Not detected in assigned PDF.";
   const normalized = String(level || "Low").toLowerCase();
   const templates = {
     "Overall Strain": `Overall strain is currently ${normalized} across the report context.`,
@@ -2719,12 +2863,14 @@ function getStrainValueByKey(strainScoresRaw, fallbackStrainScores, key) {
     environmental: 4,
     psychological: 5,
   };
-  const candidate = Number(strainScoresRaw?.[key] ?? fallbackStrainScores?.[orderLookup[key]]);
+  const raw = strainScoresRaw?.[key] ?? fallbackStrainScores?.[orderLookup[key]];
+  const candidate = raw == null ? null : Number(raw);
   return Number.isFinite(candidate) ? Math.max(0, Math.min(100, Math.round(candidate))) : null;
 }
 
 function buildSortedStrainWriteupRows(strainScoresRaw, fallbackStrainScores, overallValue) {
-  const overallLevel = Number.isFinite(overallValue) ? scoreBandLabel(overallValue) : "Low";
+  const normalizedOverall = overallValue == null ? null : Number(overallValue);
+  const overallLevel = Number.isFinite(normalizedOverall) ? scoreBandLabel(normalizedOverall) : "N/A";
   const sortedAreaRows = STRAIN_BREAKDOWN_ORDER
     .map((item) => {
       const score = getStrainValueByKey(strainScoresRaw, fallbackStrainScores, item.key);
@@ -2732,7 +2878,7 @@ function buildSortedStrainWriteupRows(strainScoresRaw, fallbackStrainScores, ove
         title: item.label,
         key: item.key,
         score,
-        level: scoreBandLabel(score),
+        level: Number.isFinite(score) ? scoreBandLabel(score) : "N/A",
         fallbackIndex: item.fallbackIndex,
       };
     })
@@ -2747,14 +2893,14 @@ function buildSortedStrainWriteupRows(strainScoresRaw, fallbackStrainScores, ove
       return a.fallbackIndex - b.fallbackIndex;
     });
   return [
-    { title: "Overall Strain", key: "overall", score: overallValue, level: overallLevel, fallbackIndex: -1 },
+    { title: "Overall Strain", key: "overall", score: normalizedOverall, level: overallLevel, fallbackIndex: -1 },
     ...sortedAreaRows,
   ];
 }
 
 function getStrainLevelFromKey(strainScoresRaw, fallbackStrainScores, key) {
   const value = getStrainValueByKey(strainScoresRaw, fallbackStrainScores, key);
-  return Number.isFinite(value) ? scoreBandLabel(value) : "Medium";
+  return Number.isFinite(value) ? scoreBandLabel(value) : "N/A";
 }
 
 function getStrainTicClass(level) {
@@ -2793,6 +2939,46 @@ function isMissingExtractedText(value) {
   return /not detected/i.test(String(value || ""));
 }
 
+function isLikelyGarbledDevelopmentExerciseText(value) {
+  const raw = String(value || "");
+  const normalized = normalizeExtractedText(raw);
+  if (!normalized) {
+    return /copyright|integrative\s*enneagram|ben\s*russell|\b\d+\s*of\s*\d+\b/i.test(raw);
+  }
+  if (/copyright|integrative\s*enneagram|ben\s*russell/i.test(normalized)) return true;
+  if (/\b\d+\s*of\s*\d+\b/i.test(normalized)) return true;
+  const noisyTokenCount = normalized
+    .split(/\s+/)
+    .filter((token) => /[A-Za-z]{8,}\d+[A-Za-z]{5,}|[A-Za-z]{20,}/.test(token))
+    .length;
+  return noisyTokenCount >= 2;
+}
+
+function splitDevelopmentExercisesTextBlock(value) {
+  const normalized = normalizeExtractedText(value);
+  if (!normalized) return [];
+  const matches = [];
+  const pattern =
+    /DEVELOPMENT\s*EXERCISE(?:\s*\d+)?\s*[:\-]?\s*([\s\S]{16,520}?)(?=DEVELOPMENT\s*EXERCISE(?:\s*\d+)?\s*[:\-]?|$)/gi;
+  let match;
+  while ((match = pattern.exec(normalized)) !== null) {
+    const cleaned = cleanPdfExtractedValue(match?.[1] || "");
+    if (!cleaned || isLikelyGarbledDevelopmentExerciseText(cleaned)) continue;
+    matches.push(cleaned);
+    if (matches.length >= 8) break;
+  }
+  if (!matches.length) {
+    const cleaned = cleanPdfExtractedValue(normalized);
+    if (cleaned && !isLikelyGarbledDevelopmentExerciseText(cleaned)) {
+      matches.push(cleaned);
+    }
+  }
+  return Array.from(new Set(matches)).map((text, index) => ({
+    title: `Exercise ${index + 1}`,
+    text,
+  }));
+}
+
 function mergeFeedbackGuideRows(structuredRows, pdfRows) {
   const fallbackRows = Array.isArray(pdfRows) ? pdfRows : [];
   const primaryRows = Array.isArray(structuredRows) ? structuredRows : [];
@@ -2826,44 +3012,161 @@ function mergeCategoryWriteups(structuredRows, pdfRows, categories) {
 }
 
 function mergeDevelopmentExercises(structuredExercises, pdfExercises) {
-  const primary = Array.isArray(structuredExercises) ? structuredExercises : [];
-  const fallback = Array.isArray(pdfExercises) ? pdfExercises : [];
-  const merged = primary.filter((row) => !isMissingExtractedText(row?.text));
+  const primaryRaw = Array.isArray(structuredExercises) ? structuredExercises : [];
+  const fallbackRaw = Array.isArray(pdfExercises) ? pdfExercises : [];
+  const primary = primaryRaw.flatMap((row) => {
+    const split = splitDevelopmentExercisesTextBlock(row?.text);
+    if (!split.length) return [row];
+    return split;
+  });
+  const fallback = fallbackRaw.flatMap((row) => {
+    const split = splitDevelopmentExercisesTextBlock(row?.text);
+    if (!split.length) return [row];
+    return split;
+  });
+
+  const merged = primary.filter(
+    (row) => !isMissingExtractedText(row?.text) && !isLikelyGarbledDevelopmentExerciseText(row?.text),
+  );
   if (merged.length) return merged;
-  const fallbackFiltered = fallback.filter((row) => !isMissingExtractedText(row?.text));
-  return fallbackFiltered.length ? fallbackFiltered : primary;
+  const fallbackFiltered = fallback.filter(
+    (row) => !isMissingExtractedText(row?.text) && !isLikelyGarbledDevelopmentExerciseText(row?.text),
+  );
+  return fallbackFiltered.length ? fallbackFiltered : [];
 }
 
-function buildProInsightsFromPdfText(pdfText) {
+function compactInsightSnippet(value, maxLength = 420) {
+  const cleaned = cleanPdfExtractedValue(value || "");
+  if (!cleaned) return null;
+  if (cleaned.length <= maxLength) return cleaned;
+  return `${cleaned.slice(0, maxLength).trim()}...`;
+}
+
+function extractSectionInsightSnippet(parsedProfile, matcher) {
+  if (!parsedProfile || typeof parsedProfile !== "object" || typeof matcher !== "function") return null;
+  const sections = getReportContentSections(parsedProfile);
+  for (const section of sections) {
+    const sectionId = String(section?.sectionId || "").trim().toLowerCase();
+    const sectionTitle = String(section?.sectionTitle || section?.title || "").trim().toLowerCase();
+    if (!matcher({ sectionId, sectionTitle, section })) continue;
+    const sectionText = getSectionCompositeText(parsedProfile, section) || section?.fullText || section?.summary || "";
+    const snippet = compactInsightSnippet(sectionText);
+    if (snippet) return snippet;
+  }
+  return null;
+}
+
+function buildProInsightsFromSources(parsedProfile, pdfText) {
   return {
     enneagramBasics: firstPresentSnippet([
+      extractSectionInsightSnippet(parsedProfile, ({ sectionId, sectionTitle }) =>
+        sectionId.includes("enneagram") ||
+        sectionTitle.includes("enneagram basics") ||
+        sectionTitle.includes("quick reference") ||
+        sectionTitle.includes("subtypes"),
+      ),
       extractSnippetFromLabels(pdfText, ["Quick reference", "all 9", "instinctual drives", "Social", "Self-Preservation"]),
       extractBetweenMarkers(pdfText, "27 Subtypes", "Centers of Expression"),
     ]),
     neurobiology: firstPresentSnippet([
+      extractSectionInsightSnippet(parsedProfile, ({ sectionId, sectionTitle }) =>
+        sectionId.includes("neuro") ||
+        sectionTitle.includes("neurobiology") ||
+        sectionTitle.includes("centers of expression"),
+      ),
       extractSnippetFromLabels(pdfText, ["brainstem", "limbic", "prefrontal cortex", "Centers of Expression"]),
     ]),
     teamDynamics: firstPresentSnippet([
+      extractSectionInsightSnippet(parsedProfile, ({ sectionId, sectionTitle }) =>
+        sectionId === "team_dynamics" ||
+        sectionTitle.includes("team dynamics") ||
+        sectionTitle.includes("team behaviour") ||
+        sectionTitle.includes("tuckman"),
+      ),
       extractSnippetFromLabels(pdfText, ["Forming", "Storming", "Norming", "Performing", "Team Behaviour"]),
     ]),
     decisionFramework: firstPresentSnippet([
+      extractSectionInsightSnippet(parsedProfile, ({ sectionId, sectionTitle }) =>
+        sectionId.includes("decision") ||
+        sectionTitle.includes("decision framework") ||
+        sectionTitle.includes("decision making"),
+      ),
       extractSnippetFromLabels(pdfText, ["Experience", "Intelligibility", "Commitment", "Decision Making"]),
     ]),
     strategicLeadership: firstPresentSnippet([
+      extractSectionInsightSnippet(parsedProfile, ({ sectionId, sectionTitle }) =>
+        sectionId === "strategic_leadership" || sectionTitle.includes("strategic leadership"),
+      ),
       extractSnippetFromLabels(pdfText, ["Strategic Leadership", "Visioning", "Alignment", "Change Management"]),
     ]),
     coachingRelationship: firstPresentSnippet([
+      extractSectionInsightSnippet(parsedProfile, ({ sectionId, sectionTitle }) =>
+        sectionId === "coaching_relationship" || sectionTitle.includes("coaching relationship"),
+      ),
       extractSnippetFromLabels(pdfText, ["Coaching Relationship", "coaching", "mentoring"]),
     ]),
     feedbackGuide: firstPresentSnippet([
+      extractSectionInsightSnippet(parsedProfile, ({ sectionId, sectionTitle }) =>
+        sectionId === "feedback_matrix" ||
+        sectionTitle.includes("feedback guide") ||
+        sectionTitle.includes("feedback matrix"),
+      ),
       extractSnippetFromLabels(pdfText, ["Feedback Guide", "giving feedback", "all 9"]),
     ]),
     composite: firstPresentSnippet([
+      extractSectionInsightSnippet(parsedProfile, ({ sectionTitle }) =>
+        sectionTitle.includes("interaction styles") ||
+        sectionTitle.includes("conflict") ||
+        sectionTitle.includes("body language"),
+      ),
       extractSnippetFromLabels(pdfText, ["Body Language", "eye contact", "larger-than-life"]),
       extractSnippetFromLabels(pdfText, ["Environmental Strain", "Happiness", "Vocational", "Interpersonal"]),
       extractSnippetFromLabels(pdfText, ["Development Exercise", "self-regulation"]),
     ]),
   };
+}
+
+function extractIndexedGuidanceRows(rawText, options) {
+  const safeOptions = options && typeof options === "object" ? options : {};
+  const fallbackText = String(safeOptions.fallbackText || "Not detected in assigned PDF.");
+  const names = safeOptions.names && typeof safeOptions.names === "object"
+    ? safeOptions.names
+    : {
+        1: "Reformer",
+        2: "Helper",
+        3: "Achiever",
+        4: "Individualist",
+        5: "Investigator",
+        6: "Loyalist",
+        7: "Enthusiast",
+        8: "Challenger",
+        9: "Peacemaker",
+      };
+  const lineOriented = String(rawText || "")
+    .replace(/\r/g, "\n")
+    .replace(/\s+(Type\s*[1-9]\b)/gi, "\n$1")
+    .replace(/\s+([1-9])\s+(?=[A-Z])/g, "\n$1 ");
+
+  const rows = [];
+  for (let type = 1; type <= 9; type += 1) {
+    const typedPattern = new RegExp(
+      `(?:^|\\n)\\s*Type\\s*${type}\\s*[:\\-\\)]?\\s*([\\s\\S]{10,420}?)(?=(?:\\n\\s*(?:Type\\s*[1-9]|[1-9]\\s+)|$))`,
+      "i",
+    );
+    const numberedPattern = new RegExp(
+      `(?:^|\\n)\\s*${type}\\s*(?:[\\.:\\-\\)])?\\s+([\\s\\S]{10,420}?)(?=(?:\\n\\s*(?:Type\\s*[1-9]|[1-9]\\s+)|$))`,
+      "i",
+    );
+    const typedMatch = lineOriented.match(typedPattern);
+    const numberedMatch = lineOriented.match(numberedPattern);
+    const guidance = cleanPdfExtractedValue(typedMatch?.[1] || numberedMatch?.[1] || "") || fallbackText;
+    rows.push({
+      type: `Type ${type}`,
+      label: names[type] || "",
+      guidance,
+    });
+  }
+  return rows;
 }
 
 function extractFeedbackGuideMatrix(pdfText) {
@@ -2883,6 +3186,13 @@ function extractFeedbackGuideMatrix(pdfText) {
     /Feedback\s*Guide[\s\S]{20,8000}(?=\b(?:Conflict|Decision\s*Making|Leadership|Coaching\s*Relationship|Team\s*Behaviour)\b|$)/i,
   );
   const feedbackBlock = feedbackBlockMatch?.[0] || normalized;
+  const indexedRows = extractIndexedGuidanceRows(feedbackBlock, {
+    fallbackText: "Not detected in assigned PDF.",
+    names,
+  });
+  if (indexedRows.some((row) => !isMissingExtractedText(row?.guidance))) {
+    return indexedRows;
+  }
   const rows = [];
   for (let type = 1; type <= 9; type += 1) {
     const pattern = new RegExp(`Type\\s*${type}\\b\\s*[:\\-]?\\s*([\\s\\S]{12,340}?)(?=Type\\s*[1-9]\\b|$)`, "i");
@@ -2974,7 +3284,7 @@ function extractDevelopmentExercises(pdfText) {
   let match;
   while ((match = pattern.exec(normalized)) !== null) {
     const cleaned = cleanPdfExtractedValue(match[1]);
-    if (!cleaned) continue;
+    if (!cleaned || isLikelyGarbledDevelopmentExerciseText(cleaned)) continue;
     matches.push(cleaned);
     if (matches.length >= 8) break;
   }
@@ -2986,10 +3296,13 @@ function extractDevelopmentExercises(pdfText) {
       "balancing centers",
       "strategic leadership",
     ]);
-    if (fallback) matches.push(fallback);
+    const cleanedFallback = cleanPdfExtractedValue(fallback || "");
+    if (cleanedFallback && !isLikelyGarbledDevelopmentExerciseText(cleanedFallback)) {
+      matches.push(cleanedFallback);
+    }
   }
 
-  return matches.map((text, index) => ({
+  return Array.from(new Set(matches)).map((text, index) => ({
     title: `Exercise ${index + 1}`,
     text,
   }));
@@ -3115,6 +3428,14 @@ function extractFeedbackGuideFromReportContent(parsedProfile) {
     9: "Peacemaker",
   };
 
+  const indexedRows = extractIndexedGuidanceRows(text, {
+    fallbackText: "Not detected in structured report content.",
+    names,
+  });
+  if (indexedRows.some((row) => !isMissingExtractedText(row?.guidance))) {
+    return indexedRows;
+  }
+
   const rows = [];
   for (let type = 1; type <= 9; type += 1) {
     const pattern = new RegExp(`Type\\s*${type}\\b\\s*[:\\-]?\\s*([\\s\\S]{10,320}?)(?=Type\\s*[1-9]\\b|$)`, "i");
@@ -3161,6 +3482,13 @@ function extractStrainQualitativeFromReportContent(parsedProfile) {
 }
 
 function extractDevelopmentExercisesFromReportContent(parsedProfile) {
+  const structuredBlockExercises = splitDevelopmentExercisesTextBlock(
+    parsedProfile?.reportContent?.developmentExercisesText,
+  );
+  if (structuredBlockExercises.length) {
+    return structuredBlockExercises;
+  }
+
   const devSection = getSectionByTitle(parsedProfile, (title) => /development/i.test(title));
   const text = normalizeExtractedText(
     [
@@ -3174,7 +3502,7 @@ function extractDevelopmentExercisesFromReportContent(parsedProfile) {
     let match;
     while ((match = pattern.exec(text)) !== null) {
       const cleaned = cleanPdfExtractedValue(match?.[1] || "");
-      if (!cleaned) continue;
+      if (!cleaned || isLikelyGarbledDevelopmentExerciseText(cleaned)) continue;
       matches.push(cleaned);
       if (matches.length >= 8) break;
     }
@@ -3186,18 +3514,19 @@ function extractDevelopmentExercisesFromReportContent(parsedProfile) {
       .filter((page) => desiredDevPages.has(Number(page?.pageNumber)) || /development/i.test(String(page?.heading || "")))
       .flatMap((page) => (Array.isArray(page?.keyDataPoints) ? page.keyDataPoints : []))
       .map((line) => cleanPdfExtractedValue(line))
-      .filter(Boolean)
+      .filter((line) => line && !isLikelyGarbledDevelopmentExerciseText(line))
       .slice(0, 8);
     matches.push(...fallback);
   }
-  if (!matches.length) {
+  const dedupedMatches = Array.from(new Set(matches));
+  if (!dedupedMatches.length) {
     return [
       { title: "Exercise 1", text: "Not detected in structured report content." },
       { title: "Exercise 2", text: "Not detected in structured report content." },
       { title: "Exercise 3", text: "Not detected in structured report content." },
     ];
   }
-  return matches.map((item, index) => ({ title: `Exercise ${index + 1}`, text: item }));
+  return dedupedMatches.map((item, index) => ({ title: `Exercise ${index + 1}`, text: item }));
 }
 
 function extractInstinctConflictInsightsFromReportContent(parsedProfile, instinctLabel) {
@@ -3402,10 +3731,13 @@ function buildPdfOnlyProfile(typeNumber, extractedScores) {
   const fallback = order.map(() => 40);
   const hasExtractedScores =
     extractedScores &&
-    order.filter((type) => Number.isFinite(Number(extractedScores[type])) && Number(extractedScores[type]) > 0).length >= 3;
+    order.filter((type) => {
+      const score = toFiniteScoreOrNull(extractedScores[type]);
+      return Number.isFinite(score) && score > 0;
+    }).length >= 3;
   if (hasExtractedScores) {
     return order.map((type) => {
-      const value = Number(extractedScores[type]);
+      const value = toFiniteScoreOrNull(extractedScores[type]);
       if (!Number.isFinite(value) || value < 0 || value > 100) return 40;
       return value;
     });
@@ -3435,12 +3767,12 @@ function buildPdfOnlyReport(payload) {
     : null;
   const strain = strainScoresRaw
     ? [
-        Number.isFinite(Number(strainScoresRaw.happiness)) ? Number(strainScoresRaw.happiness) : null,
-        Number.isFinite(Number(strainScoresRaw.vocational)) ? Number(strainScoresRaw.vocational) : null,
-        Number.isFinite(Number(strainScoresRaw.interpersonal)) ? Number(strainScoresRaw.interpersonal) : null,
-        Number.isFinite(Number(strainScoresRaw.physical)) ? Number(strainScoresRaw.physical) : null,
-        Number.isFinite(Number(strainScoresRaw.environmental)) ? Number(strainScoresRaw.environmental) : null,
-        Number.isFinite(Number(strainScoresRaw.psychological)) ? Number(strainScoresRaw.psychological) : null,
+        toFiniteScoreOrNull(strainScoresRaw.happiness),
+        toFiniteScoreOrNull(strainScoresRaw.vocational),
+        toFiniteScoreOrNull(strainScoresRaw.interpersonal),
+        toFiniteScoreOrNull(strainScoresRaw.physical),
+        toFiniteScoreOrNull(strainScoresRaw.environmental),
+        toFiniteScoreOrNull(strainScoresRaw.psychological),
       ]
     : [null, null, null, null, null, null];
   const releaseType = getLineTypeNumber(release);
@@ -3778,9 +4110,11 @@ function renderReportFromState(isExampleMode) {
 
   const strain = REPORT.strainScoresRaw || {};
   renderStrainBreakdownRows(strain, REPORT.strain);
-  const overallNumeric = Number(strain.overall);
+  const overallNumeric = toFiniteScoreOrNull(strain.overall);
   const fallbackStrainValues = Array.isArray(REPORT.strain)
-    ? REPORT.strain.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+    ? REPORT.strain
+        .map((value) => toFiniteScoreOrNull(value))
+        .filter((value) => Number.isFinite(value) && value > 0)
     : [];
   const overall = Number.isFinite(overallNumeric)
     ? Math.max(0, Math.min(100, Math.round(overallNumeric)))
