@@ -182,7 +182,7 @@ export default async function handler(req, res) {
 
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT || '';
   const apiKey = process.env.AZURE_OPENAI_API_KEY || '';
-  const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2025-04-01-preview';
+  const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-11-20';
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-5.4-mini';
 
   if (!endpoint || !apiKey || !deployment) {
