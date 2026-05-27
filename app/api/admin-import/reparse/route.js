@@ -70,10 +70,12 @@ export async function POST(req) {
   }
 
   const reportsTable = process.env.SUPABASE_REPORTS_TABLE || "reports";
-  const supabase = getSupabaseAdmin();
+  let supabase = null;
   let report = null;
 
   try {
+    supabase = getSupabaseAdmin();
+
     const { data: loadedReport, error: reportErr } = await supabase
       .from(reportsTable)
       .select("id,user_email,enneagram_type,results_data,report_pdf")
@@ -231,7 +233,7 @@ export async function POST(req) {
       stack: error?.stack,
     });
 
-    if (report?.id) {
+    if (report?.id && supabase) {
       try {
         const priorResults = report?.results_data && typeof report.results_data === "object"
           ? report.results_data

@@ -217,10 +217,10 @@ export default function AdminImportForm() {
     console.log("[admin-import-page] Completion sound play invoked");
   }
 
-  async function triggerBackgroundParse(reportId) {
+  async function parseAssignedReport(reportId) {
     const normalizedReportId = String(reportId || "").trim();
     if (!normalizedReportId) {
-      console.log("[admin-import-page] Skipping background parse trigger because reportId is missing");
+      console.log("[admin-import-page] Skipping inline parse because reportId is missing");
       setParseStatus("Parsing skipped: missing report id.");
       return;
     }
@@ -230,14 +230,14 @@ export default function AdminImportForm() {
     setParseStartedAtMs(parseTimerStartedAtMs);
     setParseElapsedMs(0);
     setLastParseDurationMs(null);
-    setParseStatus("Parsing report in background...");
+    setParseStatus("Parsing report now...");
     console.log("[admin-import-page] Parse timer started", {
       reportId: normalizedReportId,
       parseTimerStartedAtMs,
     });
 
     try {
-      console.log("[admin-import-page] Triggering background parse", { reportId: normalizedReportId });
+      console.log("[admin-import-page] Parsing assigned report inline", { reportId: normalizedReportId });
       const response = await fetch("/api/admin-import/reparse", {
         method: "POST",
         headers: {
@@ -255,7 +255,7 @@ export default function AdminImportForm() {
         }
       }
 
-      console.log("[admin-import-page] Background parse trigger response", {
+      console.log("[admin-import-page] Inline parse response", {
         ok: response.ok,
         status: response.status,
         statusText: response.statusText,
@@ -273,16 +273,21 @@ export default function AdminImportForm() {
           .filter((value) => typeof value === "string" && value.trim().length > 0)
           .join(": ");
         const parseHttpMessage = `HTTP ${response.status} ${response.statusText || ""}`.trim();
+        const isNextErrorHtml =
+          rawBody.includes("__next_error__") ||
+          rawBody.toLowerCase().startsWith("<!doctype html");
         const parseRawPreview = rawBody ? rawBody.replace(/\s+/g, " ").trim().slice(0, 180) : "";
         setParseStatus(
           parseErrorMessage ||
-            (parseRawPreview
-              ? `Parsing failed in ${durationText} (${parseHttpMessage}): ${parseRawPreview}`
-              : `Parsing failed in ${durationText} (${parseHttpMessage}).`),
+            (isNextErrorHtml
+              ? `Parsing failed in ${durationText} (${parseHttpMessage}): Server runtime error page returned. Check Vercel logs for /api/admin-import/reparse.`
+              : parseRawPreview
+                ? `Parsing failed in ${durationText} (${parseHttpMessage}): ${parseRawPreview}`
+                : `Parsing failed in ${durationText} (${parseHttpMessage}).`),
         );
       }
     } catch (error) {
-      console.log("[admin-import-page] Background parse trigger failed", error);
+      console.log("[admin-import-page] Inline parse failed", error);
       const elapsedMs = Date.now() - parseTimerStartedAtMs;
       const durationText = formatDurationText(elapsedMs);
       const details = String(error?.message || "Unknown parse network error");
@@ -313,6 +318,27 @@ export default function AdminImportForm() {
 
     const normalizedEmail = email.trim().toLowerCase();
     const importStartedAtMs = Date.now();
+    let hasStoppedAssignmentTimer = false;
+
+    const stopAssignmentTimer = (reason) => {
+      if (hasStoppedAssignmentTimer) {
+        return null;
+      }
+      const elapsedMs = Date.now() - importStartedAtMs;
+      const durationText = formatDurationText(elapsedMs);
+      setAssignElapsedMs(elapsedMs);
+      setLastAssignDurationMs(elapsedMs);
+      setAssignStartedAtMs(null);
+      setIsSubmitting(false);
+      hasStoppedAssignmentTimer = true;
+      console.log("[admin-import-page] Assignment timer stopped", {
+        normalizedEmail,
+        elapsedMs,
+        durationText,
+        reason,
+      });
+      return { elapsedMs, durationText };
+    };
 
     setAssignStartedAtMs(importStartedAtMs);
     setAssignElapsedMs(0);
@@ -460,20 +486,18 @@ export default function AdminImportForm() {
       });
 
       if (finalizeRes.ok) {
-        const elapsedMs = Date.now() - importStartedAtMs;
-        const durationText = formatDurationText(elapsedMs);
-        setAssignElapsedMs(elapsedMs);
-        setLastAssignDurationMs(elapsedMs);
+        const assignmentStop = stopAssignmentTimer("primary-finalize-success");
+        const durationText = assignmentStop?.durationText || formatDurationText(Date.now() - importStartedAtMs);
         setStatus(`Success! Report assigned to ${normalizedEmail} in ${durationText}.`);
         console.log("[admin-import-page] Assignment completed", {
           normalizedEmail,
-          elapsedMs,
+          elapsedMs: assignmentStop?.elapsedMs ?? null,
           durationText,
           finalizeRoute: "primary",
         });
         setDidUploadSucceed(true);
         playCompletionSound();
-        void triggerBackgroundParse(finalizeData?.id || finalizePayload.reportId);
+        await parseAssignedReport(finalizeData?.id || finalizePayload.reportId);
         setEmail("");
         setReportPdf(null);
         const fileInput = document.getElementById("admin-import-pdf");
@@ -522,20 +546,18 @@ export default function AdminImportForm() {
           });
 
           if (liteRes.ok) {
-            const elapsedMs = Date.now() - importStartedAtMs;
-            const durationText = formatDurationText(elapsedMs);
-            setAssignElapsedMs(elapsedMs);
-            setLastAssignDurationMs(elapsedMs);
+            const assignmentStop = stopAssignmentTimer("lite-finalize-success");
+            const durationText = assignmentStop?.durationText || formatDurationText(Date.now() - importStartedAtMs);
             setStatus(`Success! Report assigned to ${normalizedEmail} in ${durationText}.`);
             console.log("[admin-import-page] Assignment completed", {
               normalizedEmail,
-              elapsedMs,
+              elapsedMs: assignmentStop?.elapsedMs ?? null,
               durationText,
               finalizeRoute: "lite",
             });
             setDidUploadSucceed(true);
             playCompletionSound();
-            void triggerBackgroundParse(liteData?.id || finalizePayload.reportId);
+            await parseAssignedReport(liteData?.id || finalizePayload.reportId);
             setEmail("");
             setReportPdf(null);
             const fileInput = document.getElementById("admin-import-pdf");
@@ -583,17 +605,7 @@ export default function AdminImportForm() {
         setStatus("Network error while importing. Please try again.");
       }
     } finally {
-      const elapsedMs = Date.now() - importStartedAtMs;
-      const durationText = formatDurationText(elapsedMs);
-      setAssignElapsedMs(elapsedMs);
-      setLastAssignDurationMs(elapsedMs);
-      setAssignStartedAtMs(null);
-      setIsSubmitting(false);
-      console.log("[admin-import-page] Assignment timer stopped", {
-        normalizedEmail,
-        elapsedMs,
-        durationText,
-      });
+      stopAssignmentTimer("handle-import-finally");
     }
   }
 
@@ -728,20 +740,20 @@ export default function AdminImportForm() {
           <button
             data-testid="admin-import-submit"
             type="submit"
-            disabled={!isFormValid || isSubmitting}
+            disabled={!isFormValid || isSubmitting || isParsing}
             style={{
               width: "100%",
               maxWidth: "420px",
               border: "1px solid #0a66d8",
               borderRadius: "10px",
-              background: isSubmitting ? "#93c5fd" : "#0a66d8",
+              background: isSubmitting || isParsing ? "#93c5fd" : "#0a66d8",
               color: "#ffffff",
               padding: "10px",
-              cursor: isSubmitting ? "not-allowed" : "pointer",
+              cursor: isSubmitting || isParsing ? "not-allowed" : "pointer",
               fontWeight: 700,
             }}
           >
-            {isSubmitting ? "Assigning..." : "Assign Report"}
+            {isSubmitting ? "Assigning..." : isParsing ? "Parsing PDF..." : "Assign Report"}
           </button>
         </form>
       </div>
