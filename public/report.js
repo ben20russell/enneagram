@@ -4293,27 +4293,6 @@ function renderReportFromState(isExampleMode) {
         "Environmental",
         "Psychological",
       ].map((category) => ({ category, text: "Not detected in assigned PDF." }));
-  const strainScoresForLevel = REPORT.strainScoresRaw || {};
-  const strainLevelByCategory = {
-    Happiness: getStrainLevelFromKey(strainScoresForLevel, REPORT.strain, "happiness"),
-    Vocational: getStrainLevelFromKey(strainScoresForLevel, REPORT.strain, "vocational"),
-    Interpersonal: getStrainLevelFromKey(strainScoresForLevel, REPORT.strain, "interpersonal"),
-    Physical: getStrainLevelFromKey(strainScoresForLevel, REPORT.strain, "physical"),
-    Environmental: getStrainLevelFromKey(strainScoresForLevel, REPORT.strain, "environmental"),
-    Psychological: getStrainLevelFromKey(strainScoresForLevel, REPORT.strain, "psychological"),
-  };
-  setHtml(
-    'strainQualitativeList',
-    strainNarratives
-      .map((item) => {
-        const category = String(item.category || "");
-        const level = strainLevelByCategory[category] || "Medium";
-        const ticClass = getStrainTicClass(level);
-        const narrative = formatStrainNarrativeWithLevelChips(formatOptionalText(item.text, "Not detected in assigned PDF."));
-        return `<div class="ti"><div class="tic ${ticClass}">•</div><div class="tt"><strong>${category}:</strong> ${narrative}</div></div>`;
-      })
-      .join(""),
-  );
 
   const exercises = Array.isArray(REPORT.developmentExercises) && REPORT.developmentExercises.length
     ? REPORT.developmentExercises
