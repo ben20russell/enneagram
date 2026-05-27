@@ -218,10 +218,11 @@ export default function AdminImportForm() {
     console.log("[admin-import-page] Completion sound unlocked without promise");
   }
 
-  function playCompletionSound() {
+  function playCompletionSound(outcome = "unknown") {
+    console.log("[admin-import-page] Completion sound requested", { outcome });
     const completionSoundEl = completionSoundRef.current;
     if (!completionSoundEl) {
-      console.log("[admin-import-page] Completion sound element missing on success");
+      console.log("[admin-import-page] Completion sound element missing", { outcome });
       return;
     }
 
@@ -231,15 +232,15 @@ export default function AdminImportForm() {
     if (playPromise && typeof playPromise.then === "function") {
       playPromise
         .then(() => {
-          console.log("[admin-import-page] Completion sound played");
+          console.log("[admin-import-page] Completion sound played", { outcome });
         })
         .catch((playError) => {
-          console.log("[admin-import-page] Completion sound playback failed", playError);
+          console.log("[admin-import-page] Completion sound playback failed", { outcome, playError });
         });
       return;
     }
 
-    console.log("[admin-import-page] Completion sound play invoked");
+    console.log("[admin-import-page] Completion sound play invoked", { outcome });
   }
 
   async function parseAssignedReport(reportId) {
@@ -256,6 +257,7 @@ export default function AdminImportForm() {
     setParseElapsedMs(0);
     setLastParseDurationMs(null);
     setParseStatus("Parsing report now...");
+    let parseOutcome = "failed";
     console.log("[admin-import-page] Parse timer started", {
       reportId: normalizedReportId,
       parseTimerStartedAtMs,
@@ -533,8 +535,10 @@ export default function AdminImportForm() {
       const durationText = formatDurationText(elapsedMs);
       if (response?.ok) {
         const parseState = String(data?.parseStatus || "unknown");
+        parseOutcome = parseState === "complete" ? "complete" : "incomplete";
         setParseStatus(`Parsing complete in ${durationText}. Status: ${parseState}.`);
       } else {
+        parseOutcome = "failed";
         const parseErrorMessage = [data?.error, data?.details]
           .filter((value) => typeof value === "string" && value.trim().length > 0)
           .join(": ");
@@ -556,6 +560,7 @@ export default function AdminImportForm() {
         );
       }
     } catch (error) {
+      parseOutcome = "failed";
       console.log("[admin-import-page] Inline parse failed", error);
       const elapsedMs = Date.now() - parseTimerStartedAtMs;
       const durationText = formatDurationText(elapsedMs);
@@ -572,7 +577,9 @@ export default function AdminImportForm() {
         reportId: normalizedReportId,
         elapsedMs,
         durationText,
+        parseOutcome,
       });
+      playCompletionSound(parseOutcome);
     }
   }
 
@@ -765,7 +772,6 @@ export default function AdminImportForm() {
           finalizeRoute: "primary",
         });
         setDidUploadSucceed(true);
-        playCompletionSound();
         await parseAssignedReport(finalizeData?.id || finalizePayload.reportId);
         setEmail("");
         setReportPdf(null);
@@ -825,7 +831,6 @@ export default function AdminImportForm() {
               finalizeRoute: "lite",
             });
             setDidUploadSucceed(true);
-            playCompletionSound();
             await parseAssignedReport(liteData?.id || finalizePayload.reportId);
             setEmail("");
             setReportPdf(null);
