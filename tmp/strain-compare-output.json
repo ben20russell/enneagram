@@ -1,0 +1,47 @@
+{
+  "sourceFile": "tmp/iEQ9-Ben-Russell-PRO_extracted.json",
+  "categories": [
+    {
+      "category": "Happiness",
+      "structuredLegacy": "Not detected in structured report content.",
+      "structuredCurrent": "Not detected in structured report content.",
+      "mergedLegacy": "Not detected in assigned PDF.",
+      "mergedCurrent": "Not detected in structured report content."
+    },
+    {
+      "category": "Vocational",
+      "structuredLegacy": "Not detected in structured report content.",
+      "structuredCurrent": "Not detected in structured report content.",
+      "mergedLegacy": "Not detected in assigned PDF.",
+      "mergedCurrent": "Not detected in structured report content."
+    },
+    {
+      "category": "Interpersonal",
+      "structuredLegacy": "Not detected in structured report content.",
+      "structuredCurrent": "Not detected in structured report content.",
+      "mergedLegacy": "Not detected in assigned PDF.",
+      "mergedCurrent": "Not detected in structured report content."
+    },
+    {
+      "category": "Physical",
+      "structuredLegacy": "Not detected in structured report content.",
+      "structuredCurrent": "Not detected in structured report content.",
+      "mergedLegacy": "Not detected in assigned PDF.",
+      "mergedCurrent": "Not detected in structured report content."
+    },
+    {
+      "category": "Environmental",
+      "structuredLegacy": "Not detected in structured report content.",
+      "structuredCurrent": "Not detected in structured report content.",
+      "mergedLegacy": "Not detected in assigned PDF.",
+      "mergedCurrent": "Not detected in structured report content."
+    },
+    {
+      "category": "Psychological",
+      "structuredLegacy": "Not detected in structured report content.",
+      "structuredCurrent": "Not detected in structured report content.",
+      "mergedLegacy": "Not detected in assigned PDF.",
+      "mergedCurrent": "Not detected in structured report content."
+    }
+  ]
+}

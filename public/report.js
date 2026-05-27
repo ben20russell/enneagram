@@ -3355,6 +3355,15 @@ function extractStrainQualitativeWriteups(pdfText) {
   const strainBlock = strainBlockMatch?.[0] || normalized;
 
   return categories.map((category, index) => {
+    const bulletNarrative = extractBulletStrainNarrative({
+      text: strainBlock,
+      category,
+      nextCategories: categories.slice(index + 1),
+    });
+    if (bulletNarrative) {
+      return { category, text: bulletNarrative };
+    }
+
     const levelPattern = new RegExp(
       `perceived\\s+level\\s+of\\s+${escapeRegex(category)}\\s+strain\\s+is\\s+(LOW|MEDIUM|HIGH)\\.?([\\s\\S]{0,520}?)(?=Ben\\s+your\\s+perceived\\s+level\\s+of\\s+|The\\s+lines\\s+connecting|$)`,
       "i",
@@ -3379,12 +3388,71 @@ function extractStrainQualitativeWriteups(pdfText) {
   });
 }
 
+function extractBulletItemsFromText(text, maxItems = 6) {
+  const normalized = normalizeExtractedText(text || "");
+  if (!normalized) return [];
+
+  const out = [];
+  const bulletPattern = /[•●▪◦·]\s*([^•●▪◦·]{12,260}?)(?=(?:\s*[•●▪◦·])|$)/g;
+  let match;
+  while ((match = bulletPattern.exec(normalized)) !== null) {
+    const cleaned = cleanPdfExtractedValue(match?.[1] || "");
+    if (cleaned) out.push(cleaned);
+    if (out.length >= maxItems) break;
+  }
+
+  if (!out.length) {
+    const sentencePattern =
+      /\bYou\s+(?:are|feel|don't|do\s+not|may|wake|experience|want|have|struggle|work|tend)\b[^.?!]{12,260}(?:[.?!]|$)/gi;
+    while ((match = sentencePattern.exec(normalized)) !== null) {
+      const cleaned = cleanPdfExtractedValue(match?.[0] || "");
+      if (cleaned) out.push(cleaned);
+      if (out.length >= maxItems) break;
+    }
+  }
+
+  return Array.from(new Set(out));
+}
+
+function extractBulletStrainNarrative({ text, category, nextCategories = [] }) {
+  const normalized = normalizeExtractedText(text || "");
+  if (!normalized || !category) return null;
+
+  const nextBoundary = nextCategories.length
+    ? `${nextCategories.map((next) => `${escapeRegex(next)}\\s+strain`).join("|")}|overall\\s+strain\\s+level|the\\s+lines\\s+connecting|copyright\\s*\\d{2,4}|$`
+    : "overall\\s+strain\\s+level|the\\s+lines\\s+connecting|copyright\\s*\\d{2,4}|$";
+  const sectionPattern = new RegExp(
+    `${escapeRegex(category)}\\s+strain[\\s\\S]{0,240}?perceived\\s+level\\s+of\\s+${escapeRegex(category)}\\s+strain\\s+is\\s+(LOW|MEDIUM|HIGH|MODERATE)\\.?([\\s\\S]{0,1800}?)(?=\\s*(?:${nextBoundary}))`,
+    "i",
+  );
+  const sectionMatch = normalized.match(sectionPattern);
+  if (!sectionMatch?.[1]) return null;
+
+  const level = String(sectionMatch[1] || "").toUpperCase();
+  const bulletItems = extractBulletItemsFromText(sectionMatch[2] || "", 6);
+  if (!bulletItems.length) return null;
+
+  return cleanPdfExtractedValue(
+    `${category} strain is ${level}. ${bulletItems.map((item) => `• ${item}`).join(" ")}`,
+  );
+}
+
 function isLowQualityStrainNarrative(value, category) {
   const text = cleanPdfExtractedValue(value || "") || "";
   if (!text) return true;
   const normalized = normalizeExtractedText(text).toLowerCase();
   if (!normalized) return true;
   if (normalized.length < 36) return true;
+
+  // Accept concise but valid narrative statements that explicitly anchor category + level.
+  if (
+    /^\s*(happiness|vocational|interpersonal|physical|environmental|psychological)\s+strain\s+is\s+(low|medium|high|moderate)\b/.test(
+      normalized,
+    ) &&
+    normalized.split(/\s+/).filter(Boolean).length >= 9
+  ) {
+    return false;
+  }
 
   const genericOnly = /^(?:strain|overall|level|happiness|vocational|interpersonal|physical|environmental|psychological|high|medium|low|moderate|and|the|is|of|:|;|,|\.|\s)+$/i;
   if (genericOnly.test(normalized)) return true;
@@ -3398,7 +3466,7 @@ function isLowQualityStrainNarrative(value, category) {
 
   const expected = String(category || "").toLowerCase();
   const hasExpected = expected ? normalized.includes(expected) : true;
-  const hasNarrativeSignal = /\b(?:you|your|experience|cope|react|impact|pressure|overwhelm|tend|likely|because|when)\b/.test(normalized);
+  const hasNarrativeSignal = /\b(?:you|your|experience|cope|react|impact|pressure|overwhelm|tend|likely|because|when|work|energy|relationship|context|demands|manageable|recovery)\b/.test(normalized);
   if (hasExpected && !hasNarrativeSignal && words.length < 20) return true;
 
   return false;
@@ -3604,6 +3672,18 @@ function extractStrainQualitativeFromReportContent(parsedProfile) {
   }
 
   return categories.map((category, index) => {
+    const bulletNarrative = extractBulletStrainNarrative({
+      text,
+      category,
+      nextCategories: categories.slice(index + 1),
+    });
+    if (bulletNarrative && !isLowQualityStrainNarrative(bulletNarrative, category)) {
+      return {
+        category,
+        text: bulletNarrative,
+      };
+    }
+
     const levelWithNarrative = text.match(
       new RegExp(
         `${escapeRegex(category)}\\s+strain\\s+is\\s+(LOW|MEDIUM|HIGH|MODERATE)\\.?\\s*([\\s\\S]{18,520}?)(?=\\s*(?:${categories

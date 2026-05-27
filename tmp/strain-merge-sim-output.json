@@ -1,0 +1,34 @@
+{
+  "categories": [
+    {
+      "category": "Happiness",
+      "before": "Low Vocational: Medium",
+      "after": "Happiness strain is LOW. You are not feeling emotionally overwhelmed by current pressures."
+    },
+    {
+      "category": "Vocational",
+      "before": "Medium Interpersonal: Medium",
+      "after": "Vocational strain is MEDIUM. Work demands are present and require steady pacing."
+    },
+    {
+      "category": "Interpersonal",
+      "before": "Medium Physical: Medium",
+      "after": "Interpersonal strain is MEDIUM. Relationships require attention and regular repair."
+    },
+    {
+      "category": "Physical",
+      "before": "Medium Environmental: Low",
+      "after": "Physical strain is MEDIUM. Your energy is somewhat taxed and benefits from recovery routines."
+    },
+    {
+      "category": "Environmental",
+      "before": "STRAIN LOW OVERALL STRAIN LEVEL MEDIUM",
+      "after": "Environmental strain is LOW. External context feels mostly manageable right now."
+    },
+    {
+      "category": "Psychological",
+      "before": "strain is LOW.· You experience yourself as able to cope with your present circumstances.",
+      "after": "strain is LOW.· You experience yourself as able to cope with your present circumstances."
+    }
+  ]
+}
