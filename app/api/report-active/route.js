@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { getAssignedReportByUserEmail } from "../../../lib/reportsStore";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabaseAdmin";
+import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 import { authOptions } from "../auth/[...nextauth]/route";
 
 function getIngestedDashboardContext(resultsData) {
@@ -80,21 +81,168 @@ function getIngestionState(resultsData) {
   return { status, parseDiagnostics, isComplete, review: reviewState };
 }
 
+function toTitleCaseWords(value) {
+  return String(value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      const lowered = word.toLowerCase();
+      return lowered.charAt(0).toUpperCase() + lowered.slice(1);
+    })
+    .join(" ");
+}
+
+function deriveClientDisplayName({ parsedProfile, userEmail, reportFileName, rowIndex }) {
+  const parsedProfileName = String(parsedProfile?.clientName || "").trim();
+  if (parsedProfileName) return parsedProfileName;
+
+  const normalizedEmail = normalizeEmail(userEmail);
+  if (normalizedEmail.includes("@")) {
+    const emailLocal = normalizedEmail.split("@")[0] || "";
+    const formattedLocal = toTitleCaseWords(emailLocal.replace(/[._-]+/g, " ").trim());
+    if (formattedLocal) return formattedLocal;
+  }
+
+  const cleanedFileName = String(reportFileName || "")
+    .replace(/\.pdf$/i, "")
+    .replace(/[._-]+/g, " ")
+    .trim();
+  if (cleanedFileName) return cleanedFileName;
+
+  return `Client ${rowIndex + 1}`;
+}
+
+async function createSignedPdfAccess({ supabaseAdmin, reportPdf, userEmail, reportId, logPrefix }) {
+  const hasPdfMetadata =
+    Boolean(reportPdf?.fileName) &&
+    Boolean(reportPdf?.storagePath);
+
+  if (!hasPdfMetadata) {
+    return {
+      isPdfRenderable: false,
+      reportSignedUrl: null,
+      reportActiveErrorDetails: null,
+    };
+  }
+
+  const bucket = reportPdf?.bucket || getSupabaseStorageBucket();
+  const storagePath = reportPdf.storagePath;
+  const { data, error } = await supabaseAdmin.storage
+    .from(bucket)
+    .createSignedUrl(storagePath, 60);
+
+  if (error) {
+    console.log(`[report-active] ${logPrefix} signed URL creation failed`, {
+      reportId: reportId || null,
+      userEmail,
+      bucket,
+      storagePath,
+      supabaseErrorMessage: error?.message || null,
+      supabaseErrorName: error?.name || null,
+      supabaseErrorStatusCode: error?.statusCode || null,
+    });
+  }
+
+  return {
+    isPdfRenderable: Boolean(data?.signedUrl) && !error,
+    reportSignedUrl: data?.signedUrl || null,
+    reportActiveErrorDetails: error
+      ? {
+          bucket,
+          storagePath,
+          supabaseErrorMessage: error?.message || null,
+          supabaseErrorName: error?.name || null,
+          supabaseErrorStatusCode: error?.statusCode || null,
+        }
+      : null,
+  };
+}
+
+async function listAdminClientReports({ supabaseAdmin }) {
+  const table = process.env.SUPABASE_REPORTS_TABLE || "reports";
+  const { data, error } = await supabaseAdmin
+    .from(table)
+    .select("id,user_email,created_at,source,results_data,report_pdf")
+    .eq("source", "admin-import")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) {
+    console.log("[report-active] Failed to list admin client reports", {
+      table,
+      supabaseErrorMessage: error?.message || null,
+      supabaseErrorName: error?.name || null,
+      supabaseErrorStatusCode: error?.statusCode || null,
+    });
+    return [];
+  }
+
+  const rows = Array.isArray(data) ? data : [];
+  const mapped = await Promise.all(
+    rows.map(async (row, index) => {
+      const parsedProfile = getParsedProfile(row?.results_data);
+      const ingestionState = getIngestionState(row?.results_data);
+      const signedPdfAccess = await createSignedPdfAccess({
+        supabaseAdmin,
+        reportPdf: row?.report_pdf,
+        userEmail: row?.user_email,
+        reportId: row?.id,
+        logPrefix: "admin client report",
+      });
+
+      return {
+        id: row?.id || null,
+        userEmail: row?.user_email || null,
+        clientName: deriveClientDisplayName({
+          parsedProfile,
+          userEmail: row?.user_email,
+          reportFileName: row?.report_pdf?.fileName,
+          rowIndex: index,
+        }),
+        reportFileName: row?.report_pdf?.fileName || null,
+        source: row?.source || null,
+        createdAt: row?.created_at || null,
+        isPdfRenderable: signedPdfAccess.isPdfRenderable,
+        reportSignedUrl: signedPdfAccess.reportSignedUrl,
+        ingestedDashboardContext: getIngestedDashboardContext(row?.results_data),
+        ingestedParsedProfile: parsedProfile,
+        ingestionStatus: ingestionState.status,
+        parseDiagnostics: ingestionState.parseDiagnostics,
+        reviewStatus: ingestionState.review?.status || null,
+        reviewPendingFields: Array.isArray(ingestionState.review?.pendingFields)
+          ? ingestionState.review.pendingFields
+          : [],
+      };
+    }),
+  );
+
+  return mapped.filter((item) => Boolean(item?.id));
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   const userEmail = session?.user?.email || null;
 
   if (!userEmail) {
     return NextResponse.json(
-        {
-          isAuthenticated: false,
-          isReportActive: false,
-        },
+      {
+        isAuthenticated: false,
+        isAdmin: false,
+        adminClientReports: [],
+        isReportActive: false,
+      },
       { status: 200 },
     );
   }
 
+  const normalizedUserEmail = normalizeEmail(userEmail);
+  const isAdmin = hasAdminAccess(normalizeEmail(userEmail));
+
   try {
+    const supabaseAdmin = getSupabaseAdmin();
+    const adminClientReports = isAdmin
+      ? await listAdminClientReports({ supabaseAdmin })
+      : [];
     const assignedReport = await getAssignedReportByUserEmail(userEmail);
     const hasAssignedPdfMetadata =
       Boolean(assignedReport?.id) &&
@@ -105,6 +253,8 @@ export async function GET() {
       return NextResponse.json(
         {
           isAuthenticated: true,
+          isAdmin,
+          adminClientReports: isAdmin ? adminClientReports : [],
           hasAssignedReport: false,
           isReportActive: false,
           isAssignedReportReady: false,
@@ -115,36 +265,27 @@ export async function GET() {
       );
     }
 
-    const storagePath = assignedReport.reportPdf.storagePath;
-    const bucket = assignedReport?.reportPdf?.bucket || getSupabaseStorageBucket();
-    const supabaseAdmin = getSupabaseAdmin();
-    const { data, error } = await supabaseAdmin.storage
-      .from(bucket)
-      .createSignedUrl(storagePath, 60);
-    const isPdfRenderable = Boolean(data?.signedUrl) && !error;
+    const signedPdfAccess = await createSignedPdfAccess({
+      supabaseAdmin,
+      reportPdf: assignedReport?.reportPdf,
+      userEmail: normalizedUserEmail,
+      reportId: assignedReport?.id,
+      logPrefix: "assigned report",
+    });
     const ingestionState = getIngestionState(assignedReport?.resultsData);
-    const isReportActive = hasAssignedPdfMetadata && isPdfRenderable && ingestionState.isComplete;
-
-    if (error) {
-      console.log("[report-active] Signed URL creation failed", {
-        userEmail,
-        bucket,
-        storagePath,
-        supabaseErrorMessage: error?.message || null,
-        supabaseErrorName: error?.name || null,
-        supabaseErrorStatusCode: error?.statusCode || null,
-      });
-    }
+    const isReportActive = hasAssignedPdfMetadata && signedPdfAccess.isPdfRenderable && ingestionState.isComplete;
 
     return NextResponse.json(
       {
         isAuthenticated: true,
+        isAdmin,
+        adminClientReports: isAdmin ? adminClientReports : [],
         hasAssignedReport: hasAssignedPdfMetadata,
         isReportActive,
         isAssignedReportReady: isReportActive,
-        isPdfRenderable,
+        isPdfRenderable: signedPdfAccess.isPdfRenderable,
         reportFileName: assignedReport?.reportPdf?.fileName || null,
-        reportSignedUrl: data?.signedUrl || null,
+        reportSignedUrl: signedPdfAccess.reportSignedUrl,
         ingestedDashboardContext: getIngestedDashboardContext(assignedReport?.resultsData),
         ingestedParsedProfile: getParsedProfile(assignedReport?.resultsData),
         ingestionStatus: ingestionState.status,
@@ -153,15 +294,7 @@ export async function GET() {
         reviewPendingFields: Array.isArray(ingestionState.review?.pendingFields)
           ? ingestionState.review.pendingFields
           : [],
-        reportActiveErrorDetails: error
-          ? {
-              bucket,
-              storagePath,
-              supabaseErrorMessage: error?.message || null,
-              supabaseErrorName: error?.name || null,
-              supabaseErrorStatusCode: error?.statusCode || null,
-            }
-          : null,
+        reportActiveErrorDetails: signedPdfAccess.reportActiveErrorDetails,
       },
       { status: 200 },
     );
@@ -169,6 +302,8 @@ export async function GET() {
     return NextResponse.json(
       {
         isAuthenticated: true,
+        isAdmin,
+        adminClientReports: [],
         hasAssignedReport: false,
         isReportActive: false,
         isAssignedReportReady: false,

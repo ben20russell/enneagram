@@ -11,6 +11,10 @@ const DASHBOARD_SANS_FONT_FAMILY =
   "\"Plus Jakarta Sans\", system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif";
 const DASHBOARD_DISPLAY_FONT_FAMILY =
   "\"Space Grotesk\", \"Plus Jakarta Sans\", system-ui, sans-serif";
+const REMEMBERED_EMAILS_STORAGE_KEY = "admin-import-remembered-emails";
+const REMEMBERED_EMAILS_LIMIT = 10;
+const EMAIL_SUGGESTIONS_DATALIST_ID = "admin-import-email-suggestions";
+const BASIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 let supabaseBrowserClient;
 
@@ -138,8 +142,67 @@ function formatParsedPagesText(parsePages, parseTotalPages) {
   return `${parsePagesLabel}/${parseTotalPagesLabel}`;
 }
 
+function normalizeRememberedEmailCandidate(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (!BASIC_EMAIL_PATTERN.test(normalized)) return null;
+  return normalized;
+}
+
+function buildRememberedEmailList(values) {
+  const sourceValues = Array.isArray(values) ? values : [];
+  const unique = [];
+  const seen = new Set();
+
+  for (const value of sourceValues) {
+    const normalized = normalizeRememberedEmailCandidate(value);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(normalized);
+    if (unique.length >= REMEMBERED_EMAILS_LIMIT) break;
+  }
+
+  return unique;
+}
+
+function areEmailListsEqual(first, second) {
+  if (!Array.isArray(first) || !Array.isArray(second)) return false;
+  if (first.length !== second.length) return false;
+  for (let index = 0; index < first.length; index += 1) {
+    if (first[index] !== second[index]) return false;
+  }
+  return true;
+}
+
+function readRememberedEmailsFromStorage() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(REMEMBERED_EMAILS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const cleaned = buildRememberedEmailList(parsed);
+    return cleaned;
+  } catch (error) {
+    console.log("[admin-import-page] Failed to read remembered emails from localStorage", error);
+    return [];
+  }
+}
+
+function writeRememberedEmailsToStorage(emails) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      REMEMBERED_EMAILS_STORAGE_KEY,
+      JSON.stringify(buildRememberedEmailList(emails)),
+    );
+  } catch (error) {
+    console.log("[admin-import-page] Failed to write remembered emails to localStorage", error);
+  }
+}
+
 export default function AdminImportForm() {
   const [email, setEmail] = useState("");
+  const [rememberedEmails, setRememberedEmails] = useState([]);
   const [reportPdf, setReportPdf] = useState(null);
   const [status, setStatus] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -190,6 +253,15 @@ export default function AdminImportForm() {
       missingPublicEnvVars,
     });
   }, [missingPublicEnvVars]);
+
+  useEffect(() => {
+    const remembered = readRememberedEmailsFromStorage();
+    setRememberedEmails(remembered);
+    console.log("[admin-import-page] Loaded remembered email suggestions", {
+      rememberedCount: remembered.length,
+      rememberedEmails: remembered,
+    });
+  }, []);
 
   useEffect(() => {
     if (!isSubmitting || !Number.isFinite(assignStartedAtMs)) {
@@ -659,6 +731,20 @@ export default function AdminImportForm() {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    setRememberedEmails((previousEmails) => {
+      const mergedEmails = buildRememberedEmailList([normalizedEmail, ...previousEmails]);
+      if (areEmailListsEqual(previousEmails, mergedEmails)) {
+        return previousEmails;
+      }
+      writeRememberedEmailsToStorage(mergedEmails);
+      console.log("[admin-import-page] Remembered email updated from submit", {
+        normalizedEmail,
+        previousCount: previousEmails.length,
+        nextCount: mergedEmails.length,
+        mergedEmails,
+      });
+      return mergedEmails;
+    });
     const importStartedAtMs = Date.now();
     let hasStoppedAssignmentTimer = false;
 
@@ -1039,6 +1125,9 @@ export default function AdminImportForm() {
           <input
             data-testid="admin-import-email"
             type="email"
+            name="email"
+            autoComplete="email"
+            list={EMAIL_SUGGESTIONS_DATALIST_ID}
             placeholder="User email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -1052,6 +1141,11 @@ export default function AdminImportForm() {
               textAlign: "center",
             }}
           />
+          <datalist id={EMAIL_SUGGESTIONS_DATALIST_ID} data-testid="admin-import-email-suggestions">
+            {rememberedEmails.map((rememberedEmail) => (
+              <option key={rememberedEmail} value={rememberedEmail} />
+            ))}
+          </datalist>
 
           <input
             data-testid="admin-import-pdf"

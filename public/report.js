@@ -31,6 +31,14 @@ function getReportSwitchControl() {
   return document.getElementById("reportSwitchControl");
 }
 
+function getClientReportSwitchControl() {
+  return document.getElementById("clientReportSwitchControl");
+}
+
+function getClientReportSelector() {
+  return document.getElementById("clientReportSelector");
+}
+
 const ADMIN_EMAILS = new Set([
   "ben20russell@gmail.com",
   "corinne.aparis@gmail.com",
@@ -64,6 +72,12 @@ function setReportSwitchVisible(visible) {
   control.style.display = visible ? "flex" : "none";
 }
 
+function setClientReportSwitchVisible(visible) {
+  const control = getClientReportSwitchControl();
+  if (!control) return;
+  control.style.display = visible ? "flex" : "none";
+}
+
 function canViewExampleReports({ email, isAuthenticated }) {
   if (!Boolean(isAuthenticated)) return true;
   return hasAdminAccess(email);
@@ -76,6 +90,69 @@ let currentSignedInUser = null;
 let currentReportViewMode = "example";
 let latestAssignedPdfReport = null;
 let lastAppliedExampleType = "8";
+let latestAdminClientReports = [];
+let latestAdminClientReportsById = new Map();
+let currentClientReportId = null;
+
+function resetClientReportSelectorSelection() {
+  const clientReportSelector = getClientReportSelector();
+  if (!clientReportSelector) return;
+  clientReportSelector.value = "";
+}
+
+function clearAdminClientReportState() {
+  latestAdminClientReports = [];
+  latestAdminClientReportsById = new Map();
+  currentClientReportId = null;
+  populateClientReportSelector([]);
+  setClientReportSwitchVisible(false);
+}
+
+function buildClientReportOptionLabel(clientReport, index) {
+  const clientName = String(clientReport?.clientName || "").trim();
+  if (clientName) return clientName;
+  const userEmail = String(clientReport?.userEmail || "").trim();
+  if (userEmail.includes("@")) {
+    const localPart = userEmail.split("@")[0] || "";
+    const cleanedLocalPart = localPart.replace(/[._-]+/g, " ").trim();
+    if (cleanedLocalPart) {
+      return cleanedLocalPart
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(" ");
+    }
+  }
+  return `Client ${index + 1}`;
+}
+
+function populateClientReportSelector(clientReports) {
+  const clientReportSelector = getClientReportSelector();
+  if (!clientReportSelector) return;
+
+  const previousValue = String(clientReportSelector.value || "").trim();
+  const safeClientReports = Array.isArray(clientReports) ? clientReports : [];
+  clientReportSelector.innerHTML = "";
+
+  const placeholderOption = document.createElement("option");
+  placeholderOption.value = "";
+  placeholderOption.textContent = safeClientReports.length ? "Select client report" : "No client reports";
+  clientReportSelector.appendChild(placeholderOption);
+
+  safeClientReports.forEach((clientReport, index) => {
+    const reportId = String(clientReport?.id || "").trim();
+    if (!reportId) return;
+    const option = document.createElement("option");
+    option.value = reportId;
+    option.textContent = buildClientReportOptionLabel(clientReport, index);
+    clientReportSelector.appendChild(option);
+  });
+
+  const hasPreviousValue = safeClientReports.some(
+    (clientReport) => String(clientReport?.id || "").trim() === previousValue,
+  );
+  clientReportSelector.value = hasPreviousValue ? previousValue : "";
+}
 
 function setExportPdfState({ visible, enabled }) {
   const exportButton = getExportPdfButton();
@@ -99,6 +176,8 @@ function applySelectedExampleReportOrFallback() {
   const selectedType = String(reportSelector?.value || "").trim();
   const nextType = /^[1-9]$/.test(selectedType) ? selectedType : "8";
   if (reportSelector) reportSelector.value = nextType;
+  currentClientReportId = null;
+  resetClientReportSelectorSelection();
   currentReportViewMode = "example";
   applyReport(nextType);
   exampleReportInitialized = true;
@@ -144,6 +223,14 @@ function stripPdfFooterNoiseFragments(rawText) {
     .replace(/Copyright\s*\d{4}\s*[-–]\s*\d{4}[\s\S]*?\d+\s*of\s*\d+/gis, " ")
     .replace(
       /Integrative\s*Enneagram(?:\s*Solutions)?\s*Ben\s*Russell[\s\S]{0,120}?\d+\s*of\s*\d+/gis,
+      " ",
+    )
+    .replace(
+      /\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)\s*20\d{2}\s*\[\s*ENGLISH\s*\][\s\S]{0,240}?STRICTLY\s*CONFIDENTIAL[\s\S]{0,280}?COPYRIGHT\s*\d{2,4}\s*[-–]\s*\d{2,4}\b/gis,
+      " ",
+    )
+    .replace(
+      /\bSTRICTLY\s*CONFIDENTIAL\b[\s\S]{0,220}?\bINDIVIDUAL\b[\s\S]{0,220}?\bPROFESSIONAL\b[\s\S]{0,220}?\bCOPYRIGHT\s*\d{2,4}\s*[-–]\s*\d{2,4}\b/gis,
       " ",
     );
 }
@@ -1225,6 +1312,7 @@ async function refreshReportActiveUi() {
 
     if (!response.ok) {
       latestReportActiveData = null;
+      clearAdminClientReportState();
       setExportPdfState({ visible: true, enabled: Boolean(currentSignedInUser) });
       setReportActiveChipVisible(false);
       setReportSwitchVisible(
@@ -1247,7 +1335,19 @@ async function refreshReportActiveUi() {
     const isReady = Boolean(data?.isAuthenticated) && Boolean(data?.isReportActive);
     const hasAssignedReportAvailable = isAssignedReportAvailable(data);
     latestReportActiveData = data;
-    const isAdmin = hasAdminAccess(currentSignedInUser?.email);
+    const isAdmin = Boolean(data?.isAuthenticated) && hasAdminAccess(currentSignedInUser?.email);
+    const adminClientReports = Array.isArray(data?.adminClientReports) ? data.adminClientReports : [];
+    latestAdminClientReports = adminClientReports;
+    latestAdminClientReportsById = new Map(
+      adminClientReports
+        .map((clientReport) => [String(clientReport?.id || "").trim(), clientReport])
+        .filter(([reportId]) => Boolean(reportId)),
+    );
+    populateClientReportSelector(adminClientReports);
+    setClientReportSwitchVisible(isAdmin && adminClientReports.length > 0);
+    if (!isAdmin) {
+      currentClientReportId = null;
+    }
     const shouldShowExampleReports = !Boolean(data?.isAuthenticated) || isAdmin;
     const canExportDashboardPdf =
       Boolean(data?.isAuthenticated) && (Boolean(hasAssignedReportAvailable) || Boolean(shouldShowExampleReports));
@@ -1259,16 +1359,21 @@ async function refreshReportActiveUi() {
       isReady,
       hasAssignedReportAvailable,
       isAdmin,
+      adminClientReportCount: adminClientReports.length,
       shouldShowExampleReports,
       ingestionStatus: data?.ingestionStatus || null,
       reviewStatus: data?.reviewStatus || null,
     });
     if (hasAssignedReportAvailable) {
+      currentClientReportId = null;
+      resetClientReportSelectorSelection();
       currentReportViewMode = "my-report";
       selectMyReportInSelector();
       ingestAssignedReportIntoDashboard(data);
     } else {
       latestAssignedPdfReport = null;
+      currentClientReportId = null;
+      resetClientReportSelectorSelection();
       if (currentReportViewMode !== "example") {
         applySelectedExampleReportOrFallback();
       } else if (!exampleReportInitialized) {
@@ -1278,6 +1383,7 @@ async function refreshReportActiveUi() {
   } catch (error) {
     console.log("[auth] Failed to refresh report-active status:", error);
     latestReportActiveData = null;
+    clearAdminClientReportState();
     setExportPdfState({ visible: true, enabled: Boolean(currentSignedInUser) });
     setReportActiveChipVisible(false);
     setReportSwitchVisible(
@@ -1323,6 +1429,7 @@ function setSignedOutAuthUi() {
   closeAuthMenu();
   updateAdminPageLink(null);
   latestReportActiveData = null;
+  clearAdminClientReportState();
   setExportPdfState({ visible: false, enabled: false });
   setReportActiveChipVisible(false);
   setReportSwitchVisible(true);
@@ -1355,6 +1462,7 @@ function setSignedInAuthUi(user) {
   updateAdminPageLink(user?.email);
   setOverviewAdminDiagnosticsVisible(user?.email);
   setReportSwitchVisible(hasAdminAccess(user?.email));
+  setClientReportSwitchVisible(false);
   setExportPdfState({ visible: true, enabled: true });
   button.classList.remove("google");
   button.classList.add("avatar");
@@ -1689,6 +1797,7 @@ window.addEventListener("DOMContentLoaded", () => {
   // Bind popout dismissal as early as possible; window.load may be delayed by external assets.
   setupSearchPopoutHandlers();
   setupReportSelectorHandler();
+  setupClientReportSelectorHandler();
   const signOutButton = document.getElementById("authSignOutButton");
   const exportPdfButton = getExportPdfButton();
   if (signOutButton) {
@@ -3400,14 +3509,17 @@ function getSectionCompositeText(parsedProfile, section) {
 }
 
 function extractFeedbackGuideFromReportContent(parsedProfile) {
-  const communicationSection = getSectionByTitle(parsedProfile, (title) => /communication|feedback/i.test(title));
-  const text = normalizeExtractedText(
+  const feedbackGuidePageText = getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.feedbackGuide);
+  const feedbackSection = getSectionByTitle(parsedProfile, (title) =>
+    /feedback\s*guide|feedback\s*matrix|giving\s*&?\s*receiving\s*feedback/i.test(title),
+  );
+  const fallbackFeedbackText = normalizeExtractedText(
     [
-      getSectionCompositeText(parsedProfile, communicationSection),
+      getSectionCompositeText(parsedProfile, feedbackSection),
       getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.communication),
-      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.feedbackGuide),
     ].join(" "),
   );
+  const text = feedbackGuidePageText || fallbackFeedbackText;
   if (!text) {
     return Array.from({ length: 9 }, (_, idx) => ({
       type: `Type ${idx + 1}`,
@@ -3428,7 +3540,12 @@ function extractFeedbackGuideFromReportContent(parsedProfile) {
     9: "Peacemaker",
   };
 
-  const indexedRows = extractIndexedGuidanceRows(text, {
+  const feedbackBlockMatch = text.match(
+    /Feedback\s*Guide[\s\S]{20,8000}(?=\b(?:Conflict|Decision\s*Making|Leadership|Coaching\s*Relationship|Team\s*Behaviour)\b|$)/i,
+  );
+  const feedbackBlock = feedbackBlockMatch?.[0] || text;
+
+  const indexedRows = extractIndexedGuidanceRows(feedbackBlock, {
     fallbackText: "Not detected in structured report content.",
     names,
   });
@@ -3439,7 +3556,7 @@ function extractFeedbackGuideFromReportContent(parsedProfile) {
   const rows = [];
   for (let type = 1; type <= 9; type += 1) {
     const pattern = new RegExp(`Type\\s*${type}\\b\\s*[:\\-]?\\s*([\\s\\S]{10,320}?)(?=Type\\s*[1-9]\\b|$)`, "i");
-    const match = text.match(pattern);
+    const match = feedbackBlock.match(pattern);
     rows.push({
       type: `Type ${type}`,
       label: names[type],
@@ -4188,7 +4305,8 @@ function applyAssignedPdfReport(payload) {
   try {
     REPORT = buildPdfOnlyReport(payload);
     latestAssignedPdfReport = REPORT;
-    currentReportViewMode = "my-report";
+    const isClientReportView = currentReportViewMode === "client-report";
+    currentReportViewMode = isClientReportView ? "client-report" : "my-report";
     reflectionDeck = buildReflectionDeck(REPORT);
     renderReportFromState(false);
   } catch (error) {
@@ -4207,8 +4325,20 @@ function setupReportSelectorHandler() {
   reportSelector.dataset.bound = "1";
 }
 
+function setupClientReportSelectorHandler() {
+  const clientReportSelector = getClientReportSelector();
+  if (!clientReportSelector) return;
+  if (clientReportSelector.dataset.bound === "1") return;
+
+  clientReportSelector.addEventListener("change", onClientReportSelectorChange);
+  clientReportSelector.addEventListener("input", onClientReportSelectorChange);
+  console.log("[client-report-switch] bound selector listeners");
+  clientReportSelector.dataset.bound = "1";
+}
+
 function syncSelectedExampleReport() {
   try {
+    if (currentReportViewMode === "client-report") return;
     const reportSelector = getReportSelector();
     if (!reportSelector) return;
     const selectedType = String(reportSelector.value || "").trim();
@@ -4236,15 +4366,12 @@ function onReportSelectorChange(event) {
   const isMyReport = selectedType === "my-report";
   console.log('[report-switch] selector changed to', selectedType);
   if (isMyReport) {
+    currentClientReportId = null;
+    resetClientReportSelectorSelection();
     currentReportViewMode = "my-report";
-    if (latestAssignedPdfReport) {
-      REPORT = latestAssignedPdfReport;
-      reflectionDeck = buildReflectionDeck(REPORT);
-      renderReportFromState(false);
-      return;
-    }
     if (latestReportActiveData?.isAuthenticated && isAssignedReportAvailable(latestReportActiveData)) {
       assignedReportIngested = false;
+      latestAssignedPdfReport = null;
       ingestAssignedReportIntoDashboard(latestReportActiveData);
       return;
     }
@@ -4255,8 +4382,33 @@ function onReportSelectorChange(event) {
     applyReport(fallbackType);
     return;
   }
+  currentClientReportId = null;
+  resetClientReportSelectorSelection();
   currentReportViewMode = "example";
   applyReport(selectedType);
+}
+
+function onClientReportSelectorChange(event) {
+  const selectedReportId = String(event?.target?.value || getClientReportSelector()?.value || "").trim();
+  if (!selectedReportId) {
+    currentClientReportId = null;
+    return;
+  }
+
+  const selectedClientReport = latestAdminClientReportsById.get(selectedReportId);
+  if (!selectedClientReport) {
+    console.log("[client-report-switch] selected report id missing from cache", {
+      selectedReportId,
+      availableIds: latestAdminClientReports.map((clientReport) => clientReport?.id).filter(Boolean),
+    });
+    return;
+  }
+
+  currentClientReportId = selectedReportId;
+  currentReportViewMode = "client-report";
+  assignedReportIngested = false;
+  latestAssignedPdfReport = null;
+  ingestAssignedReportIntoDashboard(selectedClientReport);
 }
 
 function genReflection() {
@@ -4285,6 +4437,7 @@ window.addEventListener('load', () => {
   setupSearchPopoutHandlers();
   // Bind report selector first so it still works even if later setup code fails.
   setupReportSelectorHandler();
+  setupClientReportSelectorHandler();
   window.setInterval(syncSelectedExampleReport, 400);
   decorateInterfaceIcons();
   buildReportModuleIndex();
