@@ -3103,9 +3103,12 @@ function mergeCategoryWriteups(structuredRows, pdfRows, categories) {
     const primary = primaryRows.find((row) => String(row?.category || "").toLowerCase() === String(category).toLowerCase()) || null;
     const fallback = fallbackRows.find((row) => String(row?.category || "").toLowerCase() === String(category).toLowerCase()) || null;
     const primaryText = String(primary?.text || "");
-    const text = !isMissingExtractedText(primaryText)
+    const fallbackText = String(fallback?.text || "");
+    const usePrimary = !isMissingExtractedText(primaryText) && !isLowQualityStrainNarrative(primaryText, category);
+    const useFallback = !isMissingExtractedText(fallbackText) && !isLowQualityStrainNarrative(fallbackText, category);
+    const text = usePrimary
       ? primaryText
-      : String(fallback?.text || primaryText || "Not detected in assigned PDF.");
+      : (useFallback ? fallbackText : String(primaryText || fallbackText || "Not detected in assigned PDF."));
     return { category, text };
   });
 }
@@ -3376,6 +3379,31 @@ function extractStrainQualitativeWriteups(pdfText) {
   });
 }
 
+function isLowQualityStrainNarrative(value, category) {
+  const text = cleanPdfExtractedValue(value || "") || "";
+  if (!text) return true;
+  const normalized = normalizeExtractedText(text).toLowerCase();
+  if (!normalized) return true;
+  if (normalized.length < 36) return true;
+
+  const genericOnly = /^(?:strain|overall|level|happiness|vocational|interpersonal|physical|environmental|psychological|high|medium|low|moderate|and|the|is|of|:|;|,|\.|\s)+$/i;
+  if (genericOnly.test(normalized)) return true;
+
+  const categoryNames = ["happiness", "vocational", "interpersonal", "physical", "environmental", "psychological"];
+  const categoryMentions = categoryNames.filter((name) => normalized.includes(name)).length;
+  const words = normalized.split(/\s+/).filter(Boolean);
+
+  // Label-chain artifacts often contain multiple category names but little/no narrative verbs.
+  if (categoryMentions >= 2 && words.length < 18) return true;
+
+  const expected = String(category || "").toLowerCase();
+  const hasExpected = expected ? normalized.includes(expected) : true;
+  const hasNarrativeSignal = /\b(?:you|your|experience|cope|react|impact|pressure|overwhelm|tend|likely|because|when)\b/.test(normalized);
+  if (hasExpected && !hasNarrativeSignal && words.length < 20) return true;
+
+  return false;
+}
+
 function extractDevelopmentExercises(pdfText) {
   const normalized = normalizeExtractedText(pdfText);
   const matches = [];
@@ -3576,14 +3604,42 @@ function extractStrainQualitativeFromReportContent(parsedProfile) {
   }
 
   return categories.map((category, index) => {
+    const levelWithNarrative = text.match(
+      new RegExp(
+        `${escapeRegex(category)}\\s+strain\\s+is\\s+(LOW|MEDIUM|HIGH|MODERATE)\\.?\\s*([\\s\\S]{18,520}?)(?=\\s*(?:${categories
+          .slice(index + 1)
+          .map((value) => `${escapeRegex(value)}\\s+strain\\s+is`)
+          .join("|") || "overall\\s+strain\\s+level|$"}))`,
+        "i",
+      ),
+    );
+    if (levelWithNarrative?.[1]) {
+      const level = String(levelWithNarrative[1] || "").toUpperCase();
+      const detail = cleanPdfExtractedValue(levelWithNarrative[2] || "");
+      const combined = cleanPdfExtractedValue(`${category} strain is ${level}. ${detail || ""}`);
+      if (combined && !isLowQualityStrainNarrative(combined, category)) {
+        return {
+          category,
+          text: combined,
+        };
+      }
+    }
+
     const nextLabels = categories.slice(index + 1);
     const nextBoundary = nextLabels.length ? `(?:${nextLabels.map(escapeRegex).join("|")})\\b` : "$";
     const pattern = new RegExp(`${escapeRegex(category)}\\s*[:\\-]?\\s*([\\s\\S]{10,280}?)(?=\\s*${nextBoundary})`, "i");
     const match = text.match(pattern);
     const snippet = cleanPdfExtractedValue(match?.[1] || "") || extractSnippetFromLabels(text, [category, `${category} Strain`]);
+    if (snippet && !isLowQualityStrainNarrative(snippet, category)) {
+      return {
+        category,
+        text: snippet,
+      };
+    }
+
     return {
       category,
-      text: snippet || "Not detected in structured report content.",
+      text: "Not detected in structured report content.",
     };
   });
 }
