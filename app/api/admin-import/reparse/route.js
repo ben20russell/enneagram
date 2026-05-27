@@ -217,6 +217,7 @@ export async function POST(req) {
       reviewStatus,
       parsePages: nextDiagnostics?.extraction?.pages ?? null,
       parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
+      parseDetectedTotalPages: nextDiagnostics?.extraction?.detectedTotalPages ?? null,
     });
 
     return NextResponse.json(
@@ -227,6 +228,7 @@ export async function POST(req) {
         reviewStatus,
         parsePages: nextDiagnostics?.extraction?.pages ?? null,
         parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
+        parseDetectedTotalPages: nextDiagnostics?.extraction?.detectedTotalPages ?? null,
       },
       { status: 200 },
     );

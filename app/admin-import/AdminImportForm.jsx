@@ -87,6 +87,57 @@ function formatAttemptSummary(attempt) {
   return `${attempt.label} (${statusPart})`;
 }
 
+function toNonNegativeInteger(value) {
+  const parsedValue = Number(value);
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) return null;
+  return Math.floor(parsedValue);
+}
+
+function pickFirstNonNegativeInteger(values) {
+  for (const candidate of values) {
+    const normalized = toNonNegativeInteger(candidate);
+    if (normalized != null) return normalized;
+  }
+  return null;
+}
+
+function extractParsePageProgress(data) {
+  const parsePages = pickFirstNonNegativeInteger([
+    data?.parsePages,
+    data?.data?.parsePages,
+    data?._parseDiagnostics?.extraction?.pages,
+    data?.data?._parseDiagnostics?.extraction?.pages,
+    data?.parsed?._parseDiagnostics?.extraction?.pages,
+  ]);
+  const parseDetectedTotalPages = pickFirstNonNegativeInteger([
+    data?.parseDetectedTotalPages,
+    data?.data?.parseDetectedTotalPages,
+    data?._parseDiagnostics?.extraction?.detectedTotalPages,
+    data?.data?._parseDiagnostics?.extraction?.detectedTotalPages,
+    data?.parsed?._parseDiagnostics?.extraction?.detectedTotalPages,
+  ]);
+  const parseTotalPages = pickFirstNonNegativeInteger([
+    parseDetectedTotalPages,
+    data?.parseMinExpectedPages,
+    data?.data?.parseMinExpectedPages,
+  ]);
+  const isPageCoverageComplete =
+    parseDetectedTotalPages > 0 && parsePages != null && parsePages >= parseDetectedTotalPages;
+
+  return {
+    parsePages,
+    parseTotalPages,
+    parseDetectedTotalPages,
+    isPageCoverageComplete,
+  };
+}
+
+function formatParsedPagesText(parsePages, parseTotalPages) {
+  const parsePagesLabel = parsePages == null ? "?" : String(parsePages);
+  const parseTotalPagesLabel = parseTotalPages == null ? "?" : String(parseTotalPages);
+  return `${parsePagesLabel}/${parseTotalPagesLabel}`;
+}
+
 export default function AdminImportForm() {
   const [email, setEmail] = useState("");
   const [reportPdf, setReportPdf] = useState(null);
@@ -102,6 +153,8 @@ export default function AdminImportForm() {
   const [parseStartedAtMs, setParseStartedAtMs] = useState(null);
   const [parseElapsedMs, setParseElapsedMs] = useState(0);
   const [lastParseDurationMs, setLastParseDurationMs] = useState(null);
+  const [parsePagesCount, setParsePagesCount] = useState(null);
+  const [parseTotalPagesCount, setParseTotalPagesCount] = useState(null);
   const completionSoundRef = useRef(null);
   const completionSoundUnlockedRef = useRef(false);
 
@@ -256,6 +309,8 @@ export default function AdminImportForm() {
     setParseStartedAtMs(parseTimerStartedAtMs);
     setParseElapsedMs(0);
     setLastParseDurationMs(null);
+    setParsePagesCount(null);
+    setParseTotalPagesCount(null);
     setParseStatus("Parsing report now...");
     let parseOutcome = "failed";
     console.log("[admin-import-page] Parse timer started", {
@@ -533,10 +588,21 @@ export default function AdminImportForm() {
 
       const elapsedMs = Date.now() - parseTimerStartedAtMs;
       const durationText = formatDurationText(elapsedMs);
+      const { parsePages, parseTotalPages, isPageCoverageComplete } = extractParsePageProgress(data);
+      const parsedPagesText = formatParsedPagesText(parsePages, parseTotalPages);
+      setParsePagesCount(parsePages);
+      setParseTotalPagesCount(parseTotalPages);
+      console.log("[admin-import-page] Parse page coverage", {
+        parsePages,
+        parseTotalPages,
+        isPageCoverageComplete,
+      });
+
       if (response?.ok) {
-        const parseState = String(data?.parseStatus || "unknown");
+        const parseStateFromResponse = String(data?.parseStatus || "unknown");
+        const parseState = isPageCoverageComplete ? "complete" : parseStateFromResponse;
         parseOutcome = parseState === "complete" ? "complete" : "incomplete";
-        setParseStatus(`Parsing complete in ${durationText}. Status: ${parseState}.`);
+        setParseStatus(`Parsing complete in ${durationText}. Pages parsed: ${parsedPagesText}. Status: ${parseState}.`);
       } else {
         parseOutcome = "failed";
         const parseErrorMessage = [data?.error, data?.details]
@@ -624,6 +690,8 @@ export default function AdminImportForm() {
     setParseStartedAtMs(null);
     setParseElapsedMs(0);
     setLastParseDurationMs(null);
+    setParsePagesCount(null);
+    setParseTotalPagesCount(null);
     setIsSubmitting(true);
     setStatus("Preparing upload...");
     unlockCompletionSound();
@@ -1049,6 +1117,17 @@ export default function AdminImportForm() {
       {parseStatus ? (
         <p data-testid="admin-import-parse-status" style={{ marginTop: "8px", fontWeight: 600 }}>
           {parseStatus}
+        </p>
+      ) : null}
+
+      {parsePagesCount != null || parseTotalPagesCount != null ? (
+        <p
+          data-testid="admin-import-parse-page-counter"
+          style={{ marginTop: "8px", color: "#334155", fontWeight: 600 }}
+        >
+          {isParsing ? "Parsed pages:" : "Last parsed pages:"}{" "}
+          {formatParsedPagesText(parsePagesCount, parseTotalPagesCount)}
+          {parseTotalPagesCount > 0 && parsePagesCount >= parseTotalPagesCount ? " (complete)" : ""}
         </p>
       ) : null}
 

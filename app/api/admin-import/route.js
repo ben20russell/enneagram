@@ -317,6 +317,8 @@ async function finalizeImport({
         parseStatus: resultsData?.ingestion?.status || null,
         parsePages: resultsData?.ingestion?.parseDiagnostics?.extraction?.pages ?? null,
         parseMinExpectedPages: resultsData?.ingestion?.parseDiagnostics?.extraction?.minExpectedPages ?? null,
+        parseDetectedTotalPages:
+          resultsData?.ingestion?.parseDiagnostics?.extraction?.detectedTotalPages ?? null,
       });
     } catch (error) {
       console.log("[admin-import] Parse failed; keeping metadata-only import", {
@@ -530,6 +532,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
       reviewStatus,
       parsePages: nextDiagnostics?.extraction?.pages ?? null,
       parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
+      parseDetectedTotalPages: nextDiagnostics?.extraction?.detectedTotalPages ?? null,
     });
 
     return NextResponse.json(
@@ -540,6 +543,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
         reviewStatus,
         parsePages: nextDiagnostics?.extraction?.pages ?? null,
         parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
+        parseDetectedTotalPages: nextDiagnostics?.extraction?.detectedTotalPages ?? null,
       },
       { status: 200 },
     );
