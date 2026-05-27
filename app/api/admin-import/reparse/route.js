@@ -106,7 +106,10 @@ export async function POST(req) {
 
     const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
     const { parsePdf } = await import("../../../../lib/parsePdf.js");
-    const parsed = await parsePdf(pdfBuffer);
+    const parsed = await parsePdf(pdfBuffer, {
+      disableImagePipeline: true,
+      disableImageScoreRescue: true,
+    });
 
     const parseDiagnostics =
       parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"

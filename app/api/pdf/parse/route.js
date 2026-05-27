@@ -4,6 +4,7 @@ import { parsePdf } from "../../../../lib/parsePdf.js";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
+const DEFAULT_ROUTE_IMAGE_PAGE_LIMIT = 24;
 
 function isPdfFile(file) {
   return file instanceof File && file.type === "application/pdf";
@@ -38,7 +39,18 @@ export async function POST(req) {
     }
 
     const buffer = Buffer.from(await report.arrayBuffer());
-    const parsed = await parsePdf(buffer);
+    const routeImagePageLimitRaw = Number(
+      process.env.PDF_PARSE_ROUTE_IMAGE_FULL_DOC_MAX_PAGES ??
+        process.env.PDF_PARSE_IMAGE_FULL_DOC_MAX_PAGES ??
+        DEFAULT_ROUTE_IMAGE_PAGE_LIMIT,
+    );
+    const routeImagePageLimit = Number.isFinite(routeImagePageLimitRaw) && routeImagePageLimitRaw > 0
+      ? Math.floor(routeImagePageLimitRaw)
+      : DEFAULT_ROUTE_IMAGE_PAGE_LIMIT;
+    const parsed = await parsePdf(buffer, {
+      imagePrimaryFullDocMaxPages: routeImagePageLimit,
+      requireChartScoresForComplete: false,
+    });
     const parseStatus = parsed?._parseStatus || "complete";
 
     const result = {
@@ -49,8 +61,9 @@ export async function POST(req) {
     };
 
     if (parseStatus !== "complete") {
+      const incompleteReason = String(parsed?._parseDiagnostics?.incompleteReason || "PDF parsed but marked incomplete");
       return NextResponse.json(
-        { success: false, error: "PDF parsed but marked incomplete", data: result },
+        { success: false, error: incompleteReason, data: result },
         { status: 422 },
       );
     }
