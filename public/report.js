@@ -1337,6 +1337,9 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractStrainQualitativeWriteups(pdfText),
       ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"],
     );
+    const overallStrainSummary =
+      extractOverallStrainSummaryFromReportContent(parsedProfile) ||
+      extractOverallStrainSummaryFromPdfText(pdfText);
     const developmentExercises = mergeDevelopmentExercises(
       extractDevelopmentExercisesFromReportContent(parsedProfile),
       extractDevelopmentExercises(pdfText),
@@ -1389,6 +1392,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       insightComposite: proInsights.composite,
       feedbackGuideMatrix,
       strainQualitativeWriteups,
+      overallStrainSummary,
       developmentExercises,
       instinctScoresRaw,
       centerScoresRaw,
@@ -3016,6 +3020,26 @@ function getStrainLevelSortRank(level) {
   return STRAIN_LEVEL_SORT_RANK[level] ?? STRAIN_LEVEL_SORT_RANK["N/A"];
 }
 
+function isHappinessStrainCategory(category) {
+  const normalized = String(category == null ? "" : category).trim().toLowerCase();
+  return normalized === "happiness" || normalized === "happiness strain";
+}
+
+function getStrainChipClass(level, category) {
+  const normalizedLevel = String(level == null ? "" : level).trim().toUpperCase();
+  const isHappiness = isHappinessStrainCategory(category);
+  if (isHappiness) {
+    if (normalizedLevel === "HIGH") return "strain-chip-low";
+    if (normalizedLevel === "MEDIUM") return "strain-chip-medium";
+    if (normalizedLevel === "LOW") return "strain-chip-high";
+    return "cx";
+  }
+  if (normalizedLevel === "HIGH") return "strain-chip-high";
+  if (normalizedLevel === "MEDIUM") return "strain-chip-medium";
+  if (normalizedLevel === "LOW") return "strain-chip-low";
+  return "cx";
+}
+
 function renderStrainBreakdownRows(strainScoresRaw, fallbackStrainScores) {
   const container = document.getElementById('strainBreakdownRows');
   if (!container) return;
@@ -3044,20 +3068,23 @@ function renderStrainBreakdownRows(strainScoresRaw, fallbackStrainScores) {
 
   container.innerHTML = rows.map((row) => {
     const valueLabel = row.band;
-    const chipClass =
-      valueLabel === "High" ? "strain-chip-high" :
-      valueLabel === "Medium" ? "strain-chip-medium" :
-      valueLabel === "Low" ? "strain-chip-low" :
-      "cx";
+    const chipClass = getStrainChipClass(valueLabel, row.label);
     return `<div class="brow"><div class="blbl">${row.label}</div><span class="chip ${chipClass}">${valueLabel}</span></div>`;
   }).join("");
 }
 
-function getStrainCardVisual(level) {
-  if (level === "High") return { chipClass: "cr", chipLabel: "Higher strain detected" };
-  if (level === "Medium") return { chipClass: "cg", chipLabel: "Moderate strain detected" };
-  if (level === "Low") return { chipClass: "cgn", chipLabel: "Lower strain detected" };
-  if (level === "N/A") return { chipClass: "cx", chipLabel: "Not detected" };
+function getStrainCardVisual(level, category) {
+  const normalizedLevel = String(level == null ? "" : level).trim().toUpperCase();
+  if (normalizedLevel === "N/A") return { chipClass: "cx", chipLabel: "Not detected" };
+  if (isHappinessStrainCategory(category)) {
+    if (normalizedLevel === "HIGH") return { chipClass: "cgn", chipLabel: "Higher strain detected" };
+    if (normalizedLevel === "MEDIUM") return { chipClass: "cg", chipLabel: "Moderate strain detected" };
+    if (normalizedLevel === "LOW") return { chipClass: "cr", chipLabel: "Lower strain detected" };
+    return { chipClass: "cr", chipLabel: "Lower strain detected" };
+  }
+  if (normalizedLevel === "HIGH") return { chipClass: "cr", chipLabel: "Higher strain detected" };
+  if (normalizedLevel === "MEDIUM") return { chipClass: "cg", chipLabel: "Moderate strain detected" };
+  if (normalizedLevel === "LOW") return { chipClass: "cgn", chipLabel: "Lower strain detected" };
   return { chipClass: "cgn", chipLabel: "Lower strain detected" };
 }
 
@@ -3131,12 +3158,12 @@ function getStrainTicClass(level) {
   return "neu";
 }
 
-function formatStrainNarrativeWithLevelChips(text) {
+function formatStrainNarrativeWithLevelChips(text, category) {
   const raw = String(text == null ? "" : text);
   if (!raw.trim()) return "Not detected in assigned PDF.";
   return raw.replace(/\b(LOW|MEDIUM|HIGH)\b/gi, (match, token) => {
     const upper = String(token).toUpperCase();
-    const chipClass = upper === "HIGH" ? "strain-chip-high" : upper === "MEDIUM" ? "strain-chip-medium" : "strain-chip-low";
+    const chipClass = getStrainChipClass(upper, category);
     return `<span class="chip inline-level-chip ${chipClass}">${upper}</span>`;
   });
 }
@@ -3509,6 +3536,80 @@ function extractStrainQualitativeWriteups(pdfText) {
       "Not detected in assigned PDF.";
     return { category, text };
   });
+}
+
+function summarizeOverallStrainText(rawText, options = {}) {
+  const maxWords = Number.isFinite(Number(options?.maxWords))
+    ? Math.max(12, Math.min(80, Number(options.maxWords)))
+    : 36;
+  let normalized = normalizeExtractedText(rawText || "");
+  if (!normalized) return null;
+
+  const categoryBoundary = normalized.match(
+    /\b(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+Strain\b/i,
+  );
+  if (categoryBoundary?.index > 0) {
+    normalized = normalizeExtractedText(normalized.slice(0, categoryBoundary.index));
+  }
+  if (!normalized) return null;
+
+  const explicit = normalized.match(
+    /overall\s+strain(?:\s+level)?\s*(?:is|appears|rated|of|at|was)?\s*(?:LOW|MEDIUM|HIGH|MODERATE)?\s*[:\-]?\s*([\s\S]{24,520})/i,
+  );
+  let summary = cleanPdfExtractedValue(explicit?.[1] || "");
+
+  if (!summary) {
+    const sentenceCandidates = (normalized.match(/[^.!?]{24,260}(?:[.!?]|$)/g) || [])
+      .map((sentence) => cleanPdfExtractedValue(sentence))
+      .filter(Boolean)
+      .filter(
+        (sentence) =>
+          !/^\s*overall\s+strain(?:\s+level)?\s*(?:is|appears|rated|of|at|was)?\s*(?:low|medium|high|moderate)?\s*\.?\s*$/i.test(
+            sentence,
+          ),
+      );
+    const narrativeCandidates = sentenceCandidates.filter((sentence) =>
+      /\b(?:you|your|cope|manage|demand|pressure|overwhelm|resilien|steady|optimism|circumstance|stress)\b/i.test(
+        sentence,
+      ),
+    );
+    summary = (narrativeCandidates.length ? narrativeCandidates : sentenceCandidates).slice(0, 2).join(" ");
+  }
+
+  summary = String(summary || "")
+    .replace(
+      /\boverall\s+strain(?:\s+level)?\s*(?:is|appears|rated|of|at|was)?\s*(?:low|medium|high|moderate)?\s*[:\-]?\s*/gi,
+      "",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!summary) return null;
+
+  const words = summary.split(/\s+/).filter(Boolean);
+  if (words.length > maxWords) {
+    summary = `${words.slice(0, maxWords).join(" ")}...`;
+  }
+  return summary;
+}
+
+function extractOverallStrainSummaryFromReportContent(parsedProfile) {
+  const strainSection = getSectionByTitle(parsedProfile, (title) => /strain/i.test(title));
+  const summarySource = normalizeExtractedText(
+    [
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.strainProfile.overall),
+      getSectionCompositeText(parsedProfile, strainSection),
+    ].join(" "),
+  );
+  return summarizeOverallStrainText(summarySource, { maxWords: 34 });
+}
+
+function extractOverallStrainSummaryFromPdfText(pdfText) {
+  const normalized = normalizeExtractedText(pdfText || "");
+  if (!normalized) return null;
+  const overallBlock = normalized.match(
+    /Overall\s*Strain[\s\S]{24,1800}(?=\b(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+Strain\b|$)/i,
+  );
+  return summarizeOverallStrainText(overallBlock?.[0] || normalized, { maxWords: 34 });
 }
 
 function extractBulletItemsFromText(text, maxItems = 6) {
@@ -4155,6 +4256,7 @@ function buildPdfOnlyReport(payload) {
     insightComposite: sanitizeSnippet(payload?.insightComposite, "Not detected in parsed PDF text."),
     feedbackGuideMatrix: Array.isArray(payload?.feedbackGuideMatrix) ? payload.feedbackGuideMatrix : [],
     strainQualitativeWriteups: Array.isArray(payload?.strainQualitativeWriteups) ? payload.strainQualitativeWriteups : [],
+    overallStrainSummary: sanitizeSnippet(payload?.overallStrainSummary, null),
     developmentExercises: Array.isArray(payload?.developmentExercises) ? payload.developmentExercises : [],
     dataQualityDiagnostics: payload?.dataQualityDiagnostics || null,
     profile,
@@ -4351,15 +4453,16 @@ function renderReportFromState(isExampleMode) {
   const narrativeMap = new Map(
     strainNarratives.map((item) => [String(item.category || "").toLowerCase(), formatOptionalText(item.text, "Not detected in assigned PDF.")]),
   );
+  const overallStrainSummary = formatOptionalText(REPORT.overallStrainSummary, "");
   const strainWriteupRows = buildSortedStrainWriteupRows(strain, REPORT.strain, overall);
   setHtml(
     'strainWriteupCards',
     strainWriteupRows
       .map((item) => {
-        const visual = getStrainCardVisual(item.level);
+        const visual = getStrainCardVisual(item.level, item.title);
         const detail =
           item.key === "overall"
-            ? `Overall strain is ${String(item.level).toLowerCase()} in this report.`
+            ? (overallStrainSummary || `Overall strain is ${String(item.level).toLowerCase()} in this report.`)
             : (narrativeMap.get(item.title.toLowerCase()) || getStrainCardFallbackText(item.title, item.level));
         return `<div class="card"><div class="ct">${item.title} — ${item.level}</div><div class="chip ${visual.chipClass}" style="margin-bottom:10px">${visual.chipLabel}</div><p style="font-size:13px;color:var(--text2)">${detail}</p></div>`;
       })
