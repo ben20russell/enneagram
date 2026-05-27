@@ -2,7 +2,6 @@
   "name": "enneagram-main",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
   "scripts": {
     "predev": "node scripts/ensure-dev-server.mjs",
     "dev": "__NEXT_DEV_INDICATOR=false next dev -H 127.0.0.1 -p 3000",
