@@ -1,0 +1,320 @@
+import { getServerSession } from "next-auth";
+import { NextResponse } from "next/server";
+import { authOptions } from "../../auth/[...nextauth]/route";
+import { hasAdminAccess, normalizeEmail } from "../../../../lib/adminAccess";
+import { getSupabaseAdmin } from "../../../../lib/supabaseAdmin";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
+function getNonNullCount(obj) {
+  if (!obj || typeof obj !== "object") return 0;
+  return Object.values(obj).filter((value) => value != null).length;
+}
+
+function inferTypeFromFileName(fileName) {
+  const normalized = String(fileName || "");
+  const ieqMatch = normalized.match(/iEQ\s*([1-9])\b/i);
+  if (ieqMatch?.[1]) return ieqMatch[1];
+
+  const typeMatch = normalized.match(/Type[\s_-]*([1-9])\b/i);
+  if (typeMatch?.[1]) return typeMatch[1];
+
+  return null;
+}
+
+function computeCompletenessFromParsed(parsed, diagnostics) {
+  const pages = Number(diagnostics?.extraction?.pages ?? parsed?.reportContent?.pages?.length ?? 0);
+  const minPages = Number(diagnostics?.extraction?.minExpectedPages ?? process.env.PDF_PARSE_MIN_PAGES ?? 20);
+  const typeNonNull = getNonNullCount(parsed?.typeScores);
+  const instinctNonNull = getNonNullCount(parsed?.instinctScores);
+  const centerNonNull = getNonNullCount(parsed?.centerScores);
+  const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
+  const hasMinPages = pages >= minPages;
+  const isComplete = hasMinPages && hasAllChartScores;
+  let incompleteReason = null;
+
+  if (!hasMinPages) {
+    incompleteReason = `Extracted ${pages} pages, expected at least ${minPages}`;
+  } else if (!hasAllChartScores) {
+    incompleteReason = "Chart numerics incomplete: one or more type, instinct, or center scores are null";
+  }
+
+  return {
+    isComplete,
+    incompleteReason,
+    pages,
+    minPages,
+    typeNonNull,
+    instinctNonNull,
+    centerNonNull,
+  };
+}
+
+function extractParsedPayload(body) {
+  const parsedCandidate = body?.parsed;
+  if (parsedCandidate && typeof parsedCandidate === "object" && !Array.isArray(parsedCandidate)) {
+    const nestedData = parsedCandidate?.data;
+    if (nestedData && typeof nestedData === "object" && !Array.isArray(nestedData)) {
+      return nestedData;
+    }
+    return parsedCandidate;
+  }
+
+  const dataCandidate = body?.data;
+  if (dataCandidate && typeof dataCandidate === "object" && !Array.isArray(dataCandidate)) {
+    return dataCandidate;
+  }
+
+  return null;
+}
+
+export async function POST(req) {
+  console.log("[admin-import:apply-parsed] Incoming POST request");
+  const reportsTable = process.env.SUPABASE_REPORTS_TABLE || "reports";
+  let requesterEmail = "";
+  let reportId = "";
+  let supabase = null;
+  let report = null;
+
+  try {
+    const session = await getServerSession(authOptions);
+    requesterEmail = normalizeEmail(session?.user?.email);
+    if (!session || !requesterEmail || !hasAdminAccess(requesterEmail)) {
+      console.log("[admin-import:apply-parsed] Unauthorized requester", { requesterEmail });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    let body;
+    try {
+      body = await req.json();
+    } catch (error) {
+      console.log("[admin-import:apply-parsed] Failed to parse JSON body", error);
+      return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
+    }
+
+    reportId = String(body?.reportId || "").trim();
+    if (!reportId) {
+      return NextResponse.json({ error: "Missing reportId" }, { status: 400 });
+    }
+
+    const parsed = extractParsedPayload(body);
+    if (!parsed) {
+      return NextResponse.json({ error: "Missing parsed payload" }, { status: 400 });
+    }
+
+    supabase = getSupabaseAdmin();
+    const { data: loadedReport, error: reportErr } = await supabase
+      .from(reportsTable)
+      .select("id,user_email,enneagram_type,results_data,report_pdf")
+      .eq("id", reportId)
+      .maybeSingle();
+
+    if (reportErr) {
+      throw new Error(`Failed to fetch report: ${reportErr.message}`);
+    }
+
+    if (!loadedReport) {
+      return NextResponse.json({ error: "Report not found" }, { status: 404 });
+    }
+    report = loadedReport;
+
+    const parseDiagnostics =
+      parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
+        ? parsed._parseDiagnostics
+        : null;
+    const parseReview =
+      parsed && typeof parsed === "object" && parsed._review && typeof parsed._review === "object"
+        ? parsed._review
+        : null;
+
+    const recomputed = computeCompletenessFromParsed(parsed, parseDiagnostics);
+    const nextDiagnostics = {
+      ...(parseDiagnostics || {}),
+      isComplete: recomputed.isComplete,
+      incompleteReason: recomputed.incompleteReason,
+      extraction: {
+        ...(parseDiagnostics?.extraction || {}),
+        pages: recomputed.pages,
+        minExpectedPages: recomputed.minPages,
+      },
+      scoreCoverage: {
+        ...(parseDiagnostics?.scoreCoverage || {}),
+        typeScoresNonNull: recomputed.typeNonNull,
+        typeScoresTotal: 9,
+        instinctScoresNonNull: recomputed.instinctNonNull,
+        instinctScoresTotal: 3,
+        centerScoresNonNull: recomputed.centerNonNull,
+        centerScoresTotal: 3,
+      },
+      completedAt: new Date().toISOString(),
+    };
+
+    const parseStatus = recomputed.isComplete ? "complete" : "incomplete";
+    const reviewStatus = parseReview?.status || (recomputed.isComplete ? "auto_approved" : "needs_review");
+    const priorResults = report?.results_data && typeof report.results_data === "object" ? report.results_data : {};
+    const priorDashboardContext =
+      priorResults?.dashboardContext && typeof priorResults.dashboardContext === "object"
+        ? priorResults.dashboardContext
+        : {};
+    const fileName =
+      String(body?.sourceFileName || "").trim() ||
+      report?.report_pdf?.fileName ||
+      parsed?.sourceFile ||
+      priorDashboardContext?.sourceFileName ||
+      null;
+
+    const nextResultsData = {
+      ...priorResults,
+      ingestion: {
+        ...(priorResults?.ingestion || {}),
+        status: parseStatus === "complete" && reviewStatus !== "needs_review" ? "ready" : "incomplete",
+        mode: "admin-import-auto",
+        ingestedAt: new Date().toISOString(),
+        reportId: report.id,
+        parser: {
+          provider: "azure-openai",
+          model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
+        },
+        parseAttempt: {
+          at: new Date().toISOString(),
+          triggeredBy: requesterEmail,
+          route: "apply-parsed",
+          ok: true,
+        },
+        parseDiagnostics: nextDiagnostics,
+      },
+      review: {
+        ...(priorResults?.review || {}),
+        ...(parseReview || {}),
+        status: reviewStatus,
+        updatedAt: new Date().toISOString(),
+      },
+      dashboardContext: {
+        ...priorDashboardContext,
+        detectedType: parsed?.primaryType ? String(parsed.primaryType) : inferTypeFromFileName(fileName),
+        detectedTypeSource: `azure-openai:${process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini"}`,
+        sourceFileName: fileName,
+        basicFear: parsed?.coreFear || null,
+        basicDesire: parsed?.coreDesire || null,
+        passion: priorDashboardContext?.passion || null,
+        integrationLevel: parsed?.integrationLevel || null,
+        instinct: parsed?.instinctualVariant || null,
+        reportSummary: parsed?.reportSummary || null,
+      },
+      extractedContent: {
+        ...(priorResults?.extractedContent || {}),
+        documentSummary: parsed?.reportContent?.documentSummary || null,
+        pages: Array.isArray(parsed?.reportContent?.pages) ? parsed.reportContent.pages : [],
+        sections: Array.isArray(parsed?.reportContent?.sections) ? parsed.reportContent.sections : [],
+        extractedAt: new Date().toISOString(),
+        parserVersion: nextDiagnostics?.parserVersion || "multi-pass-v3",
+      },
+      parsedProfile: parsed,
+    };
+
+    const { error: updateErr } = await supabase
+      .from(reportsTable)
+      .update({
+        results_data: nextResultsData,
+        enneagram_type: parsed?.primaryType ? String(parsed.primaryType) : report.enneagram_type,
+      })
+      .eq("id", report.id);
+
+    if (updateErr) {
+      throw new Error(`Failed to update report parse results: ${updateErr.message}`);
+    }
+
+    console.log("[admin-import:apply-parsed] Parsed payload saved", {
+      reportId: report.id,
+      parseStatus,
+      reviewStatus,
+      parsePages: nextDiagnostics?.extraction?.pages ?? null,
+      parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        reportId: report.id,
+        parseStatus,
+        reviewStatus,
+        parsePages: nextDiagnostics?.extraction?.pages ?? null,
+        parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
+      },
+      { status: 200 },
+    );
+  } catch (error) {
+    const details = String(error?.message || "Unknown apply-parsed error");
+    console.log("[admin-import:apply-parsed] Failed to save parsed payload", {
+      reportId,
+      details,
+      stack: error?.stack,
+    });
+
+    if (report?.id && supabase) {
+      try {
+        const priorResults = report?.results_data && typeof report.results_data === "object"
+          ? report.results_data
+          : {};
+        const priorIngestion = priorResults?.ingestion && typeof priorResults.ingestion === "object"
+          ? priorResults.ingestion
+          : {};
+        const priorDiagnostics =
+          priorIngestion?.parseDiagnostics && typeof priorIngestion.parseDiagnostics === "object"
+            ? priorIngestion.parseDiagnostics
+            : {};
+
+        const nextResultsDataOnFailure = {
+          ...priorResults,
+          ingestion: {
+            ...priorIngestion,
+            status: "incomplete",
+            mode: "admin-import-auto",
+            ingestedAt: new Date().toISOString(),
+            reportId: report.id,
+            parseAttempt: {
+              at: new Date().toISOString(),
+              triggeredBy: requesterEmail,
+              route: "apply-parsed",
+              ok: false,
+            },
+            parseDiagnostics: {
+              ...priorDiagnostics,
+              isComplete: false,
+              incompleteReason: `Apply parsed failed: ${details}`,
+              failedAt: new Date().toISOString(),
+            },
+          },
+          review: {
+            ...(priorResults?.review && typeof priorResults.review === "object" ? priorResults.review : {}),
+            status: "needs_review",
+            updatedAt: new Date().toISOString(),
+          },
+        };
+
+        const { error: failureUpdateErr } = await supabase
+          .from(reportsTable)
+          .update({ results_data: nextResultsDataOnFailure })
+          .eq("id", report.id);
+
+        if (failureUpdateErr) {
+          console.log("[admin-import:apply-parsed] Failed to persist failure diagnostics", {
+            reportId: report.id,
+            details: failureUpdateErr.message,
+          });
+        }
+      } catch (persistError) {
+        console.log("[admin-import:apply-parsed] Unexpected diagnostics persistence error", {
+          reportId: report.id,
+          details: String(persistError?.message || persistError),
+        });
+      }
+    }
+
+    return NextResponse.json(
+      { error: "Failed to persist parsed report", details, reportId, reportsTable },
+      { status: 500 },
+    );
+  }
+}
