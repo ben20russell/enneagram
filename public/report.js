@@ -1218,7 +1218,6 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractDevelopmentExercisesFromReportContent(parsedProfile),
       extractDevelopmentExercises(pdfText),
     );
-    const instinctConflictInsights = extractInstinctConflictInsightsFromReportContent(parsedProfile, instinct);
     const dataQualityDiagnostics = buildDataQualityDiagnostics({
       parsedProfile,
       parseDiagnostics: data?.parseDiagnostics || null,
@@ -1259,8 +1258,6 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractedSectionTitles: Array.isArray(parsedProfile?.reportContent?.sections)
         ? parsedProfile.reportContent.sections.map((section) => section?.sectionTitle || section?.title || "").filter(Boolean)
         : [],
-      insightEnneagramBasics: proInsights.enneagramBasics,
-      insightNeurobiology: proInsights.neurobiology,
       insightTeamDynamics: proInsights.teamDynamics,
       insightDecisionFramework: proInsights.decisionFramework,
       insightStrategicLeadership: proInsights.strategicLeadership,
@@ -1270,11 +1267,6 @@ async function ingestAssignedReportIntoDashboard(data) {
       feedbackGuideMatrix,
       strainQualitativeWriteups,
       developmentExercises,
-      instinctNarrativePrimary: instinctConflictInsights.instinctPrimary,
-      instinctNarrativeSecondary: instinctConflictInsights.instinctSecondary,
-      conflictStyleDetected: instinctConflictInsights.conflictStyle,
-      conflictNarrativePrimary: instinctConflictInsights.conflictPrimary,
-      conflictNarrativeSecondary: instinctConflictInsights.conflictSecondary,
       instinctScoresRaw,
       centerScoresRaw,
       strainScoresRaw,
@@ -2214,10 +2206,8 @@ function decorateInterfaceIcons() {
     'Basic Desire': 'spark',
     'Passion (Habit Energy)': 'shield',
     'Core Belief & Attention Pattern': 'centers',
-    'Basic Desire & Key Motivations': 'pulse',
     'A Deeper Understanding of the SX — 8': 'users',
     'Centers of Expression': 'centers',
-    '27 Subtypes & Instincts': 'users',
     'Typical Patterns': 'card',
     'Strengths & Positive Qualities': 'spark',
     'Weaknesses & Challenges': 'shield',
@@ -3646,64 +3636,6 @@ function extractDevelopmentExercisesFromReportContent(parsedProfile) {
   return dedupedMatches.map((item, index) => ({ title: `Exercise ${index + 1}`, text: item }));
 }
 
-function extractInstinctConflictInsightsFromReportContent(parsedProfile, instinctLabel) {
-  const instinctSection = getSectionByTitle(parsedProfile, (title) => /subtype|instinct|interaction|conflict|styles/i.test(title));
-  const communicationSection = getSectionByTitle(parsedProfile, (title) => /communication|feedback/i.test(title));
-  const text = normalizeExtractedText(
-    [
-      getSectionCompositeText(parsedProfile, instinctSection),
-      getSectionCompositeText(parsedProfile, communicationSection),
-      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.subtypesInstincts),
-      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.communication),
-    ].join(" "),
-  );
-  const dominantCode = String(instinctLabel || "").toUpperCase().match(/\b(SX|SO|SP)\b/)?.[1] || "SX";
-  const instinctSpecificKeywords =
-    dominantCode === "SX"
-      ? ["one-to-one instinct", "one on one instinct", "sexual instinct", "SX"]
-      : dominantCode === "SO"
-        ? ["social instinct", "SO"]
-        : ["self-preservation instinct", "self preservation instinct", "SP"];
-
-  const instinctPrimary =
-    extractSnippetFromLabels(text, instinctSpecificKeywords) ||
-    extractSnippetFromLabels(text, ["27 Subtypes", "Instinct", "Instinctual"]) ||
-    null;
-  const instinctSecondary =
-    extractSnippetFromLabels(text, ["trusted people", "loyal", "protective friend", "connection", "intensity"]) ||
-    extractSnippetFromLabels(text, ["Relationship", "Relational", "close"]) ||
-    null;
-
-  const conflictStyleMatch = text.match(/\bpreferred\s+conflict(?:\s+processing)?\s+strategy\s+(?:is|:)?\s*(assertive|reactive|withdrawn|compliant|competency)\b/i);
-  const conflictStyle = String(conflictStyleMatch?.[1] || "").toLowerCase() || null;
-  const conflictPrimary =
-    conflictStyle
-      ? `Your preferred conflict processing strategy is ${conflictStyle}.`
-      : extractSnippetFromLabels(text, ["preferred conflict processing strategy", "Conflict Styles", "Reactive", "Assertive"]) || null;
-  const conflictSecondary =
-    extractSnippetFromLabels(text, ["A more regulated body", "positive regard", "feedback", "intensity", "reactive"]) ||
-    extractSnippetFromLabels(text, ["conflict", "feedback"]) ||
-    null;
-
-  console.log("[report-ingest] extracted instinct/conflict narratives", {
-    hasText: Boolean(text),
-    dominantCode,
-    conflictStyle,
-    instinctPrimary,
-    instinctSecondary,
-    conflictPrimary,
-    conflictSecondary,
-  });
-
-  return {
-    instinctPrimary,
-    instinctSecondary,
-    conflictStyle,
-    conflictPrimary,
-    conflictSecondary,
-  };
-}
-
 function buildDataQualityDiagnostics({ parsedProfile, parseDiagnostics, feedbackGuideMatrix, strainQualitativeWriteups, developmentExercises }) {
   const issues = [];
   const typeScores = parsedProfile?.typeScores || {};
@@ -3928,14 +3860,7 @@ function buildPdfOnlyReport(payload) {
     viceDesc: "",
     worldview: sanitizeSnippet(payload?.worldview, fallbackText),
     focus: sanitizeSnippet(payload?.focus, fallbackText),
-    instinctNarrativePrimary: sanitizeSnippet(payload?.instinctNarrativePrimary, fallbackText),
-    instinctNarrativeSecondary: sanitizeSnippet(payload?.instinctNarrativeSecondary, fallbackText),
-    conflictStyleDetected: sanitizeSnippet(payload?.conflictStyleDetected, ""),
-    conflictNarrativePrimary: sanitizeSnippet(payload?.conflictNarrativePrimary, fallbackText),
-    conflictNarrativeSecondary: sanitizeSnippet(payload?.conflictNarrativeSecondary, fallbackText),
     selfTalk: sanitizeSnippet(payload?.metaQuote, fallbackText),
-    motivation1: sanitizeSnippet(payload?.reportSummary, fallbackText),
-    motivation2: fallbackText,
     traits: [],
     deepTitle: sanitizeSnippet(payload?.corePatternTitle, null) || `Type ${typeNumber} Core Pattern`,
     deep: deepLines,
@@ -3954,8 +3879,6 @@ function buildPdfOnlyReport(payload) {
     extractedPageCount: Number(payload?.extractedPageCount || 0),
     extractedSectionCount: Number(payload?.extractedSectionCount || 0),
     extractedSectionTitles: Array.isArray(payload?.extractedSectionTitles) ? payload.extractedSectionTitles : [],
-    insightEnneagramBasics: sanitizeSnippet(payload?.insightEnneagramBasics, "Not detected in parsed PDF text."),
-    insightNeurobiology: sanitizeSnippet(payload?.insightNeurobiology, "Not detected in parsed PDF text."),
     insightTeamDynamics: sanitizeSnippet(payload?.insightTeamDynamics, "Not detected in parsed PDF text."),
     insightDecisionFramework: sanitizeSnippet(payload?.insightDecisionFramework, "Not detected in parsed PDF text."),
     insightStrategicLeadership: sanitizeSnippet(payload?.insightStrategicLeadership, "Not detected in parsed PDF text."),
@@ -3972,66 +3895,6 @@ function buildPdfOnlyReport(payload) {
     releaseValue: releaseIndex >= 0 ? profile[releaseIndex] : 0,
     stretchValue: stretchIndex >= 0 ? profile[stretchIndex] : 0,
   };
-}
-
-function getConflictStyleForDisplay(report) {
-  const detected = String(report?.conflictStyleDetected || "").trim().toLowerCase();
-  if (detected) return detected;
-  const style = String(report?.conflictStyle || "").trim().toLowerCase();
-  if (style) return style;
-  const assertive = Number(report?.interactionScores?.assertive);
-  const reactive = Number(report?.interactionScores?.reactive);
-  if (Number.isFinite(assertive) || Number.isFinite(reactive)) {
-    if (!Number.isFinite(reactive)) return "assertive";
-    if (!Number.isFinite(assertive)) return "reactive";
-    return reactive >= assertive ? "reactive" : "assertive";
-  }
-  return "reactive";
-}
-
-function buildInstinctCopyForDisplay(report) {
-  const instinctLabel = String(report?.instinct || "Unknown instinct");
-  const instinctCode = instinctLabel.toUpperCase().match(/\b(SX|SO|SP)\b/)?.[1] || "SX";
-  const isAssignedReportMode = currentReportViewMode === "my-report";
-  const lead = isAssignedReportMode
-    ? formatOptionalText(report?.instinctNarrativeLead, "Not detected in assigned PDF.")
-    : `You are an Enneagram type ${String(report?.typeNumber || "?")} with an ${instinctCode} instinct.`;
-  const primary =
-    formatOptionalText(
-      report?.instinctNarrativePrimary,
-      isAssignedReportMode
-        ? "Not detected in assigned PDF."
-        : instinctCode === "SX"
-          ? "The one-to-one instinct is concerned with intensity of experience and strong connection with specific people."
-          : instinctCode === "SO"
-            ? "The social instinct is concerned with belonging, contribution, and maintaining meaningful connections in groups."
-            : "The self-preservation instinct is concerned with practical stability, resources, and long-term personal sustainability.",
-    );
-  const secondary = formatOptionalText(
-    report?.instinctNarrativeSecondary,
-    isAssignedReportMode
-      ? "Not detected in assigned PDF."
-      : (report?.deep?.[2] || "This instinct pattern shapes how you connect, protect energy, and prioritize relationships."),
-  );
-  return { lead, primary, secondary };
-}
-
-function buildConflictCopyForDisplay(report) {
-  const style = getConflictStyleForDisplay(report);
-  const isAssignedReportMode = currentReportViewMode === "my-report";
-  const primary = formatOptionalText(
-    report?.conflictNarrativePrimary,
-    isAssignedReportMode
-      ? "Not detected in assigned PDF."
-      : `Your preferred conflict processing strategy is ${style}.`,
-  );
-  const secondary = formatOptionalText(
-    report?.conflictNarrativeSecondary,
-    isAssignedReportMode
-      ? "Not detected in assigned PDF."
-      : "A more regulated body and explicit positive regard can change the outcome dramatically.",
-  );
-  return { primary, secondary };
 }
 
 function buildGrowthCopyForDisplay(report) {
@@ -4056,14 +3919,7 @@ function renderReportFromState(isExampleMode) {
   setText('mainTypeValue', currentCoreTypeLabel());
   setText('instinctValue', REPORT.instinct);
   setText('keywordValue', REPORT.keyword);
-  const instinctCopy = buildInstinctCopyForDisplay(REPORT);
-  const conflictCopy = buildConflictCopyForDisplay(REPORT);
   const growthCopy = buildGrowthCopyForDisplay(REPORT);
-  setText('instinctSummaryLead', instinctCopy.lead);
-  setText('instinctNarrativePrimary', instinctCopy.primary);
-  setText('instinctNarrativeSecondary', instinctCopy.secondary);
-  setText('conflictNarrativePrimary', conflictCopy.primary);
-  setText('conflictNarrativeSecondary', conflictCopy.secondary);
   setText('growthStretchTitle', growthCopy.stretchTitle);
   setText('growthStretchBody', growthCopy.stretchBody);
   setText('growthStretchFollowup', growthCopy.stretchFollowup);
@@ -4133,8 +3989,6 @@ function renderReportFromState(isExampleMode) {
       ? sectionTags.map((title) => `<span class="chip cgn">${title}</span>`).join('')
       : '<span class="chip cgn">No parsed sections available</span>',
   );
-  setText('insightEnneagramBasics', formatOptionalText(REPORT.insightEnneagramBasics, 'Not detected in parsed PDF text.'));
-  setText('insightNeurobiology', formatOptionalText(REPORT.insightNeurobiology, 'Not detected in parsed PDF text.'));
   setText('insightTeamDynamics', formatOptionalText(REPORT.insightTeamDynamics, 'Not detected in parsed PDF text.'));
   setText('insightDecisionFramework', formatOptionalText(REPORT.insightDecisionFramework, 'Not detected in parsed PDF text.'));
   setText('insightStrategicLeadership', formatOptionalText(REPORT.insightStrategicLeadership, 'Not detected in parsed PDF text.'));
@@ -4277,8 +4131,6 @@ function renderReportFromState(isExampleMode) {
   setText('worldviewValue', REPORT.worldview);
   setText('focusValue', REPORT.focus);
   setText('selfTalkValue', REPORT.selfTalk);
-  setText('motivationLine1', REPORT.motivation1);
-  setText('motivationLine2', REPORT.motivation2);
   document.getElementById('deepTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('users', 12, 'var(--blue)')}</span></span>${REPORT.deepTitle}`;
   setText('deepP1', REPORT.deep[0]);
   setText('deepP2', REPORT.deep[1]);
