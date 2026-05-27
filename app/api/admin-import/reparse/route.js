@@ -49,31 +49,33 @@ function computeCompletenessFromParsed(parsed, diagnostics) {
 
 export async function POST(req) {
   console.log("[admin-import:reparse] Incoming POST request");
-  const session = await getServerSession(authOptions);
-  const requesterEmail = normalizeEmail(session?.user?.email);
-  if (!session || !requesterEmail || !hasAdminAccess(requesterEmail)) {
-    console.log("[admin-import:reparse] Unauthorized requester", { requesterEmail });
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  let body;
-  try {
-    body = await req.json();
-  } catch (error) {
-    console.log("[admin-import:reparse] Failed to parse JSON body", error);
-    return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
-  }
-
-  const reportId = String(body?.reportId || "").trim();
-  if (!reportId) {
-    return NextResponse.json({ error: "Missing reportId" }, { status: 400 });
-  }
-
   const reportsTable = process.env.SUPABASE_REPORTS_TABLE || "reports";
+  let requesterEmail = "";
+  let reportId = "";
   let supabase = null;
   let report = null;
 
   try {
+    const session = await getServerSession(authOptions);
+    requesterEmail = normalizeEmail(session?.user?.email);
+    if (!session || !requesterEmail || !hasAdminAccess(requesterEmail)) {
+      console.log("[admin-import:reparse] Unauthorized requester", { requesterEmail });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    let body;
+    try {
+      body = await req.json();
+    } catch (error) {
+      console.log("[admin-import:reparse] Failed to parse JSON body", error);
+      return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
+    }
+
+    reportId = String(body?.reportId || "").trim();
+    if (!reportId) {
+      return NextResponse.json({ error: "Missing reportId" }, { status: 400 });
+    }
+
     supabase = getSupabaseAdmin();
 
     const { data: loadedReport, error: reportErr } = await supabase
