@@ -231,6 +231,9 @@ function selectMyReportInSelector() {
 
 function stripPdfFooterNoiseFragments(rawText) {
   return String(rawText || "")
+    .replace(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g, (match) => match.replace(/\s+/g, ""))
+    .replace(/\b(?:\d\s+){2,}\d\b/g, (match) => match.replace(/\s+/g, ""))
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/Copyright\s*\d{4}\s*[-–]\s*\d{4}[\s\S]*?\d+\s*of\s*\d+/gis, " ")
     .replace(
       /Integrative\s*Enneagram(?:\s*Solutions)?\s*Ben\s*Russell[\s\S]{0,120}?\d+\s*of\s*\d+/gis,
@@ -247,7 +250,12 @@ function stripPdfFooterNoiseFragments(rawText) {
 }
 
 function normalizeExtractedText(rawText) {
-  return stripPdfFooterNoiseFragments(rawText).replace(/\s+/g, " ").trim();
+  return stripPdfFooterNoiseFragments(rawText)
+    .replace(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g, (match) => match.replace(/\s+/g, ""))
+    .replace(/\b(?:\d\s+){2,}\d\b/g, (match) => match.replace(/\s+/g, ""))
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function inferTypeFromPdfText(pdfText) {
@@ -1023,10 +1031,38 @@ function cleanupMetaQuote(value) {
 
 function extractSnippet(pdfText, label) {
   const normalized = normalizeExtractedText(pdfText);
+  if (!normalized) return null;
   const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`${escapedLabel}\\s*[:\\-]\\s*([^\\.\\n]{8,220})`, "i");
-  const match = normalized.match(pattern);
-  return match?.[1]?.trim() || null;
+  const flexibleLabel = String(label || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) =>
+      String(word || "")
+        .split("")
+        .map((char) => (/[A-Za-z0-9]/.test(char) ? `${escapeRegex(char)}\\s*` : escapeRegex(char)))
+        .join(""),
+    )
+    .join("\\s*");
+  const candidatePatterns = [
+    new RegExp(`${escapedLabel}\\s*[:\\-]\\s*([^\\.\\n]{8,320})`, "i"),
+    new RegExp(`${escapedLabel}\\s*[:\\-]?\\s*([^\\.\\n]{8,320})`, "i"),
+  ];
+  if (flexibleLabel) {
+    candidatePatterns.push(
+      new RegExp(`${flexibleLabel}\\s*[:\\-]\\s*([^\\.\\n]{8,320})`, "i"),
+      new RegExp(`${flexibleLabel}\\s*[:\\-]?\\s*([^\\.\\n]{8,320})`, "i"),
+    );
+  }
+
+  for (const pattern of candidatePatterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) {
+      const cleaned = cleanPdfExtractedValue(match[1]);
+      if (cleaned) return cleaned;
+    }
+  }
+  return null;
 }
 
 function renderAssignedIngestCard(payload) {
