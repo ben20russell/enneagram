@@ -198,9 +198,20 @@ function setMyReportOptionVisible(visible) {
 }
 
 function setOverviewAdminDiagnosticsVisible(email) {
-  const container = document.getElementById("overviewAdminDiagnostics");
-  if (!container) return;
-  container.style.display = hasAdminAccess(email) ? "block" : "none";
+  const isAdmin = hasAdminAccess(email);
+  const diagnosticsSection = document.getElementById("sec-test");
+  const diagnosticsContainer = document.getElementById("adminTestDiagnostics");
+  const testNavButtons = document.querySelectorAll('.nav button[data-sec="test"],.mobile-menu-item[data-sec="test"]');
+  testNavButtons.forEach((button) => {
+    button.style.display = isAdmin ? "" : "none";
+  });
+  if (diagnosticsSection) diagnosticsSection.style.display = isAdmin ? "" : "none";
+  if (diagnosticsContainer) diagnosticsContainer.style.display = isAdmin ? "" : "none";
+  const currentSectionId = String(document.querySelector(".sec.active")?.id || "").replace(/^sec-/, "");
+  if (!isAdmin && currentSectionId === "test") {
+    showSec("overview");
+  }
+  buildReportModuleIndex();
 }
 
 function isAssignedReportAvailable(data) {
@@ -800,12 +811,54 @@ function getParsedProfileStrainScores(parsedProfile) {
   return merged;
 }
 
+const FLEXIBLE_LEVEL_TOKEN_PATTERN =
+  "((?:L\\s*O\\s*W)|(?:M\\s*E\\s*D\\s*I\\s*U\\s*M)|(?:H\\s*I\\s*G\\s*H)|(?:M\\s*O\\s*D\\s*E\\s*R\\s*A\\s*T\\s*E(?:\\s*L\\s*Y)?)|(?:H\\s*I\\s*G\\s*H\\s*L\\s*Y)|(?:L\\s*O\\s*W\\s*L\\s*Y))";
+
+function normalizeFlexibleLevelToken(value) {
+  const normalized = String(value || "").replace(/[^A-Za-z]/g, "").trim().toUpperCase();
+  if (normalized === "HIGH" || normalized === "HIGHLY") return "HIGH";
+  if (normalized === "MEDIUM" || normalized === "MODERATE" || normalized === "MODERATELY") return "MEDIUM";
+  if (normalized === "LOW" || normalized === "LOWLY") return "LOW";
+  return null;
+}
+
+function buildFlexibleWordPattern(word) {
+  return String(word || "")
+    .split("")
+    .map((char) => (/[A-Za-z0-9]/.test(char) ? `${escapeRegex(char)}\\s*` : escapeRegex(char)))
+    .join("");
+}
+
+function buildFlexibleLabelPattern(label) {
+  return String(label || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => buildFlexibleWordPattern(word))
+    .join("\\s*");
+}
+
 function extractLevelForLabel(text, label) {
   const normalized = normalizeExtractedText(text);
   if (!normalized) return null;
   const escaped = escapeRegex(label);
-  const match = normalized.match(new RegExp(`${escaped}[\\s\\S]{0,48}?(LOW|MEDIUM|HIGH|MODERATE)\\b`, "i"));
-  return match?.[1] ? String(match[1]).toUpperCase() : null;
+  const directMatch = normalized.match(new RegExp(`${escaped}[\\s\\S]{0,64}?${FLEXIBLE_LEVEL_TOKEN_PATTERN}`, "i"));
+  const directLevel = normalizeFlexibleLevelToken(directMatch?.[1]);
+  if (directLevel) return directLevel;
+
+  const flexibleLabel = buildFlexibleLabelPattern(label);
+  if (!flexibleLabel) return null;
+  const fuzzyMatch = normalized.match(new RegExp(`${flexibleLabel}[\\s\\S]{0,72}?${FLEXIBLE_LEVEL_TOKEN_PATTERN}`, "i"));
+  const fuzzyLevel = normalizeFlexibleLevelToken(fuzzyMatch?.[1]);
+  if (fuzzyLevel) return fuzzyLevel;
+
+  const expressionMatch = normalized.match(
+    new RegExp(
+      `${flexibleLabel}[\\s\\S]{0,42}?\\b(?:is\\s+)?${FLEXIBLE_LEVEL_TOKEN_PATTERN}[\\s\\S]{0,28}?\\b(?:expressed|expression)\\b`,
+      "i",
+    ),
+  );
+  return normalizeFlexibleLevelToken(expressionMatch?.[1]);
 }
 
 function extractLabelLevelPairs(text, labels, options = {}) {
@@ -827,6 +880,12 @@ function extractLabelLevelPairs(text, labels, options = {}) {
     if (!label || !level) continue;
     out[label] = level;
   }
+  if (Object.keys(out).length) return out;
+
+  (Array.isArray(labels) ? labels : []).forEach((label) => {
+    const resolvedLevel = extractLevelForLabel(normalized, label);
+    if (resolvedLevel) out[String(label || "").toLowerCase()] = resolvedLevel;
+  });
   return out;
 }
 
@@ -1198,6 +1257,11 @@ async function ingestAssignedReportIntoDashboard(data) {
     const qualitativeCenterScores = likelyProReport
       ? normalizeScoreScale(buildCenterScoresFromQualitativeText(reportContentText || pdfText))
       : null;
+    if (likelyProReport) {
+      console.log("[report-ingest] qualitative center scores from report text", {
+        qualitativeCenterScores,
+      });
+    }
     if (shouldPreferQualitativeScoreMap(centerScoresRaw, qualitativeCenterScores, { minPositive: 2 })) {
       console.log("[report-ingest] overriding parsed center scores with qualitative center levels", {
         existing: centerScoresRaw,
@@ -2323,7 +2387,8 @@ function decorateInterfaceIcons() {
     Communication: 'communication',
     'Strain Profile': 'strain',
     Integration: 'integration',
-    'Growth Path': 'growth'
+    'Growth Path': 'growth',
+    TEST: 'pulse'
   };
 
   const sectionIconMap = {
@@ -2383,19 +2448,20 @@ function decorateInterfaceIcons() {
 }
 
 function showSec(id) {
+  const requestedSectionId = id === "test" && !hasAdminAccess(currentSignedInUser?.email) ? "overview" : id;
   document.querySelectorAll('.sec').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav button,.mobile-menu-item').forEach(b => b.classList.remove('active'));
-  const targetSection = document.getElementById('sec-' + id);
+  const targetSection = document.getElementById('sec-' + requestedSectionId);
   if (!targetSection) {
-    console.log('[nav] section not found', id);
+    console.log('[nav] section not found', requestedSectionId);
     return;
   }
   targetSection.classList.add('active');
-  const navButton = document.querySelector(`.nav button[data-sec="${id}"]`);
-  const mobileButton = document.querySelector(`.mobile-menu-item[data-sec="${id}"]`);
+  const navButton = document.querySelector(`.nav button[data-sec="${requestedSectionId}"]`);
+  const mobileButton = document.querySelector(`.mobile-menu-item[data-sec="${requestedSectionId}"]`);
   if (navButton) navButton.classList.add('active');
   if (mobileButton) mobileButton.classList.add('active');
-  console.log('[nav] switched section', id);
+  console.log('[nav] switched section', requestedSectionId);
 }
 
 function toggleSearchPopout(open) {
@@ -2476,13 +2542,16 @@ function buildReportModuleIndex() {
     communication: 'Communication',
     strain: 'Strain Profile',
     integration: 'Integration',
-    growth: 'Growth Path'
+    growth: 'Growth Path',
+    test: 'TEST'
   };
 
   const modules = [];
   document.querySelectorAll('.sec').forEach(section => {
     const sectionId = section.id.replace('sec-', '');
     if (!sectionId || sectionId === 'focus' || sectionId === 'search') return;
+    if (sectionId === 'test' && !hasAdminAccess(currentSignedInUser?.email)) return;
+    if (sectionId === 'test' && section.style.display === 'none') return;
 
     section.querySelectorAll('.card').forEach((card, index) => {
       const titleNode = card.querySelector('.ct');
@@ -2976,6 +3045,59 @@ function formatOptionalText(value, fallback = "Not detected") {
   return normalized || fallback;
 }
 
+const INTEGRATION_LEVELS = ["Very Low", "Low", "Moderate", "High", "Very High"];
+const INTEGRATION_LEVEL_SIGNALS = {
+  "Very Low": [
+    { tone: "neg", text: "Reactivity is likely to feel intense and hard to regulate right now." },
+    { tone: "neg", text: "Criticism may land as threat and trigger defensive or forceful responses." },
+    { tone: "neg", text: "Rest, grounding, and support are essential before pushing through major pressure." },
+  ],
+  "Low": [
+    { tone: "neg", text: "Reactive and aggressive behaviours are more likely to show up frequently." },
+    { tone: "neg", text: "You may be especially sensitive to criticism from people you protect." },
+    { tone: "neg", text: "Controlling explosive anger may be difficult when you feel vulnerable or controlled." },
+  ],
+  "Moderate": [
+    { tone: "neu", text: "You can usually regulate pressure, though stress may still narrow your flexibility." },
+    { tone: "neu", text: "Pausing before action helps convert intensity into clearer leadership choices." },
+    { tone: "pos", text: "With deliberate reflection, you can recover quickly and reset your tone." },
+  ],
+  "High": [
+    { tone: "pos", text: "You are generally steady, responsive, and less reactive under strain." },
+    { tone: "pos", text: "You can channel power with restraint while staying connected to others." },
+    { tone: "pos", text: "Setbacks are more likely to become learning moments than conflict spirals." },
+  ],
+  "Very High": [
+    { tone: "pos", text: "You demonstrate strong self-mastery, emotional range, and grounded influence." },
+    { tone: "pos", text: "Even under pressure, you can stay open, collaborative, and strategically clear." },
+    { tone: "pos", text: "Your presence tends to stabilize groups and elevate collective performance." },
+  ],
+};
+
+function normalizeIntegrationLevel(levelRaw) {
+  const normalized = String(levelRaw == null ? "" : levelRaw)
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ");
+  if (!normalized) return "Low";
+  if (/very\s*low/.test(normalized)) return "Very Low";
+  if (/\blow\b/.test(normalized)) return "Low";
+  if (/very\s*high/.test(normalized)) return "Very High";
+  if (/\bhigh\b/.test(normalized)) return "High";
+  if (/\bmoderate\b|\bmedium\b/.test(normalized)) return "Moderate";
+  return "Low";
+}
+
+function getIntegrationLevelIndex(levelRaw) {
+  const normalized = normalizeIntegrationLevel(levelRaw);
+  const index = INTEGRATION_LEVELS.indexOf(normalized);
+  return index >= 0 ? index : 1;
+}
+
+function getIntegrationLevelNarrative(level) {
+  return `You are operating at a ${String(level || "Low").toLowerCase()} level of Enneagram awareness and mastery in this report.`;
+}
+
 function setBarRow(barId, valueId, value, options = {}) {
   const barNode = document.getElementById(barId);
   const valueNode = document.getElementById(valueId);
@@ -3004,6 +3126,63 @@ function setCenterLevelChip(chipId, value) {
   if (level === "High") chipNode.classList.add('center-chip-high');
   else if (level === "Medium") chipNode.classList.add('center-chip-medium');
   else chipNode.classList.add('center-chip-low');
+}
+
+const CENTER_EXPRESSION_ORDER = [
+  { key: 'body', label: 'Action Center' },
+  { key: 'heart', label: 'Feeling Center' },
+  { key: 'head', label: 'Thinking Center' },
+];
+const CENTER_LEVEL_SORT_RANK = { High: 0, Medium: 1, Low: 2, "N/A": 3 };
+
+function getCenterLevelSortRank(level) {
+  return CENTER_LEVEL_SORT_RANK[level] ?? CENTER_LEVEL_SORT_RANK["N/A"];
+}
+
+function buildSortedCenterExpressionRows(centerScoresRaw) {
+  const centerScores = centerScoresRaw && typeof centerScoresRaw === "object" ? centerScoresRaw : {};
+  return CENTER_EXPRESSION_ORDER.map((item, fallbackIndex) => {
+    const candidate = toFiniteScoreOrNull(centerScores?.[item.key]);
+    const hasValue = Number.isFinite(candidate);
+    const score = hasValue ? Math.max(0, Math.min(100, Math.round(candidate))) : null;
+    const level = hasValue ? scoreBandLabel(score) : "N/A";
+    return { ...item, fallbackIndex, score, level };
+  }).sort((a, b) => {
+    const levelOrder = getCenterLevelSortRank(a.level) - getCenterLevelSortRank(b.level);
+    if (levelOrder !== 0) return levelOrder;
+    if (Number.isFinite(a.score) && Number.isFinite(b.score)) {
+      return b.score - a.score || a.fallbackIndex - b.fallbackIndex;
+    }
+    if (Number.isFinite(a.score)) return -1;
+    if (Number.isFinite(b.score)) return 1;
+    return a.fallbackIndex - b.fallbackIndex;
+  });
+}
+
+function sortCenterExpressionRows(centerScoresRaw) {
+  const orderedRows = buildSortedCenterExpressionRows(centerScoresRaw);
+  console.log('[centers] sorted expression rows high-to-low', orderedRows.map((row) => ({
+    key: row.key,
+    label: row.label,
+    level: row.level,
+    score: row.score,
+  })));
+
+  const rowsContainer = document.getElementById('centerExpressionRows');
+  if (rowsContainer) {
+    orderedRows.forEach((row) => {
+      const rowNode = rowsContainer.querySelector(`[data-center-row="${row.key}"]`);
+      if (rowNode) rowsContainer.appendChild(rowNode);
+    });
+  }
+
+  const narrativesContainer = document.getElementById('centerExpressionNarratives');
+  if (narrativesContainer) {
+    orderedRows.forEach((row) => {
+      const rowNode = narrativesContainer.querySelector(`[data-center-row="${row.key}"]`);
+      if (rowNode) narrativesContainer.appendChild(rowNode);
+    });
+  }
 }
 
 const STRAIN_BREAKDOWN_ORDER = [
@@ -3071,6 +3250,243 @@ function renderStrainBreakdownRows(strainScoresRaw, fallbackStrainScores) {
     const chipClass = getStrainChipClass(valueLabel, row.label);
     return `<div class="brow"><div class="blbl">${row.label}</div><span class="chip ${chipClass}">${valueLabel}</span></div>`;
   }).join("");
+}
+
+function syncStrainOverviewCardHeight() {
+  const breakdownCard = document.getElementById('strainBreakdownCard');
+  const overallCard = document.querySelector('#strainWriteupCards .card');
+  if (!breakdownCard || !overallCard) return;
+  const targetHeight = Math.max(0, Math.round(overallCard.getBoundingClientRect().height));
+  if (!targetHeight) return;
+  breakdownCard.style.height = `${targetHeight}px`;
+}
+
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildAdaptiveListHtml(items) {
+  const rows = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!rows.length) return "";
+  return rows
+    .map((row) => {
+      const tone = String(row?.tone || "neu");
+      const symbol = String(row?.symbol || (tone === "neg" ? "!" : tone === "pos" ? "✓" : "•"));
+      const text = formatOptionalText(row?.text, "");
+      if (!text) return "";
+      return `<div class="ti"><div class="tic ${tone}">${escapeHtml(symbol)}</div><div class="tt">${escapeHtml(text)}</div></div>`;
+    })
+    .filter(Boolean)
+    .join("");
+}
+
+function buildAdaptiveBulletListHtml(items) {
+  const rows = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!rows.length) return "";
+  return rows.map((item) => `<li>${escapeHtml(formatOptionalText(item, ""))}</li>`).join("");
+}
+
+function buildAdaptiveTriggerGridHtml(items) {
+  const rows = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!rows.length) return "";
+  return rows
+    .map((item) => {
+      const title = formatOptionalText(item?.title, "");
+      const desc = formatOptionalText(item?.desc, "");
+      if (!title && !desc) return "";
+      return `<div class="tg-item"><div class="tg-title">${escapeHtml(title || "Trigger")}</div><div class="tg-desc">${escapeHtml(desc || "Not detected in assigned PDF.")}</div></div>`;
+    })
+    .filter(Boolean)
+    .join("");
+}
+
+function buildAdaptiveSectionCopy(report) {
+  const typeNumber = String(report?.typeNumber || "?");
+  const typeName = formatOptionalText(report?.typeName, "Profile");
+  const typeLabel = `Type ${typeNumber}`;
+  const instinct = formatOptionalText(report?.instinct, "Not detected");
+  const instinctCode = String(instinct).split("—")[0].trim() || instinct;
+  const keyword = formatOptionalText(report?.keyword, "core pattern");
+  const giftsDesc = formatOptionalText(report?.giftsDesc || report?.gifts, "You bring consistent strengths when pressure rises.");
+  const viceDesc = formatOptionalText(report?.viceDesc || report?.vice, "Pressure can narrow flexibility if left unchecked.");
+  const worldview = formatOptionalText(report?.worldview, "clear priorities and practical outcomes");
+  const focus = formatOptionalText(report?.focus, "what matters most in the moment");
+  const conflictStyle = formatOptionalText(report?.conflictStyle, "Responsive");
+  const thinkingStyle = String(formatOptionalText(report?.thinkingStyle, "Balanced")).toLowerCase();
+  const traits = Array.isArray(report?.traits) ? report.traits.filter(Boolean).slice(0, 4) : [];
+  while (traits.length < 4) {
+    traits.push(traits.length === 0 ? "Clarity under pressure" : traits.length === 1 ? "Commitment to outcomes" : traits.length === 2 ? "Strategic perspective" : "Reliable follow-through");
+  }
+
+  return {
+    strengths: [
+      { tone: "pos", symbol: "+", text: giftsDesc },
+      { tone: "pos", symbol: "+", text: `${typeLabel} tends to contribute ${traits[0].toLowerCase()} and ${traits[1].toLowerCase()}.` },
+      { tone: "pos", symbol: "+", text: `Your ${instinctCode} instinct often supports trust-building through direct engagement.` },
+      { tone: "pos", symbol: "+", text: `Your focus on ${focus.toLowerCase()} can create momentum when direction is clear.` },
+    ],
+    challenges: [
+      { tone: "neg", symbol: "!", text: viceDesc },
+      { tone: "neg", symbol: "!", text: `When pace is high, ${typeLabel} can over-index on ${keyword.toLowerCase()} and under-signal empathy.` },
+      { tone: "neg", symbol: "!", text: "Decisions made too quickly can reduce buy-in from key stakeholders." },
+      { tone: "neg", symbol: "!", text: "Recovery and reflection are required to avoid reactive loops." },
+    ],
+    blindSpotsLeft: [
+      { tone: "neg", symbol: "!", text: "Your intent and your impact may diverge under pressure." },
+      { tone: "neg", symbol: "!", text: `A ${thinkingStyle} thinking style can be read as distance when teammates need reassurance.` },
+    ],
+    blindSpotsRight: [
+      { tone: "neg", symbol: "!", text: `${conflictStyle} conflict responses may feel abrupt to slower-paced collaborators.` },
+      { tone: "neg", symbol: "!", text: "Naming assumptions out loud reduces misalignment and rework." },
+    ],
+    triggers: [
+      { title: "Loss of Clarity", desc: `Ambiguous priorities conflict with your worldview: ${worldview}` },
+      { title: "Slow Follow-Through", desc: "Unclear ownership or missed commitments can quickly elevate strain." },
+      { title: "Mixed Signals", desc: "Inconsistent communication can feel unsafe and inefficient." },
+      { title: "Decision Gridlock", desc: "Extended indecision often creates avoidable friction." },
+      { title: "Misaligned Expectations", desc: "When standards are implicit, trust and execution can drop." },
+    ],
+    leadershipIntroHtml: `<strong>Your ${typeLabel} (${typeName}) style often leads through ${keyword.toLowerCase()} and visible ownership.</strong> The growth edge is balancing speed with shared alignment and steady collaboration.`,
+    goalSummary: `Goal setting works best when priorities connect to ${focus.toLowerCase()} and measurable outcomes.`,
+    goalList: [
+      { tone: "pos", symbol: "✓", text: "Anchor goals to clear outcomes and ownership." },
+      { tone: "pos", symbol: "✓", text: "Set explicit check-points for progress and risk review." },
+      { tone: "neg", symbol: "!", text: "Reconfirm buy-in before moving from decision to execution." },
+    ],
+    planningSummary: "Planning is most effective when it preserves momentum and reduces ambiguity.",
+    planningDetail: "Use shorter planning cycles, clear dependencies, and visible decision checkpoints to keep execution aligned.",
+    delegationCopy: "Delegation improves when scope, authority boundaries, and follow-up cadence are explicit from the start.",
+    decisionList: [
+      { tone: "pos", symbol: "✓", text: "State the decision, rationale, and success criteria clearly." },
+      { tone: "neg", symbol: "!", text: "Invite dissent early to surface blind spots before commitment." },
+      { tone: "neu", symbol: "→", text: "Revisit assumptions quickly when data changes." },
+    ],
+    communicationPattern: [
+      `Communication style tends to reflect ${keyword.toLowerCase()} priorities.`,
+      "Preference for concise, actionable language.",
+      `A ${thinkingStyle} approach can emphasize efficiency over emotional context.`,
+      "Directness often increases under stress.",
+      "Clear role expectations improve collaboration quality.",
+      "Explicit empathy cues improve message reception.",
+    ],
+    communicationVerbal: [
+      { tone: "pos", symbol: "→", text: "You are often clear, focused, and outcome-oriented in meetings." },
+      { tone: "pos", symbol: "→", text: "You usually communicate priorities and constraints quickly." },
+      { tone: "neg", symbol: "!", text: "Compressed delivery can sound harsher than intended." },
+      { tone: "neg", symbol: "!", text: "Pausing to check understanding reduces downstream conflict." },
+    ],
+    communicationListening: [
+      { tone: "pos", symbol: "✓", text: "Listening improves when goals and context are explicit." },
+      { tone: "neg", symbol: "!", text: "Stress can narrow curiosity and shorten patience." },
+      { tone: "neg", symbol: "!", text: "Reflecting back what you heard helps others feel understood." },
+    ],
+    communicationFeedback: [
+      { tone: "neg", symbol: "!", text: "Lead with intent and impact before corrective points." },
+      { tone: "neg", symbol: "!", text: "Match intensity to the relationship and context." },
+      { tone: "pos", symbol: "→", text: "Pair direct feedback with one concrete support action." },
+    ],
+  };
+}
+
+function renderAdaptiveSectionCopy(report) {
+  const copy = buildAdaptiveSectionCopy(report || {});
+  setHtml('strengthsList', buildAdaptiveListHtml(copy.strengths));
+  setHtml('challengesList', buildAdaptiveListHtml(copy.challenges));
+  setHtml('blindSpotsLeftList', buildAdaptiveListHtml(copy.blindSpotsLeft));
+  setHtml('blindSpotsRightList', buildAdaptiveListHtml(copy.blindSpotsRight));
+  setHtml('triggersGrid', buildAdaptiveTriggerGridHtml(copy.triggers));
+
+  setHtml('leadershipIntroCopy', copy.leadershipIntroHtml);
+  setText('leadershipGoalSummary', copy.goalSummary);
+  setHtml('leadershipGoalList', buildAdaptiveListHtml(copy.goalList));
+  setText('leadershipPlanningSummary', copy.planningSummary);
+  setText('leadershipPlanningDetail', copy.planningDetail);
+  setText('leadershipDelegationCopy', copy.delegationCopy);
+  setHtml('leadershipDecisionList', buildAdaptiveListHtml(copy.decisionList));
+
+  setHtml('communicationPatternList', buildAdaptiveBulletListHtml(copy.communicationPattern));
+  setHtml('communicationVerbalList', buildAdaptiveListHtml(copy.communicationVerbal));
+  setHtml('communicationListeningList', buildAdaptiveListHtml(copy.communicationListening));
+  setHtml('communicationFeedbackList', buildAdaptiveListHtml(copy.communicationFeedback));
+}
+
+function renderIntegrationPanel(levelRaw) {
+  const normalizedLevel = normalizeIntegrationLevel(levelRaw);
+  const activeIndex = getIntegrationLevelIndex(normalizedLevel);
+  setText('integrationLevelHeading', normalizedLevel);
+  setText('integrationLevelNarrative', getIntegrationLevelNarrative(normalizedLevel));
+
+  const segmentsContainer = document.getElementById('integrationSegments');
+  if (segmentsContainer) {
+    const segments = Array.from(segmentsContainer.querySelectorAll('.int-seg'));
+    segments.forEach((segment, index) => {
+      segment.classList.toggle('act', index === activeIndex);
+    });
+  }
+
+  const labelsContainer = document.getElementById('integrationLabels');
+  if (labelsContainer) {
+    const labels = Array.from(labelsContainer.querySelectorAll('span'));
+    labels.forEach((labelNode, index) => {
+      const label = INTEGRATION_LEVELS[index] || String(labelNode?.dataset?.level || "").trim() || "";
+      labelNode.textContent = index === activeIndex ? `${label} \u25c0` : label;
+      labelNode.classList.toggle('active', index === activeIndex);
+    });
+  }
+
+  const signals = INTEGRATION_LEVEL_SIGNALS[normalizedLevel] || INTEGRATION_LEVEL_SIGNALS.Low;
+  setHtml(
+    'integrationSignals',
+    signals
+      .map(
+        (signal) =>
+          `<div class="ti"><div class="tic ${signal.tone}">!</div><div class="tt">${escapeHtml(signal.text)}</div></div>`,
+      )
+      .join(""),
+  );
+}
+
+function formatStrainCardDetailContent(detail, item) {
+  const normalizedDetail = formatOptionalText(detail, "Not detected in assigned PDF.");
+  if (item.key === "overall") {
+    return `<p style="font-size:13px;color:var(--text2)">${escapeHtml(normalizedDetail)}</p>`;
+  }
+
+  const rowItems = extractBulletItemsFromText(normalizedDetail, 6);
+  if (!rowItems.length) {
+    return `<p style="font-size:13px;color:var(--text2)">${escapeHtml(normalizedDetail)}</p>`;
+  }
+
+  const leadSentenceMatch = normalizedDetail.match(/^[^.?!]{8,220}[.?!]/);
+  const introCandidate = cleanPdfExtractedValue(leadSentenceMatch?.[0] || "");
+  const introText = /\bstrain\s+is\s+(?:LOW|MEDIUM|HIGH|MODERATE)\b/i.test(introCandidate) ? introCandidate : "";
+  const dedupedRows = Array.from(
+    new Set(
+      rowItems
+        .map((row) => cleanPdfExtractedValue(row || ""))
+        .filter(Boolean),
+    ),
+  ).filter((row) => row.toLowerCase() !== introText.toLowerCase());
+
+  if (!dedupedRows.length) {
+    return `<p style="font-size:13px;color:var(--text2)">${escapeHtml(normalizedDetail)}</p>`;
+  }
+
+  const introHtml = introText
+    ? `<p class="strain-detail-intro">${escapeHtml(introText)}</p>`
+    : "";
+  const rowsHtml = dedupedRows
+    .map(
+      (row) =>
+        `<div class="ti"><div class="tic inf strain-detail-row-icon">•</div><div class="tt strain-detail-row-text">${escapeHtml(row)}</div></div>`,
+    )
+    .join("");
+  return `${introHtml}<div class="tlist strain-detail-list">${rowsHtml}</div>`;
 }
 
 function getStrainCardVisual(level, category) {
@@ -4308,7 +4724,9 @@ function renderReportFromState(isExampleMode) {
   }
   setText('releaseValue', formatTypeLine(REPORT.release));
   setText('stretchValue', formatTypeLine(REPORT.stretch));
-  setText('integrationValue', REPORT.integration);
+  const normalizedIntegrationLevel = normalizeIntegrationLevel(REPORT.integration);
+  setText('integrationValue', normalizedIntegrationLevel);
+  renderIntegrationPanel(normalizedIntegrationLevel);
   setText('metaQuote', `"${REPORT.meta}"`);
   const coreFearValue = String(REPORT.coreFear || '').replace(/^basic\s*fear\s*:\s*/i, '').trim() || REPORT.coreFear;
   const coreFearDisplay = coreFearValue
@@ -4427,6 +4845,7 @@ function renderReportFromState(isExampleMode) {
   setCenterLevelChip('centerBodyChip', centerScores.body ?? null);
   setCenterLevelChip('centerHeartChip', centerScores.heart ?? null);
   setCenterLevelChip('centerHeadChip', centerScores.head ?? null);
+  sortCenterExpressionRows(centerScores);
 
   const strain = REPORT.strainScoresRaw || {};
   renderStrainBreakdownRows(strain, REPORT.strain);
@@ -4464,10 +4883,15 @@ function renderReportFromState(isExampleMode) {
           item.key === "overall"
             ? (overallStrainSummary || `Overall strain is ${String(item.level).toLowerCase()} in this report.`)
             : (narrativeMap.get(item.title.toLowerCase()) || getStrainCardFallbackText(item.title, item.level));
-        return `<div class="card"><div class="ct">${item.title} — ${item.level}</div><div class="chip ${visual.chipClass}" style="margin-bottom:10px">${visual.chipLabel}</div><p style="font-size:13px;color:var(--text2)">${detail}</p></div>`;
+        const detailBody = formatStrainCardDetailContent(detail, item);
+        return `<div class="card"><div class="ct">${item.title} — ${item.level}</div><div class="chip ${visual.chipClass}" style="margin-bottom:10px">${visual.chipLabel}</div>${detailBody}</div>`;
       })
       .join(""),
   );
+  syncStrainOverviewCardHeight();
+  if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(syncStrainOverviewCardHeight);
+  }
   console.log('[strain] rendered write-up cards', strainWriteupRows);
 
   console.log('[charts] updated all chart and bar datasets', {
@@ -4494,6 +4918,7 @@ function renderReportFromState(isExampleMode) {
   document.getElementById('languageTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('communication', 12, 'var(--blue)')}</span></span>Type ${REPORT.typeNumber} Communication Pattern`;
   setText('languageMeta', REPORT.meta);
   setText('refTypeTag', `Type ${REPORT.typeNumber} · ${String(REPORT.instinct || "").split(' — ')[0]}`);
+  renderAdaptiveSectionCopy(REPORT);
 
   const traitChips = document.getElementById('traitChips');
   traitChips.innerHTML = (REPORT.traits || []).map(trait => `<span class="chip cgn">${trait}</span>`).join('');
@@ -4659,4 +5084,5 @@ window.addEventListener('load', () => {
       }
     });
   }
+  window.addEventListener('resize', syncStrainOverviewCardHeight);
 });
