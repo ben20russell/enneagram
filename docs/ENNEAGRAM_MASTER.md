@@ -1,20 +1,9 @@
-# Enneagram Master Document
+# Enneagram Master Document (Offline)
 
-This repository's canonical Enneagram reference is:
+This document has been intentionally taken offline for active app/runtime usage.
 
-- Source PDF: `docs/sources/The Wisdom of the Enneagram. The Complete Guide to Psychological and Spiritual Growth for the Nine Personality Types by Don Richard Riso and Russ Hudson.pdf`
-- Extracted text: `docs/enneagram-master-source.txt`
+## Status
 
-## Ingestion Details
-
-- Ingested on: 2026-05-19
-- Method: `PyPDF2` text extraction
-- Page markers included as `===== PAGE N =====` for citation lookup
-
-## Usage Going Forward
-
-When answering Enneagram content questions in this project:
-
-- Treat this document as the primary source of truth.
-- Prefer quoting/paraphrasing from `docs/enneagram-master-source.txt`.
-- Include page numbers when practical by using the nearest `===== PAGE N =====` marker.
+- `ENNEAGRAM_MASTER.md` is not an active source for UI/report copy.
+- Runtime content should not pull from this document.
+- Keep this file for archival/reference only.

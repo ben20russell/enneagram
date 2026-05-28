@@ -1238,7 +1238,6 @@ async function ingestAssignedReportIntoDashboard(data) {
     typeName = typeName || cleanupTypeName(extractTypeNameFromPdfText(pdfText, detectedType));
     instinct = instinct || extractInstinctFromPdfText(pdfText);
     const canonicalSubtypeKeyword =
-      sanitizeSnippet(MASTER_SOURCE_COPY?.[String(detectedType || "")]?.keyword, null) ||
       sanitizeSnippet(REPORT_EXAMPLES?.[String(detectedType || "")]?.keyword, null);
     subtypeKeyword =
       extractSubtypeKeywordFromPdfText(pdfText, detectedType) ||
@@ -2094,144 +2093,6 @@ function normalizeReportPoints(report) {
   }
   return next;
 }
-
-const MASTER_SOURCE_COPY = {
-  '1': {
-    typeName: 'The Reformer',
-    coreFear: 'Basic Fear: being bad, corrupt, evil, or defective.',
-    gifts: 'To be good, balanced, and have integrity.',
-    giftsDesc: 'At healthy levels, Ones are wise, discerning, realistic, and principled.',
-    vice: 'Resentment (anger held in tension).',
-    viceDesc: 'When strain rises, perfectionism and criticism become substitutes for inner ease.',
-    worldview: 'Improvement matters; life is guided by principles, conscience, and responsibility.',
-    focus: 'Attention goes to errors, inconsistencies, and what should be improved.',
-    motivation1: 'Key motivations: to be right, to improve everything, and to avoid blame or censure.',
-    motivation2: 'Growth comes through acceptance, flexibility, and compassionate objectivity.',
-    deepTitle: 'Type 1 Core Pattern',
-    deep: ['Ones are ethically serious and often feel responsible for standards.', 'They seek integrity and self-control to avoid being wrong or out of line.', 'Their gift is principled reform grounded in realism, discipline, and fairness.', 'Their growth edge is releasing rigid self-judgment and relaxing into humanity.'],
-    meta: 'Let us do what is right and responsible.'
-  },
-  '2': {
-    typeName: 'The Helper',
-    coreFear: 'Basic Fear: being unwanted, unworthy of love, or not needed.',
-    gifts: 'To feel loved through genuine connection and care.',
-    giftsDesc: 'At healthy levels, Twos are generous, nurturing, and deeply encouraging.',
-    vice: 'Pride (inflating the helper role while bypassing personal needs).',
-    viceDesc: 'Under strain, helping can become possessive, flattering, or controlling.',
-    worldview: 'Love is earned through giving, service, and emotional availability.',
-    focus: 'Attention goes to other people needs, moods, and opportunities to help.',
-    motivation1: 'Key motivations: to be loved, to feel needed, and to avoid acknowledging personal need.',
-    motivation2: 'Growth comes through humility, boundaries, and direct expression of one own needs.',
-    deepTitle: 'Type 2 Core Pattern',
-    deep: ['Twos orient to relationship, warmth, and emotional support.', 'They often anticipate others needs before their own.', 'Their gift is heartfelt generosity that builds belonging and trust.', 'Their growth edge is receiving love without earning it through over-giving.'],
-    meta: 'I care, and I want to be close.'
-  },
-  '3': {
-    typeName: 'The Achiever',
-    coreFear: 'Basic Fear: being worthless, failing, or without value.',
-    gifts: 'To feel valuable through authentic excellence and contribution.',
-    giftsDesc: 'At healthy levels, Threes are self-assured, effective, and inspiring.',
-    vice: 'Deceit (over-identifying with image and performance).',
-    viceDesc: 'Under strain, adaptation can become image-management and emotional disconnection.',
-    worldview: 'Value is proven through achievement, effectiveness, and visible success.',
-    focus: 'Attention goes to goals, metrics, status signals, and what works quickly.',
-    motivation1: 'Key motivations: to be admired, to distinguish oneself, and to avoid failure.',
-    motivation2: 'Growth comes through truthfulness, inner stillness, and heart-level authenticity.',
-    deepTitle: 'Type 3 Core Pattern',
-    deep: ['Threes are adaptive, goal-focused, and highly productive.', 'They intuit social expectations and optimize for results.', 'Their gift is turning vision into measurable progress.', 'Their growth edge is valuing being over constant doing.'],
-    meta: 'Let us make this excellent and effective.'
-  },
-  '4': {
-    typeName: 'The Individualist',
-    coreFear: 'Basic Fear: having no identity or personal significance.',
-    gifts: 'To find authentic selfhood and meaningful depth.',
-    giftsDesc: 'At healthy levels, Fours are creative, emotionally honest, and deeply humane.',
-    vice: 'Envy (fixation on what seems missing).',
-    viceDesc: 'Under strain, mood, comparison, and withdrawal can eclipse appreciation.',
-    worldview: 'Depth, beauty, and authenticity matter more than conformity.',
-    focus: 'Attention goes to emotional nuance, longing, and the search for meaning.',
-    motivation1: 'Key motivations: to find themselves, to be authentic, and to avoid ordinariness.',
-    motivation2: 'Growth comes through grounded presence, gratitude, and disciplined creativity.',
-    deepTitle: 'Type 4 Core Pattern',
-    deep: ['Fours seek identity through emotional depth and personal meaning.', 'They are sensitive to atmosphere, aesthetics, and symbolic significance.', 'Their gift is transforming feeling into artistry and empathy.', 'Their growth edge is steady action beyond mood and comparison.'],
-    meta: 'I want what is real, meaningful, and true.'
-  },
-  '5': {
-    typeName: 'The Investigator',
-    coreFear: 'Basic Fear: being helpless, incapable, or overwhelmed.',
-    gifts: 'To be capable through understanding, mastery, and clarity.',
-    giftsDesc: 'At healthy levels, Fives are perceptive, innovative, and objective.',
-    vice: 'Avarice (withholding energy, time, and self).',
-    viceDesc: 'Under strain, retreat and over-detachment reduce contact with life and people.',
-    worldview: 'Resources are limited; understanding and boundaries preserve autonomy.',
-    focus: 'Attention goes to complexity, systems, and conserving inner resources.',
-    motivation1: 'Key motivations: to master knowledge, to remain independent, and to avoid depletion.',
-    motivation2: 'Growth comes through embodied participation, generosity, and trusting engagement.',
-    deepTitle: 'Type 5 Core Pattern',
-    deep: ['Fives seek security through knowledge, insight, and self-sufficiency.', 'They prefer depth and precision over superficial interaction.', 'Their gift is lucid analysis and original synthesis.', 'Their growth edge is entering life before certainty is complete.'],
-    meta: 'Give me space to observe and understand.'
-  },
-  '6': {
-    typeName: 'The Loyalist',
-    coreFear: 'Basic Fear: being without support, guidance, or security.',
-    gifts: 'To find dependable trust and courageous steadiness.',
-    giftsDesc: 'At healthy levels, Sixes are committed, responsible, and genuinely courageous.',
-    vice: 'Anxiety (persistent doubt and threat-scanning).',
-    viceDesc: 'Under strain, suspicion and over-preparation can undermine confidence.',
-    worldview: 'Risk is real; trust must be tested and earned.',
-    focus: 'Attention goes to uncertainty, contingencies, loyalties, and worst-case scenarios.',
-    motivation1: 'Key motivations: to have security, to find certainty, and to avoid being unprepared.',
-    motivation2: 'Growth comes through inner authority, grounded trust, and lived courage.',
-    deepTitle: 'Type 6 Core Pattern',
-    deep: ['Sixes seek reliable support in an uncertain world.', 'They test systems and people to establish trustworthiness.', 'Their gift is foresight, loyalty, and practical courage.', 'Their growth edge is acting from inner confidence instead of fear loops.'],
-    meta: 'Let us test this so we can trust it.'
-  },
-  '7': {
-    typeName: 'The Enthusiast',
-    coreFear: 'Basic Fear: being trapped in pain, deprivation, or limitation.',
-    gifts: 'To remain free, joyful, and fully alive.',
-    giftsDesc: 'At healthy levels, Sevens are appreciative, versatile, and exuberant.',
-    vice: 'Gluttony (insatiable pursuit of options and stimulation).',
-    viceDesc: 'Under strain, over-planning and distraction can avoid necessary pain.',
-    worldview: 'Life is rich with possibilities and should be explored widely.',
-    focus: 'Attention goes to options, opportunities, and positive future scenarios.',
-    motivation1: 'Key motivations: to maintain freedom, to keep options open, and to avoid suffering.',
-    motivation2: 'Growth comes through sobriety, presence, and sustained commitment.',
-    deepTitle: 'Type 7 Core Pattern',
-    deep: ['Sevens seek freedom through possibility and positive anticipation.', 'They reframe quickly and generate alternatives under pressure.', 'Their gift is optimism, innovation, and momentum.', 'Their growth edge is staying with difficulty long enough to integrate it.'],
-    meta: 'Let us keep possibility open and stay energized.'
-  },
-  '8': {
-    typeName: 'The Challenger',
-    coreFear: 'Basic Fear: being harmed, controlled, or violated.',
-    gifts: 'To protect themselves and shape reality through strength and justice.',
-    giftsDesc: 'At healthy levels, Eights are magnanimous, decisive, and protective.',
-    vice: 'Lust (excessive intensity and force).',
-    viceDesc: 'Under strain, intensity can become domination, impulsiveness, or retaliation.',
-    worldview: 'The world can be hard and unjust; strength protects what matters.',
-    focus: 'Attention goes to power, control, vulnerability, and immediate impact.',
-    motivation1: 'Key motivations: to be independent, to avoid weakness, and to protect their people.',
-    motivation2: 'Growth comes through restraint, tenderness, and conscious use of power.',
-    deepTitle: 'Type 8 Core Pattern',
-    deep: ['Eights seek autonomy and resist being controlled by others.', 'They move quickly, speak directly, and challenge what feels false or unjust.', 'Their gift is courageous leadership and fierce protection of the vulnerable.', 'Their growth edge is integrating softness without losing strength.'],
-    meta: 'Be direct and honest; no games.'
-  },
-  '9': {
-    typeName: 'The Peacemaker',
-    coreFear: 'Basic Fear: loss of connection, conflict, and fragmentation.',
-    gifts: 'To keep inner peace, harmony, and belonging.',
-    giftsDesc: 'At healthy levels, Nines are grounded, receptive, and deeply reassuring.',
-    vice: 'Sloth (inertia in priorities and self-forgetting).',
-    viceDesc: 'Under strain, avoidance and postponement replace decisive self-expression.',
-    worldview: 'Peace is preserved through inclusion, patience, and non-reactivity.',
-    focus: 'Attention goes to harmony, comfort, and minimizing tension.',
-    motivation1: 'Key motivations: to maintain peace, to avoid conflict, and to keep connection.',
-    motivation2: 'Growth comes through prioritizing one own agenda with clear and timely action.',
-    deepTitle: 'Type 9 Core Pattern',
-    deep: ['Nines seek wholeness and stability by reducing conflict.', 'They naturally hold multiple perspectives and mediate tension.', 'Their gift is calm presence that helps others regulate.', 'Their growth edge is active engagement and strong personal priorities.'],
-    meta: 'Let us keep this calm, connected, and workable.'
-  }
-};
 
 const BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE = {
   worldview: "The world is a tough and unjust place in which only the strong survive. Good things happen to those who take control.",
@@ -3712,18 +3573,7 @@ function getStrainCardVisual(level, category) {
 }
 
 function getStrainCardFallbackText(category, level) {
-  if (level === "N/A") return "Not detected in assigned PDF.";
-  const normalized = String(level || "Low").toLowerCase();
-  const templates = {
-    "Overall Strain": `Overall strain is currently ${normalized} across the report context.`,
-    "Vocational": `Vocational strain appears ${normalized}, based on work-related signals.`,
-    "Environmental": `Environmental strain appears ${normalized}, based on external context signals.`,
-    "Physical": `Physical strain appears ${normalized}, based on energy and body-load signals.`,
-    "Interpersonal": `Interpersonal strain appears ${normalized}, based on social and relational signals.`,
-    "Psychological": `Psychological strain appears ${normalized}, based on internal pressure markers.`,
-    "Happiness": `Happiness-related strain appears ${normalized} in the current report context.`,
-  };
-  return templates[category] || "Not detected in assigned PDF.";
+  return "Not detected in assigned PDF.";
 }
 
 function getStrainValueByKey(strainScoresRaw, fallbackStrainScores, key) {
@@ -5048,7 +4898,6 @@ function applyReport(typeId) {
     console.log("[report-switch] applyReport requested", normalizedTypeId);
     REPORT = normalizeReportPoints({
       ...(REPORT_EXAMPLES[normalizedTypeId] || REPORT_EXAMPLES['8']),
-      ...(MASTER_SOURCE_COPY[normalizedTypeId] || MASTER_SOURCE_COPY['8'])
     });
     lastAppliedExampleType = String(REPORT.typeNumber || "8");
     reflectionDeck = buildReflectionDeck(REPORT);
@@ -5229,6 +5078,7 @@ function buildGrowthCopyForDisplay(report) {
 }
 
 function renderReportFromState(isExampleMode) {
+  const missingAssignedPdfText = "Not detected in assigned PDF.";
   setText('typeBadge', REPORT.typeNumber);
   setText('headerSubtitle', `Type ${REPORT.typeNumber} · ${REPORT.instinct}`);
   setText('reportTitle', isExampleMode ? `Type ${REPORT.typeNumber} Example Report` : `Type ${REPORT.typeNumber} Assigned PDF Report`);
@@ -5464,83 +5314,82 @@ function renderReportFromState(isExampleMode) {
   document.getElementById('languageTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('communication', 12, 'var(--blue)')}</span></span>Type ${REPORT.typeNumber} Communication Pattern`;
   setText('languageMeta', REPORT.meta);
   setText('refTypeTag', `Type ${REPORT.typeNumber} · ${String(REPORT.instinct || "").split(' — ')[0]}`);
-  const adaptiveCopy = renderAdaptiveSectionCopy(REPORT);
+  renderAdaptiveSectionCopy(REPORT);
   const spreadsheetFocusesFromReport = REPORT.spreadsheetFocuses && typeof REPORT.spreadsheetFocuses === "object"
     ? REPORT.spreadsheetFocuses
     : {};
-  const spreadsheetFocusFallbacks = buildSpreadsheetFocusFallbacks(REPORT, adaptiveCopy);
-  const resolveSpreadsheetFocusText = (primaryText, fallbackText) => {
+  const resolveSpreadsheetFocusText = (primaryText) => {
     const primary = formatOptionalText(primaryText, "");
     if (primary && !isMissingExtractedText(primary)) return primary;
-    return formatOptionalText(fallbackText, "Not detected in assigned PDF.");
+    return missingAssignedPdfText;
   };
   setText(
     'motivationSummary',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.motivationSummary, spreadsheetFocusFallbacks.motivationSummary),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.motivationSummary),
   );
   setText(
     'instinctGoalSelfPres',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.selfPres, spreadsheetFocusFallbacks?.instinctGoals?.selfPres),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.selfPres),
   );
   setText(
     'instinctGoalSocial',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.social, spreadsheetFocusFallbacks?.instinctGoals?.social),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.social),
   );
   setText(
     'instinctGoalOneOnOne',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.oneOnOne, spreadsheetFocusFallbacks?.instinctGoals?.oneOnOne),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.oneOnOne),
   );
   setText(
     'developingAsCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.developingAsCopy, spreadsheetFocusFallbacks.developingAsCopy),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.developingAsCopy),
   );
   setText(
     'conflictResponseCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictResponseCopy, spreadsheetFocusFallbacks.conflictResponseCopy),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictResponseCopy),
   );
   setText(
     'conflictTriggeredCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictTriggeredCopy, spreadsheetFocusFallbacks.conflictTriggeredCopy),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictTriggeredCopy),
   );
   setText(
     'centeredDecisionCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.centeredDecisionCopy, spreadsheetFocusFallbacks.centeredDecisionCopy),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.centeredDecisionCopy),
   );
   setText(
     'decisionImpactCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionImpactCopy, spreadsheetFocusFallbacks.decisionImpactCopy),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionImpactCopy),
   );
   setText(
     'decisionStrainCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionStrainCopy, spreadsheetFocusFallbacks.decisionStrainCopy),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionStrainCopy),
   );
   setText(
     'strategicLeadershipCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.strategicLeadershipCopy, spreadsheetFocusFallbacks.strategicLeadershipCopy),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.strategicLeadershipCopy),
   );
   setText(
     'teamImpactCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.teamImpactCopy, spreadsheetFocusFallbacks.teamImpactCopy),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.teamImpactCopy),
   );
   setText(
     'interdependenceCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.interdependenceCopy, spreadsheetFocusFallbacks.interdependenceCopy),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.interdependenceCopy),
   );
   setText(
     'coachingRelationshipCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.coachingRelationshipCopy, spreadsheetFocusFallbacks.coachingRelationshipCopy),
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.coachingRelationshipCopy),
   );
   const bodyLanguageRows = Array.isArray(spreadsheetFocusesFromReport.bodyLanguageRows)
     ? spreadsheetFocusesFromReport.bodyLanguageRows.filter(Boolean)
     : [];
-  const resolvedBodyLanguageRows = bodyLanguageRows.length ? bodyLanguageRows : spreadsheetFocusFallbacks.bodyLanguageRows;
+  const resolvedBodyLanguageRows = bodyLanguageRows.length ? bodyLanguageRows : [missingAssignedPdfText];
   setHtml(
     'communicationBodyLanguageList',
     renderBodyLanguageRows(resolvedBodyLanguageRows) ||
       '<div class="ti"><div class="tic neu">•</div><div class="tt">Not detected in assigned PDF.</div></div>',
   );
   console.log('[spreadsheet-focus] rendered section focus hydration', {
-    source: bodyLanguageRows.length || Object.keys(spreadsheetFocusesFromReport).length ? "report-content" : "fallback",
+    source: bodyLanguageRows.length || Object.keys(spreadsheetFocusesFromReport).length ? "report-content" : "not-detected",
     hasMotivation: Boolean(spreadsheetFocusesFromReport.motivationSummary),
     hasInstinctGoals: Boolean(spreadsheetFocusesFromReport?.instinctGoals),
     bodyLanguageRows: resolvedBodyLanguageRows.length,
@@ -5553,18 +5402,17 @@ function renderReportFromState(isExampleMode) {
   const teamStagesFromReport = REPORT.teamStageBreakdown && typeof REPORT.teamStageBreakdown === "object"
     ? REPORT.teamStageBreakdown
     : {};
-  const teamStageFallback = adaptiveCopy?.teamStages || {};
-  const resolveTeamStageText = (primaryText, fallbackText) => {
+  const resolveTeamStageText = (primaryText) => {
     const primary = formatOptionalText(primaryText, "");
     if (primary && !isMissingExtractedText(primary)) return primary;
-    return formatOptionalText(fallbackText, "Not detected in assigned PDF.");
+    return missingAssignedPdfText;
   };
-  setText('teamStageForming', resolveTeamStageText(teamStagesFromReport.forming, teamStageFallback.forming));
-  setText('teamStageStorming', resolveTeamStageText(teamStagesFromReport.storming, teamStageFallback.storming));
-  setText('teamStageNorming', resolveTeamStageText(teamStagesFromReport.norming, teamStageFallback.norming));
-  setText('teamStagePerforming', resolveTeamStageText(teamStagesFromReport.performing, teamStageFallback.performing));
+  setText('teamStageForming', resolveTeamStageText(teamStagesFromReport.forming));
+  setText('teamStageStorming', resolveTeamStageText(teamStagesFromReport.storming));
+  setText('teamStageNorming', resolveTeamStageText(teamStagesFromReport.norming));
+  setText('teamStagePerforming', resolveTeamStageText(teamStagesFromReport.performing));
   console.log('[team-stage] rendered stage breakdown', {
-    source: Object.keys(teamStagesFromReport).length ? "report-content" : "adaptive-fallback",
+    source: Object.keys(teamStagesFromReport).length ? "report-content" : "not-detected",
     forming: Boolean(teamStagesFromReport.forming),
     storming: Boolean(teamStagesFromReport.storming),
     norming: Boolean(teamStagesFromReport.norming),
