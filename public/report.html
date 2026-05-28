@@ -176,6 +176,9 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .tg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.tg-item{background:var(--red-lt);border-left:3px solid var(--red);border-radius:var(--r-sm);padding:12px}.tg-title{font-size:12px;font-weight:600;color:var(--red);margin-bottom:3px}.tg-desc{font-size:12px;color:var(--text3);line-height:1.5}
 .ibox{background:var(--blue-lt);border-left:3px solid var(--blue);border-radius:var(--r-sm);padding:13px 15px}.ibox p{font-size:13px;color:var(--blue);line-height:1.6}
 .devbox{background:var(--gold-lt);border:1px solid rgba(154,110,26,.15);border-radius:var(--r);padding:18px}.devbox-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);margin-bottom:12px}.dev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.dev-item{background:rgba(255,255,255,.75);border-radius:var(--r-sm);padding:12px}.dev-item-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.dev-item p{font-size:12px;color:var(--text2);line-height:1.6}
+.dev-summary{font-size:13px;color:var(--text2);line-height:1.7;margin:0 0 12px}
+.team-stage-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:700px){.team-stage-grid{grid-template-columns:1fr}}
 .int-segs{display:flex;gap:4px;height:28px;margin:10px 0}.int-seg{flex:1;border-radius:4px;background:var(--surface3)}.int-seg.act{background:var(--red)}.int-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);letter-spacing:.04em}.int-labels .active{color:var(--text);font-weight:600}
 .rdrow{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}.rdrow:last-child{border-bottom:none}.rdname{font-size:13px;color:var(--text2);min-width:100px}.rdbar{flex:1;height:4px;background:var(--surface3);border-radius:100px;overflow:hidden;margin:0 12px}.rdfil{height:100%;border-radius:100px;background:var(--gold)}.rdscore{font-size:13px;font-weight:600;color:var(--text)}
 .stage{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px;margin-bottom:8px}.stage-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.sdot{width:8px;height:8px;border-radius:50%}
@@ -529,6 +532,11 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </div>
         </div>
 
+        <div class="card mb24" data-testid="motivation-card">
+          <div class="ct">Motivation</div>
+          <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0" id="motivationSummary">Not detected in assigned PDF.</p>
+        </div>
+
       </div>
 
       <div id="sec-centers" class="sec">
@@ -578,6 +586,17 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             </div>
           </div>
         </div>
+        <div class="card mb24" data-testid="instinct-goals-card">
+          <div class="ct">Instinctual Goals &amp; Development</div>
+          <div class="g3">
+            <div class="stage" data-testid="instinct-goal-self-pres-row"><div class="stage-head"><span class="chip cgn">SP</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="instinctGoalSelfPres">Not detected in assigned PDF.</p></div>
+            <div class="stage" data-testid="instinct-goal-social-row"><div class="stage-head"><span class="chip cb">SO</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="instinctGoalSocial">Not detected in assigned PDF.</p></div>
+            <div class="stage" data-testid="instinct-goal-one-on-one-row"><div class="stage-head"><span class="chip cg">SX</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="instinctGoalOneOnOne">Not detected in assigned PDF.</p></div>
+          </div>
+          <div class="div"></div>
+          <p style="font-size:13px;color:var(--text3);margin-bottom:6px"><strong>Developing As...</strong></p>
+          <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0" id="developingAsCopy">Not detected in assigned PDF.</p>
+        </div>
       </div>
 
       <div id="sec-strengths" class="sec">
@@ -626,6 +645,13 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             <div class="tg-item"><div class="tg-title">Excluded from decisions</div><div class="tg-desc">No input on matters significant to you.</div></div>
           </div>
         </div>
+        <div class="card mb24" data-testid="conflict-response-card">
+          <div class="ct">Conflict Response &amp; Triggered Pattern</div>
+          <p style="font-size:13px;color:var(--text3);margin-bottom:6px"><strong>Response to Conflict</strong></p>
+          <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0 0 12px" id="conflictResponseCopy">Not detected in assigned PDF.</p>
+          <p style="font-size:13px;color:var(--text3);margin-bottom:6px"><strong>What You Do When Triggered</strong></p>
+          <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0" id="conflictTriggeredCopy">Not detected in assigned PDF.</p>
+        </div>
       </div>
 
       <div id="sec-leadership" class="sec">
@@ -649,6 +675,46 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
         <div class="g2 mb24">
           <div class="card"><div class="ct">Delegation</div><p style="font-size:14px;color:var(--text2)" id="leadershipDelegationCopy">Once trust is established, you will delegate tasks, decisions and authority. If trust is thin, you are more likely to remain firmly in control.</p></div>
           <div class="card"><div class="ct">Decision Making</div><div class="tlist" id="leadershipDecisionList" data-testid="leadership-decision-list"><div class="ti"><div class="tic pos">✓</div><div class="tt">You move toward decisions quickly, boldly and with certainty.</div></div><div class="ti"><div class="tic neg">!</div><div class="tt">You may make unilateral decisions or come across that way.</div></div><div class="ti"><div class="tic neg">!</div><div class="tt">Your bold presentation can increase opposition rather than enroll people.</div></div></div></div>
+        </div>
+        <div class="card mb24" id="teamStageBreakdownCard" data-testid="team-stage-breakdown-card">
+          <div class="ct">Team Stage Breakdown (Forming · Storming · Norming · Performing)</div>
+          <p style="font-size:13px;color:var(--text3);margin-bottom:12px">How you are likely to interact across the four team maturity boundaries.</p>
+          <div class="team-stage-grid">
+            <div class="stage" data-testid="team-stage-forming-row"><div class="stage-head"><span class="chip cb">Forming</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="teamStageForming">Not detected in assigned PDF.</p></div>
+            <div class="stage" data-testid="team-stage-storming-row"><div class="stage-head"><span class="chip cg">Storming</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="teamStageStorming">Not detected in assigned PDF.</p></div>
+            <div class="stage" data-testid="team-stage-norming-row"><div class="stage-head"><span class="chip cgn">Norming</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="teamStageNorming">Not detected in assigned PDF.</p></div>
+            <div class="stage" data-testid="team-stage-performing-row"><div class="stage-head"><span class="chip cr">Performing</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="teamStagePerforming">Not detected in assigned PDF.</p></div>
+          </div>
+        </div>
+        <div class="g2 mb24">
+          <div class="card" data-testid="centered-decisions-card">
+            <div class="ct">Centered Decisions &amp; Style Impact</div>
+            <p style="font-size:13px;color:var(--text3);margin-bottom:6px"><strong>Centered Decisions</strong></p>
+            <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0 0 12px" id="centeredDecisionCopy">Not detected in assigned PDF.</p>
+            <p style="font-size:13px;color:var(--text3);margin-bottom:6px"><strong>Impact of Your Ennea Style</strong></p>
+            <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0" id="decisionImpactCopy">Not detected in assigned PDF.</p>
+          </div>
+          <div class="card" data-testid="decision-strain-card">
+            <div class="ct">Decision Strain Signal</div>
+            <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0" id="decisionStrainCopy">Not detected in assigned PDF.</p>
+          </div>
+        </div>
+        <div class="g2 mb24">
+          <div class="card" data-testid="strategic-leadership-card">
+            <div class="ct">Strategic Leadership</div>
+            <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0" id="strategicLeadershipCopy">Not detected in assigned PDF.</p>
+          </div>
+          <div class="card" data-testid="team-impact-card">
+            <div class="ct">Team Impact &amp; Interdependence</div>
+            <p style="font-size:13px;color:var(--text3);margin-bottom:6px"><strong>Your Impact on Team</strong></p>
+            <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0 0 12px" id="teamImpactCopy">Not detected in assigned PDF.</p>
+            <p style="font-size:13px;color:var(--text3);margin-bottom:6px"><strong>Interdependence and Team Role</strong></p>
+            <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0" id="interdependenceCopy">Not detected in assigned PDF.</p>
+          </div>
+        </div>
+        <div class="card mb24" data-testid="coaching-relationship-card">
+          <div class="ct">Coaching Relationship</div>
+          <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0" id="coachingRelationshipCopy">Not detected in assigned PDF.</p>
         </div>
       </div>
 
@@ -684,6 +750,12 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
         <div class="g2 mb24">
           <div class="card"><div class="ct">Listening</div><div class="tlist" id="communicationListeningList" data-testid="communication-listening-list"><div class="ti"><div class="tic pos">✓</div><div class="tt">You listen well when people are being honest and fair.</div></div><div class="ti"><div class="tic neg">!</div><div class="tt">Presence may intimidate people and make vulnerability harder for them.</div></div><div class="ti"><div class="tic neg">!</div><div class="tt">You react strongly to blame, hidden agendas, or vague communication.</div></div></div></div>
           <div class="card"><div class="ct">Giving &amp; Receiving Feedback</div><div class="tlist" id="communicationFeedbackList" data-testid="communication-feedback-list"><div class="ti"><div class="tic neg">!</div><div class="tt">Be careful not to jump right into feedback with too much intensity.</div></div><div class="ti"><div class="tic neg">!</div><div class="tt">At low integration, feedback can trigger defending, anger, or a need to control the conversation.</div></div><div class="ti"><div class="tic pos">→</div><div class="tt">A more regulated body and explicit positive regard can change the outcome dramatically.</div></div></div></div>
+        </div>
+        <div class="card mb24" data-testid="body-language-card">
+          <div class="ct">Body Language</div>
+          <div class="tlist" id="communicationBodyLanguageList" data-testid="communication-body-language-list">
+            <div class="ti"><div class="tic neu">•</div><div class="tt">Not detected in assigned PDF.</div></div>
+          </div>
         </div>
 
         <div class="card mb24">
@@ -802,9 +874,17 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </div>
         </div>
 
-        <div class="devbox mb24">
+        <div class="devbox mb24" id="devExerciseComponent" data-testid="dev-exercise-component">
+          <div class="devbox-title">Development Exercises</div>
+          <p class="dev-summary" id="devExerciseSummary">Not detected in assigned PDF.</p>
+          <div class="dev-grid" id="devExercisePaths" data-testid="dev-exercise-paths">
+            <div class="dev-item"><div class="dev-item-title">Growth Path 1</div><p>Not detected in assigned PDF.</p></div>
+            <div class="dev-item"><div class="dev-item-title">Growth Path 2</div><p>Not detected in assigned PDF.</p></div>
+            <div class="dev-item"><div class="dev-item-title">Growth Path 3</div><p>Not detected in assigned PDF.</p></div>
+          </div>
+          <div class="div"></div>
           <div class="devbox-title">Development Exercise Library</div>
-          <div class="dev-grid" id="developmentExercisesList">
+          <div class="dev-grid" id="developmentExercisesList" data-testid="development-exercises-list">
             <div class="dev-item"><div class="dev-item-title">Exercise 1</div><p>Not detected in assigned PDF.</p></div>
             <div class="dev-item"><div class="dev-item-title">Exercise 2</div><p>Not detected in assigned PDF.</p></div>
             <div class="dev-item"><div class="dev-item-title">Exercise 3</div><p>Not detected in assigned PDF.</p></div>

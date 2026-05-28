@@ -1408,6 +1408,14 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractDevelopmentExercisesFromReportContent(parsedProfile),
       extractDevelopmentExercises(pdfText),
     );
+    const spreadsheetFocuses = mergeSpreadsheetSectionFocuses(
+      extractSpreadsheetSectionFocusesFromReportContent(parsedProfile),
+      extractSpreadsheetSectionFocusesFromPdfText(pdfText),
+    );
+    const teamStageBreakdown = mergeTeamStageBreakdown(
+      extractTeamStageBreakdownFromReportContent(parsedProfile),
+      extractTeamStageBreakdownFromPdfText(pdfText),
+    );
     const dataQualityDiagnostics = buildDataQualityDiagnostics({
       parsedProfile,
       parseDiagnostics: data?.parseDiagnostics || null,
@@ -1458,6 +1466,8 @@ async function ingestAssignedReportIntoDashboard(data) {
       strainQualitativeWriteups,
       overallStrainSummary,
       developmentExercises,
+      spreadsheetFocuses,
+      teamStageBreakdown,
       instinctScoresRaw,
       centerScoresRaw,
       strainScoresRaw,
@@ -3390,7 +3400,162 @@ function buildAdaptiveSectionCopy(report) {
       { tone: "neg", symbol: "!", text: "Match intensity to the relationship and context." },
       { tone: "pos", symbol: "→", text: "Pair direct feedback with one concrete support action." },
     ],
+    teamStages: {
+      forming: `In Forming, ${typeLabel} often establishes direction quickly by clarifying standards, role ownership, and early momentum.`,
+      storming: `In Storming, your ${keyword.toLowerCase()} style can surface conflict fast; naming intent and inviting dissent keeps tension productive.`,
+      norming: `In Norming, trust grows when you translate ${focus.toLowerCase()} into shared rituals, clear handoffs, and explicit accountability.`,
+      performing: `In Performing, your strengths compound when pace stays high but collaboration remains visible through delegated authority and feedback loops.`,
+    },
   };
+}
+
+function buildDevExercisePathHtml(paths) {
+  const safePaths = Array.isArray(paths) ? paths.filter(Boolean) : [];
+  if (!safePaths.length) return "";
+  return safePaths
+    .map((path, index) => {
+      const title = formatOptionalText(path?.title, `Growth Path ${index + 1}`);
+      const text = formatOptionalText(path?.text, "Not detected in assigned PDF.");
+      const source = formatOptionalText(path?.source, "Context");
+      return `<div class="dev-item"><div class="dev-item-title">${escapeHtml(title)}</div><p>${escapeHtml(text)}</p><div class="subh" style="margin:8px 0 0">${escapeHtml(source)}</div></div>`;
+    })
+    .join("");
+}
+
+function buildDevExerciseComponentData(report) {
+  const typeLabel = `Type ${String(report?.typeNumber || "?")}`;
+  const integrationLevel = normalizeIntegrationLevel(report?.integration);
+  const overallStrainDirect = toFiniteScoreOrNull(report?.strainScoresRaw?.overall);
+  const fallbackStrainValues = Array.isArray(report?.strain)
+    ? report.strain.map((value) => toFiniteScoreOrNull(value)).filter((value) => Number.isFinite(value))
+    : [];
+  const overallStrainScore = Number.isFinite(overallStrainDirect)
+    ? overallStrainDirect
+    : (fallbackStrainValues.length
+        ? Math.round(fallbackStrainValues.reduce((acc, value) => acc + Number(value || 0), 0) / fallbackStrainValues.length)
+        : null);
+  const overallStrainLevel = Number.isFinite(overallStrainScore) ? scoreBandLabel(overallStrainScore) : "Medium";
+
+  const integrationPriority = {
+    "Very Low": "Start with regulation and short daily reset rituals before pushing performance targets.",
+    Low: "Build steadier self-observation so reactivity does not drive decisions under pressure.",
+    Moderate: "Strengthen consistency by linking insight to repeatable weekly behavioral commitments.",
+    High: "Maintain growth by scaling reflective practices into team-level habits and mentoring.",
+    "Very High": "Consolidate mastery through service, teaching, and deliberate recovery cycles.",
+  };
+  const strainPriority = {
+    High: "Protect recovery windows, lower cognitive load, and de-escalate commitments that are not essential.",
+    Medium: "Use rhythm-based recovery and one deliberate check-in each day to prevent stress buildup.",
+    Low: "Preserve energy gains with light maintenance habits and intentional long-range planning.",
+  };
+
+  const extractedExercises = Array.isArray(report?.developmentExercises) ? report.developmentExercises : [];
+  const extractedPaths = extractedExercises
+    .map((entry, index) => {
+      const title = formatOptionalText(entry?.title, `Exercise ${index + 1}`);
+      const text = formatOptionalText(entry?.text || entry, "");
+      if (!text || isMissingExtractedText(text)) return null;
+      return {
+        title,
+        text,
+        source: "Extracted from assigned PDF",
+      };
+    })
+    .filter(Boolean);
+
+  const generatedPaths = [
+    {
+      title: "Integration Stabilizer",
+      text: integrationPriority[integrationLevel] || integrationPriority.Moderate,
+      source: `Integration signal: ${integrationLevel.toUpperCase()}`,
+    },
+    {
+      title: "Strain Regulator",
+      text: strainPriority[overallStrainLevel] || strainPriority.Medium,
+      source: `Overall strain signal: ${overallStrainLevel.toUpperCase()}${Number.isFinite(overallStrainScore) ? ` (${overallStrainScore})` : ""}`,
+    },
+    {
+      title: "Applied Leadership Loop",
+      text: "Close each week by naming one behavior to stop, one to continue, and one collaborative behavior to increase.",
+      source: `${typeLabel} execution practice`,
+    },
+  ];
+
+  const mergedPaths = [...extractedPaths, ...generatedPaths];
+  const deduped = [];
+  const seenTexts = new Set();
+  for (const item of mergedPaths) {
+    const key = normalizeExtractedText(item?.text || "").toLowerCase();
+    if (!key || seenTexts.has(key)) continue;
+    seenTexts.add(key);
+    deduped.push(item);
+    if (deduped.length >= 6) break;
+  }
+
+  const summary = `${typeLabel} growth path currently prioritizes ${integrationLevel.toUpperCase()} integration behaviors with ${overallStrainLevel.toUpperCase()} strain recovery tactics.`;
+  console.log("[dev-exercise] built component data", {
+    typeLabel,
+    integrationLevel,
+    overallStrainScore,
+    overallStrainLevel,
+    extractedExerciseCount: extractedPaths.length,
+    renderedPathCount: deduped.length,
+  });
+  return {
+    summary,
+    paths: deduped,
+  };
+}
+
+function buildSpreadsheetFocusFallbacks(report, adaptiveCopy = {}) {
+  const centerLabel = formatOptionalText(report?.centreOfIntelligence, "current center");
+  const integrationLevel = normalizeIntegrationLevel(report?.integration);
+  const fallbackBodyLanguageRows = [
+    "Posture and tone often intensify when urgency rises.",
+    "Deliberate pacing and softer delivery improve receptivity.",
+    "Visible self-regulation increases trust in high-stakes dialogue.",
+  ];
+  return {
+    motivationSummary: firstPresentSnippet(
+      [report?.motivation1, report?.motivation2],
+      "Motivation details were not detected in the assigned PDF.",
+    ),
+    instinctGoals: {
+      selfPres: "Self-Preservation focuses on security, practical stability, and resource stewardship.",
+      social: "Social focuses on contribution, belonging, and role within the wider group.",
+      oneOnOne: "One-on-One focuses on intensity, attraction, and depth in key relationships.",
+    },
+    developingAsCopy: firstPresentSnippet(
+      [report?.motivation2, report?.giftsDesc],
+      "Development guidance was not detected in the assigned PDF.",
+    ),
+    bodyLanguageRows: fallbackBodyLanguageRows,
+    conflictResponseCopy: `Conflict response often reflects your ${formatOptionalText(report?.conflictStyle, "adaptive")} style under pressure.`,
+    conflictTriggeredCopy: "When triggered, slowing the reaction cycle and naming impact improves outcomes.",
+    centeredDecisionCopy: `Decisions often center through your ${centerLabel} perspective before balancing the other centers.`,
+    decisionImpactCopy: `Your style can influence decisions through ${formatOptionalText(report?.focus, "focused pattern recognition")} and fast priority weighting.`,
+    decisionStrainCopy: `At ${integrationLevel.toUpperCase()} integration, strain effects can amplify speed and certainty while reducing collaboration signals.`,
+    strategicLeadershipCopy: formatOptionalText(
+      adaptiveCopy?.leadershipIntroHtml
+        ? String(adaptiveCopy.leadershipIntroHtml).replace(/<[^>]+>/g, " ")
+        : "",
+      "Strategic leadership guidance was not detected in the assigned PDF.",
+    ),
+    teamImpactCopy: "Team impact tends to be strongest when direction is clear, explicit, and tied to shared outcomes.",
+    interdependenceCopy: "Interdependence improves when ownership is explicit, handoffs are visible, and feedback loops stay active.",
+    coachingRelationshipCopy: "Coaching relationships strengthen through direct expectations, reflective listening, and paced challenge.",
+  };
+}
+
+function renderBodyLanguageRows(rows) {
+  const safeRows = Array.isArray(rows) ? rows.filter(Boolean) : [];
+  return buildAdaptiveListHtml(
+    safeRows.map((text) => ({
+      tone: "neu",
+      symbol: "•",
+      text: formatOptionalText(text, "Not detected in assigned PDF."),
+    })),
+  );
 }
 
 function renderAdaptiveSectionCopy(report) {
@@ -3413,6 +3578,12 @@ function renderAdaptiveSectionCopy(report) {
   setHtml('communicationVerbalList', buildAdaptiveListHtml(copy.communicationVerbal));
   setHtml('communicationListeningList', buildAdaptiveListHtml(copy.communicationListening));
   setHtml('communicationFeedbackList', buildAdaptiveListHtml(copy.communicationFeedback));
+
+  setText('teamStageForming', formatOptionalText(copy.teamStages?.forming, "Not detected in assigned PDF."));
+  setText('teamStageStorming', formatOptionalText(copy.teamStages?.storming, "Not detected in assigned PDF."));
+  setText('teamStageNorming', formatOptionalText(copy.teamStages?.norming, "Not detected in assigned PDF."));
+  setText('teamStagePerforming', formatOptionalText(copy.teamStages?.performing, "Not detected in assigned PDF."));
+  return copy;
 }
 
 function renderIntegrationPanel(levelRaw) {
@@ -4163,9 +4334,15 @@ function getReportContentPages(parsedProfile) {
 }
 
 const PDF_PAGE_ANCHORS = {
-  coreType: [8],
-  subtypesInstincts: [10],
-  centersOfExpression: [12, 13],
+  coreType: [6, 7, 8, 9],
+  subtypesInstincts: [10, 11],
+  centersOfExpression: [12, 13, 14],
+  decisionMaking: [32, 33, 34],
+  leadershipManagement: [35, 36, 37, 38],
+  teamBehaviour: [39, 40, 41],
+  coachingRelationship: [42],
+  givingReceivingFeedback: [26, 27],
+  conflictTriggers: [30, 31],
   selfAwarenessIntegration: [16, 17],
   strainProfile: {
     overall: [18],
@@ -4301,6 +4478,290 @@ function extractFeedbackGuideFromReportContent(parsedProfile) {
     });
   }
   return rows;
+}
+
+function extractTeamStageSnippet(text, stage, nextStages = []) {
+  const normalized = normalizeExtractedText(text || "");
+  if (!normalized || !stage) return null;
+
+  const boundaryStages = Array.isArray(nextStages) ? nextStages.filter(Boolean) : [];
+  const boundaryPattern = boundaryStages.length
+    ? `${boundaryStages.map((value) => buildFlexiblePhrasePattern(value)).join("|")}|coaching\\s*relationship|strategic\\s*leadership|decision\\s*making|$`
+    : "coaching\\s*relationship|strategic\\s*leadership|decision\\s*making|$";
+
+  const blockPattern = new RegExp(
+    `${buildFlexiblePhrasePattern(stage)}\\s*[:\\-]?\\s*([\\s\\S]{22,840}?)(?=\\s*(?:${boundaryPattern}))`,
+    "i",
+  );
+  const blockMatch = normalized.match(blockPattern);
+  const direct = cleanPdfExtractedValue(blockMatch?.[1] || "");
+  if (direct) return direct;
+
+  const fallback = extractSnippetFromLabels(normalized, [stage]);
+  return cleanPdfExtractedValue(fallback || "") || null;
+}
+
+function extractTeamStageBreakdownFromPdfText(pdfText) {
+  const normalized = normalizeExtractedText(pdfText || "");
+  if (!normalized) return null;
+  const stageLabels = ["Forming", "Storming", "Norming", "Performing"];
+  const lowerPriorityBlockMatch = normalized.match(
+    /Team\s*Behaviour[\s\S]{36,3600}(?=\b(?:Coaching\s*Relationship|Strategic\s*Leadership|Feedback\s*Guide|$))/i,
+  );
+  const block = lowerPriorityBlockMatch?.[0] || normalized;
+
+  const result = {
+    forming: extractTeamStageSnippet(block, stageLabels[0], stageLabels.slice(1)),
+    storming: extractTeamStageSnippet(block, stageLabels[1], stageLabels.slice(2)),
+    norming: extractTeamStageSnippet(block, stageLabels[2], stageLabels.slice(3)),
+    performing: extractTeamStageSnippet(block, stageLabels[3], []),
+  };
+  if (Object.values(result).every((value) => !value)) return null;
+  return result;
+}
+
+function extractTeamStageBreakdownFromReportContent(parsedProfile) {
+  const teamSection = getSectionByTitle(parsedProfile, (title) =>
+    /team\s*behavio[u]?r|team\s*dynamics|forming|storming|norming|performing/i.test(title),
+  );
+  const text = normalizeExtractedText(
+    [
+      getSectionCompositeText(parsedProfile, teamSection),
+      getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.teamBehaviour),
+    ].join(" "),
+  );
+  if (!text) return null;
+
+  const stageLabels = ["Forming", "Storming", "Norming", "Performing"];
+  const result = {
+    forming: extractTeamStageSnippet(text, stageLabels[0], stageLabels.slice(1)),
+    storming: extractTeamStageSnippet(text, stageLabels[1], stageLabels.slice(2)),
+    norming: extractTeamStageSnippet(text, stageLabels[2], stageLabels.slice(3)),
+    performing: extractTeamStageSnippet(text, stageLabels[3], []),
+  };
+  console.log("[team-stage] extracted stage snippets from structured content", {
+    hasForming: Boolean(result.forming),
+    hasStorming: Boolean(result.storming),
+    hasNorming: Boolean(result.norming),
+    hasPerforming: Boolean(result.performing),
+  });
+  if (Object.values(result).every((value) => !value)) return null;
+  return result;
+}
+
+function mergeTeamStageBreakdown(structuredBreakdown, pdfBreakdown) {
+  const structured = structuredBreakdown && typeof structuredBreakdown === "object" ? structuredBreakdown : {};
+  const pdf = pdfBreakdown && typeof pdfBreakdown === "object" ? pdfBreakdown : {};
+  const fallback = "Not detected in assigned PDF.";
+  return {
+    forming: firstPresentSnippet([structured.forming, pdf.forming], fallback),
+    storming: firstPresentSnippet([structured.storming, pdf.storming], fallback),
+    norming: firstPresentSnippet([structured.norming, pdf.norming], fallback),
+    performing: firstPresentSnippet([structured.performing, pdf.performing], fallback),
+  };
+}
+
+function extractSpreadsheetFocusSourceText(parsedProfile, options = {}) {
+  const safeOptions = options && typeof options === "object" ? options : {};
+  const sectionMatchers = Array.isArray(safeOptions.sectionMatchers) ? safeOptions.sectionMatchers : [];
+  const pageAnchors = Array.isArray(safeOptions.pageAnchors) ? safeOptions.pageAnchors : [];
+  const sections = getReportContentSections(parsedProfile);
+  const sectionText = sections
+    .filter((section) => {
+      if (!sectionMatchers.length) return false;
+      const sectionId = String(section?.sectionId || "").trim().toLowerCase();
+      const sectionTitle = String(section?.sectionTitle || section?.title || "").trim().toLowerCase();
+      return sectionMatchers.some((matcher) => {
+        if (matcher instanceof RegExp) return matcher.test(sectionTitle) || matcher.test(sectionId);
+        const keyword = String(matcher || "").trim().toLowerCase();
+        if (!keyword) return false;
+        return sectionTitle.includes(keyword) || sectionId.includes(keyword);
+      });
+    })
+    .map((section) => getSectionCompositeText(parsedProfile, section))
+    .filter(Boolean)
+    .join(" ");
+
+  const pageText = getPageAnchoredText(parsedProfile, pageAnchors);
+  return normalizeExtractedText(`${sectionText} ${pageText}`);
+}
+
+function extractSpreadsheetSnippetFromText(rawText, labels = [], maxLength = 420) {
+  const normalized = normalizeExtractedText(rawText || "");
+  if (!normalized) return null;
+  const labelMatches = Array.isArray(labels) ? labels : [];
+  for (const label of labelMatches) {
+    const snippet = cleanPdfExtractedValue(extractSnippetFromLabels(normalized, [label]) || "");
+    if (snippet) return compactInsightSnippet(snippet, maxLength);
+  }
+  return compactInsightSnippet(normalized, maxLength);
+}
+
+function extractInstinctGoalDefinitions(rawText) {
+  const normalized = normalizeExtractedText(rawText || "");
+  if (!normalized) return null;
+  const segmentFor = (labels, stopLabels = []) => {
+    const startPattern = labels.map((value) => buildFlexiblePhrasePattern(value)).join("|");
+    const stopPattern = stopLabels.length
+      ? stopLabels.map((value) => buildFlexiblePhrasePattern(value)).join("|")
+      : "$";
+    const match = normalized.match(
+      new RegExp(`(?:${startPattern})\\s*[:\\-]?\\s*([\\s\\S]{18,360}?)(?=\\s*(?:${stopPattern}))`, "i"),
+    );
+    const extracted = cleanPdfExtractedValue(match?.[1] || "");
+    return extracted ? compactInsightSnippet(extracted, 240) : null;
+  };
+
+  const social = segmentFor(["Social", "SO"], ["Self-Preservation", "Self Preservation", "One-on-One", "Sexual", "SX"]);
+  const selfPres = segmentFor(["Self-Preservation", "Self Preservation", "SP"], ["Social", "One-on-One", "Sexual", "SX"]);
+  const oneOnOne = segmentFor(["One-on-One", "One to One", "Sexual", "SX"], ["Social", "Self-Preservation", "Self Preservation", "SP"]);
+  if (!social && !selfPres && !oneOnOne) return null;
+  return { social, selfPres, oneOnOne };
+}
+
+function extractBodyLanguageRowsFromText(rawText) {
+  const normalized = normalizeExtractedText(rawText || "");
+  if (!normalized) return [];
+  const bodyBlock = normalized.match(
+    /Body\s*Language[\s\S]{18,640}(?=\b(?:Listening|Giving\s*&?\s*Receiving|Feedback|Meta[-\s]?Message|$))/i,
+  );
+  const source = bodyBlock?.[0] || normalized;
+  const bulletRows = extractBulletItemsFromText(source, 6)
+    .map((row) => cleanPdfExtractedValue(row || ""))
+    .filter(Boolean)
+    .map((row) => compactInsightSnippet(row, 210));
+  if (bulletRows.length) return Array.from(new Set(bulletRows)).slice(0, 6);
+
+  const sentenceRows = (source.match(/[^.!?]{14,240}(?:[.!?]|$)/g) || [])
+    .map((sentence) => cleanPdfExtractedValue(sentence))
+    .filter((sentence) => /\b(body|posture|eye\s*contact|tone|gesture|facial|presence)\b/i.test(sentence))
+    .slice(0, 6)
+    .map((row) => compactInsightSnippet(row, 210));
+  return Array.from(new Set(sentenceRows));
+}
+
+function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
+  const coreTypeText = extractSpreadsheetFocusSourceText(parsedProfile, {
+    sectionMatchers: [/core/, /type/],
+    pageAnchors: PDF_PAGE_ANCHORS.coreType,
+  });
+  const subtypesText = extractSpreadsheetFocusSourceText(parsedProfile, {
+    sectionMatchers: [/subtype/, /instinct/, /27\s*subtypes/],
+    pageAnchors: PDF_PAGE_ANCHORS.subtypesInstincts,
+  });
+  const communicationText = extractSpreadsheetFocusSourceText(parsedProfile, {
+    sectionMatchers: [/communication/, /feedback/],
+    pageAnchors: PDF_PAGE_ANCHORS.communication,
+  });
+  const conflictText = extractSpreadsheetFocusSourceText(parsedProfile, {
+    sectionMatchers: [/conflict/, /trigger/],
+    pageAnchors: PDF_PAGE_ANCHORS.conflictTriggers,
+  });
+  const decisionText = extractSpreadsheetFocusSourceText(parsedProfile, {
+    sectionMatchers: [/decision/],
+    pageAnchors: PDF_PAGE_ANCHORS.decisionMaking,
+  });
+  const leadershipText = extractSpreadsheetFocusSourceText(parsedProfile, {
+    sectionMatchers: [/leadership/, /management/, /strategic/],
+    pageAnchors: PDF_PAGE_ANCHORS.leadershipManagement,
+  });
+  const teamText = extractSpreadsheetFocusSourceText(parsedProfile, {
+    sectionMatchers: [/team\s*behavio[u]?r/, /team\s*dynamics/, /forming/, /storming/, /norming/, /performing/],
+    pageAnchors: PDF_PAGE_ANCHORS.teamBehaviour,
+  });
+  const coachingText = extractSpreadsheetFocusSourceText(parsedProfile, {
+    sectionMatchers: [/coaching\s*relationship/, /coaching/],
+    pageAnchors: PDF_PAGE_ANCHORS.coachingRelationship,
+  });
+
+  const focused = {
+    motivationSummary: extractSpreadsheetSnippetFromText(coreTypeText, ["Motivation", "Key motivations", "motivated"]),
+    instinctGoals: extractInstinctGoalDefinitions(subtypesText),
+    developingAsCopy: extractSpreadsheetSnippetFromText(subtypesText, ["Developing as", "Development", "growth edge"]),
+    bodyLanguageRows: extractBodyLanguageRowsFromText(communicationText),
+    conflictResponseCopy: extractSpreadsheetSnippetFromText(conflictText, ["Response to Conflict", "conflict response"]),
+    conflictTriggeredCopy: extractSpreadsheetSnippetFromText(conflictText, ["What you do when triggered", "when triggered", "triggered"]),
+    centeredDecisionCopy: extractSpreadsheetSnippetFromText(decisionText, ["Centered Decisions", "centered decisions"]),
+    decisionImpactCopy: extractSpreadsheetSnippetFromText(decisionText, ["Impact of your Ennea style", "Impact of your Enneagram style", "Impact of your style"]),
+    decisionStrainCopy: extractSpreadsheetSnippetFromText(decisionText, ["Strain", "Level strain", "decision strain"]),
+    strategicLeadershipCopy: extractSpreadsheetSnippetFromText(leadershipText, ["Strategic Leadership", "Visioning", "Alignment", "Change Management"]),
+    teamImpactCopy: extractSpreadsheetSnippetFromText(teamText, ["Your Impact on Team", "Impact on Team"]),
+    interdependenceCopy: extractSpreadsheetSnippetFromText(teamText, ["Interdependence and Team Role", "Interdependence", "Team Role"]),
+    coachingRelationshipCopy: extractSpreadsheetSnippetFromText(coachingText, ["Coaching Relationship", "coaching relationship"]),
+  };
+  console.log("[spreadsheet-focus] extracted structured section focuses", {
+    hasMotivation: Boolean(focused.motivationSummary),
+    hasInstinctGoals: Boolean(focused.instinctGoals),
+    bodyLanguageRows: focused.bodyLanguageRows.length,
+    hasConflictResponse: Boolean(focused.conflictResponseCopy),
+    hasCenteredDecision: Boolean(focused.centeredDecisionCopy),
+    hasStrategicLeadership: Boolean(focused.strategicLeadershipCopy),
+    hasTeamImpact: Boolean(focused.teamImpactCopy),
+    hasCoachingRelationship: Boolean(focused.coachingRelationshipCopy),
+  });
+  return focused;
+}
+
+function extractSpreadsheetSectionFocusesFromPdfText(pdfText) {
+  const normalized = normalizeExtractedText(pdfText || "");
+  if (!normalized) return {};
+  const focused = {
+    motivationSummary: extractSpreadsheetSnippetFromText(normalized, ["Motivation", "Key motivations", "motivated"]),
+    instinctGoals: extractInstinctGoalDefinitions(normalized),
+    developingAsCopy: extractSpreadsheetSnippetFromText(normalized, ["Developing as", "Development", "growth edge"]),
+    bodyLanguageRows: extractBodyLanguageRowsFromText(normalized),
+    conflictResponseCopy: extractSpreadsheetSnippetFromText(normalized, ["Response to Conflict", "conflict response"]),
+    conflictTriggeredCopy: extractSpreadsheetSnippetFromText(normalized, ["What you do when triggered", "when triggered", "triggered"]),
+    centeredDecisionCopy: extractSpreadsheetSnippetFromText(normalized, ["Centered Decisions", "centered decisions"]),
+    decisionImpactCopy: extractSpreadsheetSnippetFromText(normalized, ["Impact of your Ennea style", "Impact of your Enneagram style", "Impact of your style"]),
+    decisionStrainCopy: extractSpreadsheetSnippetFromText(normalized, ["Level strain", "decision strain", "Strain"]),
+    strategicLeadershipCopy: extractSpreadsheetSnippetFromText(normalized, ["Strategic Leadership", "Visioning", "Alignment", "Change Management"]),
+    teamImpactCopy: extractSpreadsheetSnippetFromText(normalized, ["Your Impact on Team", "Impact on Team"]),
+    interdependenceCopy: extractSpreadsheetSnippetFromText(normalized, ["Interdependence and Team Role", "Interdependence", "Team Role"]),
+    coachingRelationshipCopy: extractSpreadsheetSnippetFromText(normalized, ["Coaching Relationship", "coaching relationship"]),
+  };
+  console.log("[spreadsheet-focus] extracted PDF-text section focuses", {
+    hasMotivation: Boolean(focused.motivationSummary),
+    hasInstinctGoals: Boolean(focused.instinctGoals),
+    bodyLanguageRows: focused.bodyLanguageRows.length,
+    hasConflictResponse: Boolean(focused.conflictResponseCopy),
+    hasCenteredDecision: Boolean(focused.centeredDecisionCopy),
+    hasStrategicLeadership: Boolean(focused.strategicLeadershipCopy),
+    hasTeamImpact: Boolean(focused.teamImpactCopy),
+    hasCoachingRelationship: Boolean(focused.coachingRelationshipCopy),
+  });
+  return focused;
+}
+
+function mergeSpreadsheetSectionFocuses(structuredFocuses, pdfFocuses) {
+  const structured = structuredFocuses && typeof structuredFocuses === "object" ? structuredFocuses : {};
+  const pdf = pdfFocuses && typeof pdfFocuses === "object" ? pdfFocuses : {};
+  const fallback = "Not detected in assigned PDF.";
+  const mergeGoal = (key) => firstPresentSnippet([structured?.instinctGoals?.[key], pdf?.instinctGoals?.[key]], fallback);
+  const mergedBodyRows = [...(Array.isArray(structured.bodyLanguageRows) ? structured.bodyLanguageRows : []), ...(Array.isArray(pdf.bodyLanguageRows) ? pdf.bodyLanguageRows : [])]
+    .map((row) => cleanPdfExtractedValue(row || ""))
+    .filter(Boolean)
+    .filter((row) => !isMissingExtractedText(row))
+    .slice(0, 6);
+  return {
+    motivationSummary: firstPresentSnippet([structured.motivationSummary, pdf.motivationSummary], fallback),
+    instinctGoals: {
+      selfPres: mergeGoal("selfPres"),
+      social: mergeGoal("social"),
+      oneOnOne: mergeGoal("oneOnOne"),
+    },
+    developingAsCopy: firstPresentSnippet([structured.developingAsCopy, pdf.developingAsCopy], fallback),
+    bodyLanguageRows: mergedBodyRows.length ? mergedBodyRows : [fallback],
+    conflictResponseCopy: firstPresentSnippet([structured.conflictResponseCopy, pdf.conflictResponseCopy], fallback),
+    conflictTriggeredCopy: firstPresentSnippet([structured.conflictTriggeredCopy, pdf.conflictTriggeredCopy], fallback),
+    centeredDecisionCopy: firstPresentSnippet([structured.centeredDecisionCopy, pdf.centeredDecisionCopy], fallback),
+    decisionImpactCopy: firstPresentSnippet([structured.decisionImpactCopy, pdf.decisionImpactCopy], fallback),
+    decisionStrainCopy: firstPresentSnippet([structured.decisionStrainCopy, pdf.decisionStrainCopy], fallback),
+    strategicLeadershipCopy: firstPresentSnippet([structured.strategicLeadershipCopy, pdf.strategicLeadershipCopy], fallback),
+    teamImpactCopy: firstPresentSnippet([structured.teamImpactCopy, pdf.teamImpactCopy], fallback),
+    interdependenceCopy: firstPresentSnippet([structured.interdependenceCopy, pdf.interdependenceCopy], fallback),
+    coachingRelationshipCopy: firstPresentSnippet([structured.coachingRelationshipCopy, pdf.coachingRelationshipCopy], fallback),
+  };
 }
 
 function extractStrainQualitativeFromReportContent(parsedProfile) {
@@ -4674,6 +5135,39 @@ function buildPdfOnlyReport(payload) {
     strainQualitativeWriteups: Array.isArray(payload?.strainQualitativeWriteups) ? payload.strainQualitativeWriteups : [],
     overallStrainSummary: sanitizeSnippet(payload?.overallStrainSummary, null),
     developmentExercises: Array.isArray(payload?.developmentExercises) ? payload.developmentExercises : [],
+    spreadsheetFocuses: payload?.spreadsheetFocuses && typeof payload.spreadsheetFocuses === "object"
+      ? {
+          motivationSummary: sanitizeSnippet(payload.spreadsheetFocuses.motivationSummary, "Not detected in assigned PDF."),
+          instinctGoals: {
+            selfPres: sanitizeSnippet(payload?.spreadsheetFocuses?.instinctGoals?.selfPres, "Not detected in assigned PDF."),
+            social: sanitizeSnippet(payload?.spreadsheetFocuses?.instinctGoals?.social, "Not detected in assigned PDF."),
+            oneOnOne: sanitizeSnippet(payload?.spreadsheetFocuses?.instinctGoals?.oneOnOne, "Not detected in assigned PDF."),
+          },
+          developingAsCopy: sanitizeSnippet(payload.spreadsheetFocuses.developingAsCopy, "Not detected in assigned PDF."),
+          bodyLanguageRows: Array.isArray(payload.spreadsheetFocuses.bodyLanguageRows)
+            ? payload.spreadsheetFocuses.bodyLanguageRows
+                .map((row) => sanitizeSnippet(row, null))
+                .filter(Boolean)
+            : [],
+          conflictResponseCopy: sanitizeSnippet(payload.spreadsheetFocuses.conflictResponseCopy, "Not detected in assigned PDF."),
+          conflictTriggeredCopy: sanitizeSnippet(payload.spreadsheetFocuses.conflictTriggeredCopy, "Not detected in assigned PDF."),
+          centeredDecisionCopy: sanitizeSnippet(payload.spreadsheetFocuses.centeredDecisionCopy, "Not detected in assigned PDF."),
+          decisionImpactCopy: sanitizeSnippet(payload.spreadsheetFocuses.decisionImpactCopy, "Not detected in assigned PDF."),
+          decisionStrainCopy: sanitizeSnippet(payload.spreadsheetFocuses.decisionStrainCopy, "Not detected in assigned PDF."),
+          strategicLeadershipCopy: sanitizeSnippet(payload.spreadsheetFocuses.strategicLeadershipCopy, "Not detected in assigned PDF."),
+          teamImpactCopy: sanitizeSnippet(payload.spreadsheetFocuses.teamImpactCopy, "Not detected in assigned PDF."),
+          interdependenceCopy: sanitizeSnippet(payload.spreadsheetFocuses.interdependenceCopy, "Not detected in assigned PDF."),
+          coachingRelationshipCopy: sanitizeSnippet(payload.spreadsheetFocuses.coachingRelationshipCopy, "Not detected in assigned PDF."),
+        }
+      : null,
+    teamStageBreakdown: payload?.teamStageBreakdown && typeof payload.teamStageBreakdown === "object"
+      ? {
+          forming: sanitizeSnippet(payload.teamStageBreakdown.forming, "Not detected in assigned PDF."),
+          storming: sanitizeSnippet(payload.teamStageBreakdown.storming, "Not detected in assigned PDF."),
+          norming: sanitizeSnippet(payload.teamStageBreakdown.norming, "Not detected in assigned PDF."),
+          performing: sanitizeSnippet(payload.teamStageBreakdown.performing, "Not detected in assigned PDF."),
+        }
+      : null,
     dataQualityDiagnostics: payload?.dataQualityDiagnostics || null,
     profile,
     strain,
@@ -4830,6 +5324,22 @@ function renderReportFromState(isExampleMode) {
       )
       .join(""),
   );
+  const devExerciseComponentData = buildDevExerciseComponentData({
+    ...REPORT,
+    developmentExercises: exercises,
+  });
+  setText(
+    'devExerciseSummary',
+    formatOptionalText(
+      devExerciseComponentData.summary,
+      "Growth paths are generated from integration and strain context once report data is available.",
+    ),
+  );
+  setHtml(
+    'devExercisePaths',
+    buildDevExercisePathHtml(devExerciseComponentData.paths) ||
+      '<div class="dev-item"><div class="dev-item-title">Growth Path 1</div><p>Not detected in assigned PDF.</p></div>',
+  );
 
   const diagnostics = REPORT.dataQualityDiagnostics || null;
   setText('diagnosticsSummary', formatOptionalText(diagnostics?.summary, 'No diagnostics loaded yet.'));
@@ -4918,7 +5428,112 @@ function renderReportFromState(isExampleMode) {
   document.getElementById('languageTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('communication', 12, 'var(--blue)')}</span></span>Type ${REPORT.typeNumber} Communication Pattern`;
   setText('languageMeta', REPORT.meta);
   setText('refTypeTag', `Type ${REPORT.typeNumber} · ${String(REPORT.instinct || "").split(' — ')[0]}`);
-  renderAdaptiveSectionCopy(REPORT);
+  const adaptiveCopy = renderAdaptiveSectionCopy(REPORT);
+  const spreadsheetFocusesFromReport = REPORT.spreadsheetFocuses && typeof REPORT.spreadsheetFocuses === "object"
+    ? REPORT.spreadsheetFocuses
+    : {};
+  const spreadsheetFocusFallbacks = buildSpreadsheetFocusFallbacks(REPORT, adaptiveCopy);
+  const resolveSpreadsheetFocusText = (primaryText, fallbackText) => {
+    const primary = formatOptionalText(primaryText, "");
+    if (primary && !isMissingExtractedText(primary)) return primary;
+    return formatOptionalText(fallbackText, "Not detected in assigned PDF.");
+  };
+  setText(
+    'motivationSummary',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.motivationSummary, spreadsheetFocusFallbacks.motivationSummary),
+  );
+  setText(
+    'instinctGoalSelfPres',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.selfPres, spreadsheetFocusFallbacks?.instinctGoals?.selfPres),
+  );
+  setText(
+    'instinctGoalSocial',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.social, spreadsheetFocusFallbacks?.instinctGoals?.social),
+  );
+  setText(
+    'instinctGoalOneOnOne',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.oneOnOne, spreadsheetFocusFallbacks?.instinctGoals?.oneOnOne),
+  );
+  setText(
+    'developingAsCopy',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.developingAsCopy, spreadsheetFocusFallbacks.developingAsCopy),
+  );
+  setText(
+    'conflictResponseCopy',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictResponseCopy, spreadsheetFocusFallbacks.conflictResponseCopy),
+  );
+  setText(
+    'conflictTriggeredCopy',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictTriggeredCopy, spreadsheetFocusFallbacks.conflictTriggeredCopy),
+  );
+  setText(
+    'centeredDecisionCopy',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.centeredDecisionCopy, spreadsheetFocusFallbacks.centeredDecisionCopy),
+  );
+  setText(
+    'decisionImpactCopy',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionImpactCopy, spreadsheetFocusFallbacks.decisionImpactCopy),
+  );
+  setText(
+    'decisionStrainCopy',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionStrainCopy, spreadsheetFocusFallbacks.decisionStrainCopy),
+  );
+  setText(
+    'strategicLeadershipCopy',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.strategicLeadershipCopy, spreadsheetFocusFallbacks.strategicLeadershipCopy),
+  );
+  setText(
+    'teamImpactCopy',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.teamImpactCopy, spreadsheetFocusFallbacks.teamImpactCopy),
+  );
+  setText(
+    'interdependenceCopy',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.interdependenceCopy, spreadsheetFocusFallbacks.interdependenceCopy),
+  );
+  setText(
+    'coachingRelationshipCopy',
+    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.coachingRelationshipCopy, spreadsheetFocusFallbacks.coachingRelationshipCopy),
+  );
+  const bodyLanguageRows = Array.isArray(spreadsheetFocusesFromReport.bodyLanguageRows)
+    ? spreadsheetFocusesFromReport.bodyLanguageRows.filter(Boolean)
+    : [];
+  const resolvedBodyLanguageRows = bodyLanguageRows.length ? bodyLanguageRows : spreadsheetFocusFallbacks.bodyLanguageRows;
+  setHtml(
+    'communicationBodyLanguageList',
+    renderBodyLanguageRows(resolvedBodyLanguageRows) ||
+      '<div class="ti"><div class="tic neu">•</div><div class="tt">Not detected in assigned PDF.</div></div>',
+  );
+  console.log('[spreadsheet-focus] rendered section focus hydration', {
+    source: bodyLanguageRows.length || Object.keys(spreadsheetFocusesFromReport).length ? "report-content" : "fallback",
+    hasMotivation: Boolean(spreadsheetFocusesFromReport.motivationSummary),
+    hasInstinctGoals: Boolean(spreadsheetFocusesFromReport?.instinctGoals),
+    bodyLanguageRows: resolvedBodyLanguageRows.length,
+    hasConflictResponse: Boolean(spreadsheetFocusesFromReport.conflictResponseCopy),
+    hasCenteredDecision: Boolean(spreadsheetFocusesFromReport.centeredDecisionCopy),
+    hasStrategicLeadership: Boolean(spreadsheetFocusesFromReport.strategicLeadershipCopy),
+    hasTeamImpact: Boolean(spreadsheetFocusesFromReport.teamImpactCopy),
+    hasCoachingRelationship: Boolean(spreadsheetFocusesFromReport.coachingRelationshipCopy),
+  });
+  const teamStagesFromReport = REPORT.teamStageBreakdown && typeof REPORT.teamStageBreakdown === "object"
+    ? REPORT.teamStageBreakdown
+    : {};
+  const teamStageFallback = adaptiveCopy?.teamStages || {};
+  const resolveTeamStageText = (primaryText, fallbackText) => {
+    const primary = formatOptionalText(primaryText, "");
+    if (primary && !isMissingExtractedText(primary)) return primary;
+    return formatOptionalText(fallbackText, "Not detected in assigned PDF.");
+  };
+  setText('teamStageForming', resolveTeamStageText(teamStagesFromReport.forming, teamStageFallback.forming));
+  setText('teamStageStorming', resolveTeamStageText(teamStagesFromReport.storming, teamStageFallback.storming));
+  setText('teamStageNorming', resolveTeamStageText(teamStagesFromReport.norming, teamStageFallback.norming));
+  setText('teamStagePerforming', resolveTeamStageText(teamStagesFromReport.performing, teamStageFallback.performing));
+  console.log('[team-stage] rendered stage breakdown', {
+    source: Object.keys(teamStagesFromReport).length ? "report-content" : "adaptive-fallback",
+    forming: Boolean(teamStagesFromReport.forming),
+    storming: Boolean(teamStagesFromReport.storming),
+    norming: Boolean(teamStagesFromReport.norming),
+    performing: Boolean(teamStagesFromReport.performing),
+  });
 
   const traitChips = document.getElementById('traitChips');
   traitChips.innerHTML = (REPORT.traits || []).map(trait => `<span class="chip cgn">${trait}</span>`).join('');
