@@ -1,0 +1,176 @@
+{
+  "section_page_map": {
+    "strain_interpretation": [18, 19, 20, 21, 22],
+    "body_language": [25],
+    "feedback_guide": [28, 29],
+    "decision_framework": [32, 33, 34],
+    "strategic_leadership": [37, 38],
+    "team_dynamics": [39, 40, 41],
+    "coaching_relationship": [42],
+    "development_exercises": [7, 11, 13, 17, 19, 31, 36, 38]
+  },
+  "development_exercise_context_pages": {
+    "core_type": [7],
+    "subtype": [11],
+    "centers": [13],
+    "integration": [17],
+    "strain": [19],
+    "conflict": [31],
+    "management": [36],
+    "strategic_leadership": [38]
+  },
+  "section_header_titles": {
+    "strain_interpretation": [
+      "Your Overall Strain Level",
+      "Environmental",
+      "Vocational",
+      "Physical",
+      "Interpersonal",
+      "Psychological",
+      "Happiness"
+    ],
+    "body_language": ["Body Language"],
+    "feedback_guide": ["Feedback Guide", "Giving Feedback to all 9 types"],
+    "decision_framework": ["Decision Making", "Centered Decisions"],
+    "strategic_leadership": ["Strategic Leadership", "Visioning", "Alignment", "Change Management"],
+    "team_dynamics": ["Team Behaviour", "Your Ennea Type and Team Stages", "Forming", "Storming", "Norming", "Performing"],
+    "coaching_relationship": ["Coaching Relationship"],
+    "development_exercises": ["DEVELOPMENT EXERCISE", "Development Exercise", "Development Exercises"]
+  },
+  "footer_pattern": "Copyright\\s+\\d{4}-\\d{4}\\s+Integrative\\s+Enneagram\\s+Solutions[\\s\\S]*?\\b\\d+\\s+of\\s+42\\b",
+  "output_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "strain_interpretation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "overall": { "type": "string" },
+          "vocational": { "type": "string" },
+          "environmental": { "type": "string" },
+          "physical": { "type": "string" },
+          "interpersonal": { "type": "string" },
+          "psychological": { "type": "string" },
+          "happiness": { "type": "string" }
+        },
+        "required": [
+          "overall",
+          "vocational",
+          "environmental",
+          "physical",
+          "interpersonal",
+          "psychological",
+          "happiness"
+        ]
+      },
+      "body_language": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "feedback_guide": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type_1": { "type": "array", "items": { "type": "string" } },
+          "type_2": { "type": "array", "items": { "type": "string" } },
+          "type_3": { "type": "array", "items": { "type": "string" } },
+          "type_4": { "type": "array", "items": { "type": "string" } },
+          "type_5": { "type": "array", "items": { "type": "string" } },
+          "type_6": { "type": "array", "items": { "type": "string" } },
+          "type_7": { "type": "array", "items": { "type": "string" } },
+          "type_8": { "type": "array", "items": { "type": "string" } },
+          "type_9": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": [
+          "type_1",
+          "type_2",
+          "type_3",
+          "type_4",
+          "type_5",
+          "type_6",
+          "type_7",
+          "type_8",
+          "type_9"
+        ]
+      },
+      "decision_framework": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "dominant_center_impact": { "type": "array", "items": { "type": "string" } },
+          "making_decisions": { "type": "array", "items": { "type": "string" } },
+          "receiving_decisions": { "type": "array", "items": { "type": "string" } },
+          "strain_impact": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": [
+          "dominant_center_impact",
+          "making_decisions",
+          "receiving_decisions",
+          "strain_impact"
+        ]
+      },
+      "strategic_leadership": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "visioning": { "type": "string" },
+          "strategic_thinking": { "type": "string" },
+          "alignment": { "type": "string" },
+          "change_management": { "type": "string" }
+        },
+        "required": ["visioning", "strategic_thinking", "alignment", "change_management"]
+      },
+      "team_dynamics": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "interdependence_and_role": { "type": "string" },
+          "forming": { "type": "array", "items": { "type": "string" } },
+          "storming": { "type": "array", "items": { "type": "string" } },
+          "norming": { "type": "array", "items": { "type": "string" } },
+          "performing": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["interdependence_and_role", "forming", "storming", "norming", "performing"]
+      },
+      "coaching_relationship": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "development_exercises": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "core_type": { "type": "array", "items": { "type": "string" } },
+          "subtype": { "type": "array", "items": { "type": "string" } },
+          "centers": { "type": "array", "items": { "type": "string" } },
+          "integration": { "type": "array", "items": { "type": "string" } },
+          "strain": { "type": "array", "items": { "type": "string" } },
+          "conflict": { "type": "array", "items": { "type": "string" } },
+          "management": { "type": "array", "items": { "type": "string" } },
+          "strategic_leadership": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": [
+          "core_type",
+          "subtype",
+          "centers",
+          "integration",
+          "strain",
+          "conflict",
+          "management",
+          "strategic_leadership"
+        ]
+      }
+    },
+    "required": [
+      "strain_interpretation",
+      "body_language",
+      "feedback_guide",
+      "decision_framework",
+      "strategic_leadership",
+      "team_dynamics",
+      "coaching_relationship",
+      "development_exercises"
+    ]
+  }
+}

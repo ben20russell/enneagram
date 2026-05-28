@@ -34,181 +34,47 @@ except ImportError as exc:  # pragma: no cover - import-time safety for local sc
     ) from exc
 
 
+DEFAULT_FOOTER_PATTERN = (
+    r"Copyright\s+\d{4}-\d{4}\s+Integrative\s+Enneagram\s+Solutions[\s\S]*?\b\d+\s+of\s+42\b"
+)
+SHARED_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "ieq9_targeted_extraction_config.json"
+
+
+def load_shared_config() -> dict[str, Any]:
+    try:
+        raw = json.loads(SHARED_CONFIG_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise SystemExit(
+            f"Missing shared extraction config file: {SHARED_CONFIG_PATH}"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise SystemExit(
+            f"Invalid JSON in shared extraction config file: {SHARED_CONFIG_PATH}"
+        ) from exc
+
+    if not isinstance(raw, dict):
+        raise SystemExit(f"Unexpected shared config format (expected object): {SHARED_CONFIG_PATH}")
+    return raw
+
+
+SHARED_CONFIG = load_shared_config()
 SECTION_PAGE_MAP = {
-    "strain_interpretation": list(range(18, 23)),
-    "body_language": [25],
-    "feedback_guide": [28, 29],
-    "decision_framework": list(range(32, 35)),
-    "strategic_leadership": [37, 38],
-    "team_dynamics": list(range(39, 42)),
-    "coaching_relationship": [42],
-    "development_exercises": [7, 11, 13, 17, 19, 31, 36, 38],
+    str(key): [int(page) for page in (value if isinstance(value, list) else [])]
+    for key, value in (SHARED_CONFIG.get("section_page_map") or {}).items()
 }
-
 DEVELOPMENT_EXERCISE_CONTEXT_PAGES = {
-    "core_type": [7],
-    "subtype": [11],
-    "centers": [13],
-    "integration": [17],
-    "strain": [19],
-    "conflict": [31],
-    "management": [36],
-    "strategic_leadership": [38],
+    str(key): [int(page) for page in (value if isinstance(value, list) else [])]
+    for key, value in (SHARED_CONFIG.get("development_exercise_context_pages") or {}).items()
 }
-
 SECTION_HEADER_TITLES = {
-    "strain_interpretation": [
-        "Your Overall Strain Level",
-        "Environmental",
-        "Vocational",
-        "Physical",
-        "Interpersonal",
-        "Psychological",
-        "Happiness",
-    ],
-    "body_language": ["Body Language"],
-    "feedback_guide": ["Feedback Guide", "Giving Feedback to all 9 types"],
-    "decision_framework": ["Decision Making", "Centered Decisions"],
-    "strategic_leadership": ["Strategic Leadership", "Visioning", "Alignment", "Change Management"],
-    "team_dynamics": ["Team Behaviour", "Your Ennea Type and Team Stages", "Forming", "Storming", "Norming", "Performing"],
-    "coaching_relationship": ["Coaching Relationship"],
-    "development_exercises": ["DEVELOPMENT EXERCISE", "Development Exercise", "Development Exercises"],
+    str(key): [str(title) for title in (value if isinstance(value, list) else [])]
+    for key, value in (SHARED_CONFIG.get("section_header_titles") or {}).items()
 }
-
 FOOTER_PATTERN = re.compile(
-    r"Copyright\s+\d{4}-\d{4}\s+Integrative\s+Enneagram\s+Solutions[\s\S]*?\b\d+\s+of\s+42\b",
+    str(SHARED_CONFIG.get("footer_pattern") or DEFAULT_FOOTER_PATTERN),
     flags=re.IGNORECASE,
 )
-
-OUTPUT_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "properties": {
-        "strain_interpretation": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "overall": {"type": "string"},
-                "vocational": {"type": "string"},
-                "environmental": {"type": "string"},
-                "physical": {"type": "string"},
-                "interpersonal": {"type": "string"},
-                "psychological": {"type": "string"},
-                "happiness": {"type": "string"},
-            },
-            "required": [
-                "overall",
-                "vocational",
-                "environmental",
-                "physical",
-                "interpersonal",
-                "psychological",
-                "happiness",
-            ],
-        },
-        "body_language": {"type": "array", "items": {"type": "string"}},
-        "feedback_guide": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "type_1": {"type": "array", "items": {"type": "string"}},
-                "type_2": {"type": "array", "items": {"type": "string"}},
-                "type_3": {"type": "array", "items": {"type": "string"}},
-                "type_4": {"type": "array", "items": {"type": "string"}},
-                "type_5": {"type": "array", "items": {"type": "string"}},
-                "type_6": {"type": "array", "items": {"type": "string"}},
-                "type_7": {"type": "array", "items": {"type": "string"}},
-                "type_8": {"type": "array", "items": {"type": "string"}},
-                "type_9": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": [
-                "type_1",
-                "type_2",
-                "type_3",
-                "type_4",
-                "type_5",
-                "type_6",
-                "type_7",
-                "type_8",
-                "type_9",
-            ],
-        },
-        "decision_framework": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "dominant_center_impact": {"type": "array", "items": {"type": "string"}},
-                "making_decisions": {"type": "array", "items": {"type": "string"}},
-                "receiving_decisions": {"type": "array", "items": {"type": "string"}},
-                "strain_impact": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": [
-                "dominant_center_impact",
-                "making_decisions",
-                "receiving_decisions",
-                "strain_impact",
-            ],
-        },
-        "strategic_leadership": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "visioning": {"type": "string"},
-                "strategic_thinking": {"type": "string"},
-                "alignment": {"type": "string"},
-                "change_management": {"type": "string"},
-            },
-            "required": ["visioning", "strategic_thinking", "alignment", "change_management"],
-        },
-        "team_dynamics": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "interdependence_and_role": {"type": "string"},
-                "forming": {"type": "array", "items": {"type": "string"}},
-                "storming": {"type": "array", "items": {"type": "string"}},
-                "norming": {"type": "array", "items": {"type": "string"}},
-                "performing": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": ["interdependence_and_role", "forming", "storming", "norming", "performing"],
-        },
-        "coaching_relationship": {"type": "array", "items": {"type": "string"}},
-        "development_exercises": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "core_type": {"type": "array", "items": {"type": "string"}},
-                "subtype": {"type": "array", "items": {"type": "string"}},
-                "centers": {"type": "array", "items": {"type": "string"}},
-                "integration": {"type": "array", "items": {"type": "string"}},
-                "strain": {"type": "array", "items": {"type": "string"}},
-                "conflict": {"type": "array", "items": {"type": "string"}},
-                "management": {"type": "array", "items": {"type": "string"}},
-                "strategic_leadership": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": [
-                "core_type",
-                "subtype",
-                "centers",
-                "integration",
-                "strain",
-                "conflict",
-                "management",
-                "strategic_leadership",
-            ],
-        },
-    },
-    "required": [
-        "strain_interpretation",
-        "body_language",
-        "feedback_guide",
-        "decision_framework",
-        "strategic_leadership",
-        "team_dynamics",
-        "coaching_relationship",
-        "development_exercises",
-    ],
-}
+OUTPUT_SCHEMA = SHARED_CONFIG.get("output_schema") or {}
 
 
 def configure_logging(verbose: bool) -> None:
