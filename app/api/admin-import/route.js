@@ -58,12 +58,17 @@ function computeCompletenessFromParsed(parsed, diagnostics) {
   const centerNonNull = getNonNullCount(parsed?.centerScores);
   const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
   const hasMinPages = pages >= minPages;
-  const isComplete = hasMinPages && hasAllChartScores;
+  const criticalHydrated = Number(diagnostics?.sectionCoverage?.criticalHydrated ?? 0);
+  const criticalTotal = Number(diagnostics?.sectionCoverage?.criticalTotal ?? 0);
+  const hasCriticalSections = criticalTotal > 0 ? criticalHydrated >= criticalTotal : true;
+  const isComplete = hasMinPages && hasAllChartScores && hasCriticalSections;
   let incompleteReason = null;
   if (!hasMinPages) {
     incompleteReason = `Extracted ${pages} pages, expected at least ${minPages}`;
   } else if (!hasAllChartScores) {
     incompleteReason = "Chart numerics incomplete: one or more type, instinct, or center scores are null";
+  } else if (!hasCriticalSections) {
+    incompleteReason = `Critical section hydration incomplete (${criticalHydrated}/${criticalTotal})`;
   }
   return {
     isComplete,
@@ -73,6 +78,8 @@ function computeCompletenessFromParsed(parsed, diagnostics) {
     typeNonNull,
     instinctNonNull,
     centerNonNull,
+    criticalHydrated,
+    criticalTotal,
   };
 }
 
@@ -152,6 +159,11 @@ function buildParsedResultsData({
       instinctScoresTotal: 3,
       centerScoresNonNull: recomputed.centerNonNull,
       centerScoresTotal: 3,
+    },
+    sectionCoverage: {
+      ...(parseDiagnostics?.sectionCoverage || {}),
+      criticalHydrated: recomputed.criticalHydrated,
+      criticalTotal: recomputed.criticalTotal,
     },
     completedAt: new Date().toISOString(),
   };
