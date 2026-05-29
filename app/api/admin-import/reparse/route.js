@@ -116,6 +116,7 @@ export async function POST(req) {
     const parsed = await parsePdf(pdfBuffer, {
       disableImagePipeline: true,
       disableImageScoreRescue: true,
+      allowLocalTextFallback: true,
     });
 
     const parseDiagnostics =

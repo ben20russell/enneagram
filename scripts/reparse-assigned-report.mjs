@@ -90,7 +90,9 @@ async function main() {
   }
 
   const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
-  const parsed = await parsePdf(pdfBuffer);
+  const parsed = await parsePdf(pdfBuffer, {
+    allowLocalTextFallback: true,
+  });
   const parseDiagnostics =
     parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
       ? parsed._parseDiagnostics

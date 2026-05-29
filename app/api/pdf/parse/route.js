@@ -52,6 +52,7 @@ export async function POST(req) {
     const parsed = await parsePdf(buffer, {
       imagePrimaryFullDocMaxPages: routeImagePageLimit,
       requireChartScoresForComplete: false,
+      allowLocalTextFallback: true,
       ...(mode === ADMIN_INLINE_SAFE_MODE
         ? {
             disableImagePipeline: true,

@@ -312,6 +312,7 @@ async function finalizeImport({
       const parsed = await parsePdf(pdfBuffer, {
         disableImagePipeline: true,
         disableImageScoreRescue: true,
+        allowLocalTextFallback: true,
       });
       parsedPrimaryType = parsed?.primaryType ? String(parsed.primaryType) : parsedPrimaryType;
       resultsData = buildParsedResultsData({
@@ -434,6 +435,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
     const parsed = await parsePdf(pdfBuffer, {
       disableImagePipeline: true,
       disableImageScoreRescue: true,
+      allowLocalTextFallback: true,
     });
 
     const parseDiagnostics =
