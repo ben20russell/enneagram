@@ -3252,7 +3252,7 @@ function buildAdaptiveListHtml(items) {
     .map((row) => {
       const tone = String(row?.tone || "neu");
       const symbol = String(row?.symbol || (tone === "neg" ? "!" : tone === "pos" ? "✓" : "•"));
-      const text = formatOptionalText(row?.text, "");
+      const text = ensureSentenceStartsCapitalized(formatOptionalText(row?.text, ""));
       if (!text) return "";
       return `<div class="ti"><div class="tic ${tone}">${escapeHtml(symbol)}</div><div class="tt">${escapeHtml(text)}</div></div>`;
     })
@@ -3263,7 +3263,11 @@ function buildAdaptiveListHtml(items) {
 function buildAdaptiveBulletListHtml(items) {
   const rows = Array.isArray(items) ? items.filter(Boolean) : [];
   if (!rows.length) return "";
-  return rows.map((item) => `<li>${escapeHtml(formatOptionalText(item, ""))}</li>`).join("");
+  return rows
+    .map((item) => ensureSentenceStartsCapitalized(formatOptionalText(item, "")))
+    .filter(Boolean)
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("");
 }
 
 function buildAdaptiveTriggerGridHtml(items) {
@@ -3436,7 +3440,7 @@ function buildDevExercisePathHtml(paths) {
   return safePaths
     .map((path, index) => {
       const title = formatOptionalText(path?.title, `Growth Path ${index + 1}`);
-      const text = sanitizeSnippet(formatOptionalText(path?.text, "Not detected in assigned PDF."), "Not detected in assigned PDF.");
+      const text = ensureSentenceStartsCapitalized(sanitizeSnippet(formatOptionalText(path?.text, "Not detected in assigned PDF."), "Not detected in assigned PDF."));
       const source = sanitizeSnippet(formatOptionalText(path?.source, ""), "");
       const showSource = Boolean(source) && !/extracted\s+from\s+assigned\s+pdf/i.test(source);
       return `<div class="dev-item"><div class="dev-item-title">${escapeHtml(title)}</div><p>${escapeHtml(text)}</p>${showSource ? `<div class="subh" style="margin:8px 0 0">${escapeHtml(source)}</div>` : ""}</div>`;
@@ -3479,7 +3483,7 @@ function buildDevExerciseComponentData(report) {
       if (!text || isMissingExtractedText(text)) return null;
       return {
         title,
-        text: sanitizeSnippet(text, text),
+        text: ensureSentenceStartsCapitalized(sanitizeSnippet(text, text)),
         source: "",
       };
     })
@@ -3890,6 +3894,14 @@ function isLikelyGarbledDevelopmentExerciseText(value) {
   return noisyTokenCount >= 2;
 }
 
+function ensureSentenceStartsCapitalized(value) {
+  const cleaned = sanitizeSnippet(value || "", "");
+  if (!cleaned) return "";
+  return cleaned.replace(/(^|[.!?]\s+)(["'(\[]*)([a-z])/g, (match, prefix, wrappers, firstChar) => (
+    `${prefix || ""}${wrappers || ""}${String(firstChar || "").toUpperCase()}`
+  ));
+}
+
 function splitDevelopmentExercisesTextBlock(value) {
   const normalized = normalizeExtractedText(value);
   if (!normalized) return [];
@@ -3898,13 +3910,13 @@ function splitDevelopmentExercisesTextBlock(value) {
     /DEVELOPMENT\s*EXERCISE(?:\s*\d+)?\s*[:\-]?\s*([\s\S]{16,520}?)(?=DEVELOPMENT\s*EXERCISE(?:\s*\d+)?\s*[:\-]?|$)/gi;
   let match;
   while ((match = pattern.exec(normalized)) !== null) {
-    const cleaned = cleanPdfExtractedValue(match?.[1] || "");
+    const cleaned = ensureSentenceStartsCapitalized(cleanPdfExtractedValue(match?.[1] || ""));
     if (!cleaned || isLikelyGarbledDevelopmentExerciseText(cleaned)) continue;
     matches.push(cleaned);
     if (matches.length >= 8) break;
   }
   if (!matches.length) {
-    const cleaned = cleanPdfExtractedValue(normalized);
+    const cleaned = ensureSentenceStartsCapitalized(cleanPdfExtractedValue(normalized));
     if (cleaned && !isLikelyGarbledDevelopmentExerciseText(cleaned)) {
       matches.push(cleaned);
     }
@@ -3950,6 +3962,54 @@ function mergeCategoryWriteups(structuredRows, pdfRows, categories) {
   });
 }
 
+function shouldMergeDevelopmentExerciseFragment(previousText, nextText) {
+  const prev = String(previousText || "").trim();
+  const next = String(nextText || "").trim();
+  if (!prev || !next) return false;
+  if (/^[("'[\s]*[a-z]/.test(next)) return true;
+  if (/^(?:and|or|but|which|that|to|with|for|of|the|a|an|your|you|this|these|those|it|its|in|on|at|by|from|if|when|because|while|as|so|then|than)\b/i.test(next)) {
+    return true;
+  }
+  const prevEndsSentence = /[.!?]["')\]]?$/.test(prev);
+  const prevWordCount = prev.split(/\s+/).filter(Boolean).length;
+  const nextWordCount = next.split(/\s+/).filter(Boolean).length;
+  if (!prevEndsSentence && prevWordCount <= 10) return true;
+  if (!prevEndsSentence && nextWordCount <= 7) return true;
+  return false;
+}
+
+function normalizeDevelopmentExerciseRows(rows, maxItems = 8) {
+  const out = [];
+  const inputRows = Array.isArray(rows) ? rows : [];
+  for (const row of inputRows) {
+    const candidate = ensureSentenceStartsCapitalized(cleanPdfExtractedValue(row?.text || row || ""));
+    if (!candidate) continue;
+    if (isMissingExtractedText(candidate) || isLikelyGarbledDevelopmentExerciseText(candidate)) continue;
+
+    const previous = out[out.length - 1];
+    if (previous && shouldMergeDevelopmentExerciseFragment(previous.text, candidate)) {
+      previous.text = ensureSentenceStartsCapitalized(cleanPdfExtractedValue(`${previous.text} ${candidate}`));
+      continue;
+    }
+    out.push({ text: candidate });
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const row of out) {
+    const key = normalizeExtractedText(row?.text || "").toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(row);
+    if (deduped.length >= maxItems) break;
+  }
+
+  return deduped.map((row, index) => ({
+    title: `Exercise ${index + 1}`,
+    text: ensureSentenceStartsCapitalized(row?.text || ""),
+  }));
+}
+
 function mergeDevelopmentExercises(structuredExercises, pdfExercises) {
   const primaryRaw = Array.isArray(structuredExercises) ? structuredExercises : [];
   const fallbackRaw = Array.isArray(pdfExercises) ? pdfExercises : [];
@@ -3967,11 +4027,12 @@ function mergeDevelopmentExercises(structuredExercises, pdfExercises) {
   const merged = primary.filter(
     (row) => !isMissingExtractedText(row?.text) && !isLikelyGarbledDevelopmentExerciseText(row?.text),
   );
-  if (merged.length) return merged;
+  const normalizedMerged = normalizeDevelopmentExerciseRows(merged, 8);
+  if (normalizedMerged.length) return normalizedMerged;
   const fallbackFiltered = fallback.filter(
     (row) => !isMissingExtractedText(row?.text) && !isLikelyGarbledDevelopmentExerciseText(row?.text),
   );
-  return fallbackFiltered.length ? fallbackFiltered : [];
+  return normalizeDevelopmentExerciseRows(fallbackFiltered, 8);
 }
 
 function compactInsightSnippet(value, maxLength = 420) {
@@ -6143,7 +6204,7 @@ function renderReportFromState(isExampleMode) {
     exercises
       .map(
         (exercise) =>
-          `<div class="dev-item"><div class="dev-item-title">${escapeHtml(sanitizeSnippet(formatOptionalText(exercise.title, "Development Exercise"), "Development Exercise"))}</div><p>${escapeHtml(sanitizeSnippet(formatOptionalText(exercise.text, "Not detected in assigned PDF."), "Not detected in assigned PDF."))}</p></div>`,
+          `<div class="dev-item"><div class="dev-item-title">${escapeHtml(ensureSentenceStartsCapitalized(sanitizeSnippet(formatOptionalText(exercise.title, "Development Exercise"), "Development Exercise")))}</div><p>${escapeHtml(ensureSentenceStartsCapitalized(sanitizeSnippet(formatOptionalText(exercise.text, "Not detected in assigned PDF."), "Not detected in assigned PDF.")))}</p></div>`,
       )
       .join(""),
   );
