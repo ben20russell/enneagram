@@ -1427,12 +1427,36 @@ async function ingestAssignedReportIntoDashboard(data) {
     }
 
     const proInsights = buildProInsightsFromSources(parsedProfile, pdfText);
+    const parsedProfileFeedbackRows = Array.isArray(parsedProfile?.feedbackGuideMatrix)
+      ? parsedProfile.feedbackGuideMatrix
+      : [];
+    const parsedProfileStrainRows = Array.isArray(parsedProfile?.strainQualitativeWriteups)
+      ? parsedProfile.strainQualitativeWriteups
+      : (parsedProfile?.strainNarratives && typeof parsedProfile.strainNarratives === "object"
+          ? ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"].map((category) => ({
+            category,
+            text: String(parsedProfile.strainNarratives?.[String(category).toLowerCase()] || "").trim(),
+          }))
+          : []);
+    const parsedProfileDevelopmentExercises = Array.isArray(parsedProfile?.developmentExercises)
+      ? parsedProfile.developmentExercises
+          .map((value, index) => ({ title: `Exercise ${index + 1}`, text: String(value || "").trim() }))
+          .filter((row) => Boolean(row.text))
+      : [];
+
     const feedbackGuideMatrix = mergeFeedbackGuideRows(
-      extractFeedbackGuideFromReportContent(parsedProfile),
+      mergeFeedbackGuideRows(
+        parsedProfileFeedbackRows,
+        extractFeedbackGuideFromReportContent(parsedProfile),
+      ),
       extractFeedbackGuideMatrix(pdfText),
     );
     const strainQualitativeWriteups = mergeCategoryWriteups(
-      extractStrainQualitativeFromReportContent(parsedProfile),
+      mergeCategoryWriteups(
+        parsedProfileStrainRows,
+        extractStrainQualitativeFromReportContent(parsedProfile),
+        ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"],
+      ),
       extractStrainQualitativeWriteups(pdfText),
       ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"],
     );
@@ -1440,15 +1464,24 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractOverallStrainSummaryFromReportContent(parsedProfile) ||
       extractOverallStrainSummaryFromPdfText(pdfText);
     const developmentExercises = mergeDevelopmentExercises(
-      extractDevelopmentExercisesFromReportContent(parsedProfile),
+      mergeDevelopmentExercises(
+        parsedProfileDevelopmentExercises,
+        extractDevelopmentExercisesFromReportContent(parsedProfile),
+      ),
       extractDevelopmentExercises(pdfText),
     );
     const spreadsheetFocuses = mergeSpreadsheetSectionFocuses(
-      extractSpreadsheetSectionFocusesFromReportContent(parsedProfile),
+      mergeSpreadsheetSectionFocuses(
+        parsedProfile?.spreadsheetFocuses,
+        extractSpreadsheetSectionFocusesFromReportContent(parsedProfile),
+      ),
       extractSpreadsheetSectionFocusesFromPdfText(pdfText),
     );
     const teamStageBreakdown = mergeTeamStageBreakdown(
-      extractTeamStageBreakdownFromReportContent(parsedProfile),
+      mergeTeamStageBreakdown(
+        parsedProfile?.teamStageBreakdown,
+        extractTeamStageBreakdownFromReportContent(parsedProfile),
+      ),
       extractTeamStageBreakdownFromPdfText(pdfText),
     );
     const dataQualityDiagnostics = buildDataQualityDiagnostics({
@@ -4067,8 +4100,14 @@ function summarizeOverallStrainText(rawText, options = {}) {
 
 function extractOverallStrainSummaryFromReportContent(parsedProfile) {
   const strainSection = getSectionByTitle(parsedProfile, (title) => /strain/i.test(title));
+  const overallInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.overallStrainSignal,
+    { includeStartAnchor: true },
+  );
   const summarySource = normalizeExtractedText(
     [
+      overallInstructionText,
       getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.strainProfile.overall),
       getSectionCompositeText(parsedProfile, strainSection),
     ].join(" "),
@@ -4231,18 +4270,358 @@ const PDF_PAGE_ANCHORS = {
   conflictTriggers: [30, 31],
   selfAwarenessIntegration: [16, 17],
   strainProfile: {
-    overall: [18],
-    vocational: [20],
-    environmental: [20],
-    physical: [21],
-    interpersonal: [21],
-    psychological: [22],
-    happiness: [22],
+    overall: [18, 34],
+    vocational: [19, 20],
+    environmental: [19, 20],
+    physical: [20, 21],
+    interpersonal: [20, 21],
+    psychological: [21, 22],
+    happiness: [21, 22],
   },
   communication: [24],
   feedbackGuide: [28, 29],
-  developmentExercises: [7, 11, 13, 17, 19, 28, 31, 36],
+  developmentExercises: [7, 11, 13, 17, 19, 28, 31, 36, 38],
 };
+
+const ASSIGNED_PDF_INSTRUCTION_RULES = {
+  motivationSummary: {
+    pageNumbers: [6],
+    startAnchor: "Motivation",
+    endAnchor: "Typical Action Patterns",
+    mode: "single_snippet",
+  },
+  instinctGoals: {
+    pageNumbers: [10],
+    startAnchor: "Ben, you are an Enneagram type",
+    endAnchor: "Definitions of the three instinctual goals",
+    mode: "single_snippet",
+  },
+  developingAsCopy: {
+    pageNumbers: [11],
+    startAnchor: "Development Exercise",
+    endAnchor: "end of page",
+    mode: "bullets",
+  },
+  responseToConflict: {
+    pageNumbers: [30],
+    startAnchor: "Response to Conflict",
+    endAnchor: "What triggers you",
+    mode: "bullets",
+  },
+  whatYouDoWhenTriggered: {
+    pageNumbers: [30, 31],
+    startAnchor: "What you do when triggered",
+    endAnchor: "What others should do",
+    preferHeadingStart: true,
+    mode: "bullets",
+  },
+  conflictTriggersBullets: {
+    pageNumbers: [30, 31],
+    startAnchor: "What triggers you",
+    endAnchor: "What you do when triggered",
+    preferHeadingStart: true,
+    mode: "bullets",
+  },
+  teamStages: {
+    pageNumbers: [40, 41],
+    startAnchor: "Forming",
+    endAnchor: "end of page",
+    preferHeadingStart: true,
+    mode: "full_page",
+  },
+  centeredDecisions: {
+    pageNumbers: [32],
+    startAnchor: "Decision Making",
+    endAnchor: "end of page",
+    mode: "full_page",
+  },
+  impactOfEnneaStyle: {
+    pageNumbers: [33],
+    startAnchor: "Impact",
+    endAnchor: "end of page",
+    mode: "full_page",
+  },
+  overallStrainSignal: {
+    pageNumbers: [18, 34],
+    startAnchor: "Ben your perceived level of Overall strain",
+    endAnchor: "end of page",
+    mode: "single_snippet",
+  },
+  strategicLeadershipCopy: {
+    pageNumbers: [37, 38],
+    startAnchor: "Strategic Leadership",
+    endAnchor: "end of page",
+    mode: "full_page",
+  },
+  teamImpactCopy: {
+    pageNumbers: [39],
+    startAnchor: "Your Impact on Team",
+    endAnchor: "Team Role",
+    mode: "single_snippet",
+  },
+  interdependenceCopy: {
+    pageNumbers: [39],
+    startAnchor: "Team Role",
+    endAnchor: "end of page",
+    mode: "single_snippet",
+  },
+  coachingRelationshipCopy: {
+    pageNumbers: [42],
+    startAnchor: "Ben, as an Ennea",
+    endAnchor: "end of page",
+    mode: "single_snippet",
+  },
+  bodyLanguageRows: {
+    pageNumbers: [25],
+    startAnchor: "Body Language",
+    endAnchor: "end of page",
+    mode: "bullets",
+  },
+  feedbackGuide: {
+    pageNumbers: [28, 29],
+    startAnchor: "Feedback Guide",
+    endAnchor: "end of page",
+    mode: "full_page",
+  },
+  environmentalStrain: {
+    pageNumbers: [19, 20],
+    startAnchor: "Ben your perceived level of Environmental strain",
+    endAnchor: "Ben your perceived level of Vocational strain",
+    preferHeadingStart: true,
+    mode: "bullets",
+  },
+  vocationalStrain: {
+    pageNumbers: [19, 20],
+    startAnchor: "Ben your perceived level of Vocational strain",
+    endAnchor: "Environmental Strain",
+    preferHeadingStart: true,
+    mode: "bullets",
+  },
+  physicalStrain: {
+    pageNumbers: [20, 21],
+    startAnchor: "Ben your perceived level of Physical strain",
+    endAnchor: "Ben your perceived level of Interpersonal strain",
+    preferHeadingStart: true,
+    mode: "bullets",
+  },
+  interpersonalStrain: {
+    pageNumbers: [20, 21],
+    startAnchor: "Ben your perceived level of Interpersonal strain",
+    endAnchor: "Physical Strain",
+    preferHeadingStart: true,
+    mode: "bullets",
+  },
+  psychologicalStrain: {
+    pageNumbers: [21, 22],
+    startAnchor: "Ben your perceived level of Psychological strain",
+    endAnchor: "Ben your perceived level of Happiness strain",
+    preferHeadingStart: true,
+    mode: "bullets",
+  },
+  happinessStrain: {
+    pageNumbers: [21, 22],
+    startAnchor: "Ben your perceived level of Happiness strain",
+    endAnchor: "Psychological Strain",
+    preferHeadingStart: true,
+    mode: "bullets",
+  },
+  developmentExercises: {
+    pageNumbers: [7, 11, 13, 17, 19, 28, 31, 36, 38],
+    startAnchor: "DEVELOPMENT EXERCISE",
+    endAnchor: "end of page",
+    mode: "bullets",
+  },
+};
+
+function getReportPageTextByNumber(parsedProfile) {
+  const map = new Map();
+  const pages = getReportContentPages(parsedProfile);
+  pages.forEach((page) => {
+    const pageNumber = Number(page?.pageNumber ?? page?.pageNum);
+    if (!Number.isFinite(pageNumber) || pageNumber <= 0) return;
+    const pageText = stripPdfFooterNoiseFragments(
+      [
+        page?.heading,
+        page?.sectionTitle,
+        page?.extractedText,
+        page?.text,
+        ...(Array.isArray(page?.keyDataPoints) ? page.keyDataPoints : []),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+      .replace(/\u0000/g, " ")
+      .replace(/\r\n?/g, "\n")
+      .replace(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g, (match) => match.replace(/\s+/g, ""))
+      .replace(/\b(?:\d\s+){2,}\d\b/g, (match) => match.replace(/\s+/g, ""))
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[ \t\f\v]+/g, " ")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    if (!pageText) return;
+    const existing = map.get(pageNumber);
+    map.set(pageNumber, existing ? `${existing}\n${pageText}`.trim() : pageText);
+  });
+  return map;
+}
+
+function normalizeInstructionAnchor(anchor) {
+  const value = String(anchor || "").trim();
+  if (!value) return "";
+  if (/^full\s*page$/i.test(value)) return "";
+  if (/^\*?\s*end\s*of\s*page$/i.test(value)) return "end_of_page";
+  return value;
+}
+
+function resolveInstructionPageCandidates(pageNumbers, availablePageNumbers, radius = 2) {
+  const base = Array.isArray(pageNumbers)
+    ? pageNumbers.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+    : [];
+  const available = new Set((Array.isArray(availablePageNumbers) ? availablePageNumbers : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0));
+  const out = new Set();
+  base.forEach((page) => {
+    if (available.has(page)) out.add(page);
+    for (let step = 1; step <= radius; step += 1) {
+      if (available.has(page - step)) out.add(page - step);
+      if (available.has(page + step)) out.add(page + step);
+    }
+  });
+  return Array.from(out).sort((a, b) => a - b);
+}
+
+function findInstructionAnchorMatch(text, anchor, options = {}) {
+  const source = String(text || "");
+  const value = normalizeInstructionAnchor(anchor);
+  if (!source || !value || value === "end_of_page") return null;
+  const startIndex = Number.isFinite(Number(options?.startIndex)) ? Number(options.startIndex) : 0;
+  const preferHeading = Boolean(options?.preferHeading);
+  const phrasePattern = buildFlexibleLabelPattern(value);
+  if (!phrasePattern) return null;
+  const regex = new RegExp(phrasePattern, "ig");
+  let match;
+  while ((match = regex.exec(source)) !== null) {
+    const index = Number(match?.index || 0);
+    if (index < startIndex) continue;
+    if (preferHeading) {
+      const lastBreak = Math.max(source.lastIndexOf("\n", index), source.lastIndexOf("\r", index));
+      const linePrefix = source.slice(lastBreak + 1, index).trim();
+      if (linePrefix.length > 0) continue;
+    }
+    return { index, length: String(match?.[0] || "").length };
+  }
+  return null;
+}
+
+function extractInstructionTextFromReportContent(parsedProfile, rule, options = {}) {
+  const safeRule = rule && typeof rule === "object" ? rule : {};
+  const pageTextMap = getReportPageTextByNumber(parsedProfile);
+  const availablePages = Array.from(pageTextMap.keys()).sort((a, b) => a - b);
+  if (!availablePages.length) return null;
+
+  const basePages = Array.isArray(safeRule.pageNumbers)
+    ? safeRule.pageNumbers.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+    : [];
+  const candidatePages = resolveInstructionPageCandidates(basePages, availablePages, Number(safeRule.searchRadius || 2));
+  const selectedPages = candidatePages.length ? candidatePages : availablePages;
+  const pageSegments = selectedPages
+    .map((pageNumber) => ({ pageNumber, text: String(pageTextMap.get(pageNumber) || "").trim() }))
+    .filter((segment) => Boolean(segment.text));
+  if (!pageSegments.length) return null;
+
+  const startAnchor = normalizeInstructionAnchor(safeRule.startAnchor);
+  const endAnchor = normalizeInstructionAnchor(safeRule.endAnchor);
+  const includeStartAnchor = Boolean(options?.includeStartAnchor ?? safeRule.includeStartAnchor);
+  const includeEndAnchor = Boolean(options?.includeEndAnchor ?? safeRule.includeEndAnchor);
+  const shouldRequireStartAnchor = Boolean(startAnchor && startAnchor !== "end_of_page");
+
+  const extractFromSource = (sourceText) => {
+    const source = String(sourceText || "").trim();
+    if (!source) return null;
+    let startIndex = 0;
+    let startMatched = !shouldRequireStartAnchor;
+    if (startAnchor) {
+      const startMatch = findInstructionAnchorMatch(source, startAnchor, {
+        startIndex: 0,
+        preferHeading: Boolean(safeRule.preferHeadingStart),
+      });
+      if (startMatch) {
+        startMatched = true;
+        startIndex = includeStartAnchor ? startMatch.index : startMatch.index + startMatch.length;
+      }
+    }
+    if (!startMatched) return null;
+
+    let endIndex = source.length;
+    if (endAnchor && endAnchor !== "end_of_page") {
+      const endMatch = findInstructionAnchorMatch(source, endAnchor, {
+        startIndex,
+        preferHeading: Boolean(safeRule.preferHeadingEnd),
+      });
+      if (endMatch) {
+        endIndex = includeEndAnchor ? endMatch.index + endMatch.length : endMatch.index;
+      }
+    }
+    const snippet = String(source.slice(startIndex, endIndex) || "").trim();
+    if (!snippet) return null;
+    if (options?.raw) return snippet;
+    if (safeRule.mode === "bullets") {
+      const bulletRows = extractBulletItemsFromText(snippet, Number(safeRule.maxItems || 8));
+      if (bulletRows.length) {
+        return bulletRows.join(" ");
+      }
+    }
+    return cleanPdfExtractedValue(snippet) || null;
+  };
+
+  const preferredStartPages = basePages.length
+    ? basePages
+    : [pageSegments[0].pageNumber];
+  const startPageOrder = Array.from(
+    new Set([
+      ...preferredStartPages,
+      ...pageSegments.map((segment) => segment.pageNumber),
+    ]),
+  );
+
+  for (const startPage of startPageOrder) {
+    const startIndex = pageSegments.findIndex((segment) => segment.pageNumber === startPage);
+    if (startIndex === -1) continue;
+    const snippet = extractFromSource(
+      pageSegments
+        .slice(startIndex)
+        .map((segment) => segment.text)
+        .join("\n\n"),
+    );
+    if (snippet) return snippet;
+  }
+
+  const fallback = extractFromSource(
+    pageSegments
+      .map((segment) => segment.text)
+      .join("\n\n"),
+  );
+  return fallback || null;
+}
+
+function extractInstructionBulletRowsFromReportContent(parsedProfile, rule, maxItems = 8) {
+  const raw = extractInstructionTextFromReportContent(parsedProfile, {
+    ...(rule && typeof rule === "object" ? rule : {}),
+    mode: "full_page",
+  }, { includeStartAnchor: true, raw: true });
+  const text = normalizeExtractedText(raw || "");
+  if (!text) return [];
+  const starBulletRows = String(raw || "")
+    .split(/\n+/)
+    .map((line) => cleanPdfExtractedValue(line.replace(/^\s*\*\s*/, "")))
+    .filter((line) => Boolean(line))
+    .filter((line) => !/^development\s*exercise$/i.test(line));
+  const symbolRows = extractBulletItemsFromText(text, maxItems);
+  return Array.from(new Set([...symbolRows, ...starBulletRows])).slice(0, maxItems);
+}
 
 function getPageAnchoredText(parsedProfile, pageNumbers) {
   const desired = new Set((Array.isArray(pageNumbers) ? pageNumbers : []).map((n) => Number(n)));
@@ -4250,9 +4629,9 @@ function getPageAnchoredText(parsedProfile, pageNumbers) {
   const pages = getReportContentPages(parsedProfile);
   return normalizeExtractedText(
     pages
-      .filter((page) => desired.has(Number(page?.pageNumber)))
+      .filter((page) => desired.has(Number(page?.pageNumber ?? page?.pageNum)))
       .map((page) =>
-        [page?.heading, page?.sectionTitle, page?.extractedText, ...(Array.isArray(page?.keyDataPoints) ? page.keyDataPoints : [])]
+        [page?.heading, page?.sectionTitle, page?.extractedText, page?.text, ...(Array.isArray(page?.keyDataPoints) ? page.keyDataPoints : [])]
           .filter(Boolean)
           .join(" "),
       )
@@ -4309,6 +4688,11 @@ function getSectionCompositeText(parsedProfile, section) {
 }
 
 function extractFeedbackGuideFromReportContent(parsedProfile) {
+  const feedbackGuideInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.feedbackGuide,
+    { includeStartAnchor: true },
+  );
   const feedbackGuidePageText = getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.feedbackGuide);
   const feedbackSection = getSectionByTitle(parsedProfile, (title) =>
     /feedback\s*guide|feedback\s*matrix|giving\s*&?\s*receiving\s*feedback/i.test(title),
@@ -4319,7 +4703,7 @@ function extractFeedbackGuideFromReportContent(parsedProfile) {
       getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.communication),
     ].join(" "),
   );
-  const text = feedbackGuidePageText || fallbackFeedbackText;
+  const text = feedbackGuideInstructionText || feedbackGuidePageText || fallbackFeedbackText;
   if (!text) {
     return Array.from({ length: 9 }, (_, idx) => ({
       type: `Type ${idx + 1}`,
@@ -4410,8 +4794,14 @@ function extractTeamStageBreakdownFromReportContent(parsedProfile) {
   const teamSection = getSectionByTitle(parsedProfile, (title) =>
     /team\s*behavio[u]?r|team\s*dynamics|forming|storming|norming|performing/i.test(title),
   );
+  const teamInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.teamStages,
+    { includeStartAnchor: true },
+  );
   const text = normalizeExtractedText(
     [
+      teamInstructionText,
       getSectionCompositeText(parsedProfile, teamSection),
       getPageAnchoredText(parsedProfile, PDF_PAGE_ANCHORS.teamBehaviour),
     ].join(" "),
@@ -4527,54 +4917,193 @@ function extractBodyLanguageRowsFromText(rawText) {
 }
 
 function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
-  const coreTypeText = extractSpreadsheetFocusSourceText(parsedProfile, {
-    sectionMatchers: [/core/, /type/],
-    pageAnchors: PDF_PAGE_ANCHORS.coreType,
-  });
-  const subtypesText = extractSpreadsheetFocusSourceText(parsedProfile, {
-    sectionMatchers: [/subtype/, /instinct/, /27\s*subtypes/],
-    pageAnchors: PDF_PAGE_ANCHORS.subtypesInstincts,
-  });
+  const motivationInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.motivationSummary,
+    { includeStartAnchor: true },
+  );
+  const instinctInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.instinctGoals,
+    { includeStartAnchor: true },
+  );
+  const developingAsInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.developingAsCopy,
+    { includeStartAnchor: true },
+  );
+  const bodyLanguageRuleRows = extractInstructionBulletRowsFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.bodyLanguageRows,
+    8,
+  );
+  const conflictResponseInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.responseToConflict,
+    { includeStartAnchor: true },
+  );
+  const conflictTriggeredInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.conflictTriggersBullets,
+    { includeStartAnchor: true },
+  );
+  const whatYouDoInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.whatYouDoWhenTriggered,
+    { includeStartAnchor: true },
+  );
+  const centeredDecisionInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.centeredDecisions,
+    { includeStartAnchor: true },
+  );
+  const decisionImpactInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.impactOfEnneaStyle,
+    { includeStartAnchor: true },
+  );
+  const decisionStrainInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.overallStrainSignal,
+    { includeStartAnchor: true },
+  );
+  const strategicLeadershipInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.strategicLeadershipCopy,
+    { includeStartAnchor: true },
+  );
+  const teamImpactInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.teamImpactCopy,
+    { includeStartAnchor: true },
+  );
+  const interdependenceInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.interdependenceCopy,
+    { includeStartAnchor: true },
+  );
+  const coachingInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.coachingRelationshipCopy,
+    { includeStartAnchor: true },
+  );
+
+  const coreTypeText = normalizeExtractedText([
+    motivationInstructionText,
+    extractSpreadsheetFocusSourceText(parsedProfile, {
+      sectionMatchers: [/core/, /type/],
+      pageAnchors: PDF_PAGE_ANCHORS.coreType,
+    }),
+  ].join(" "));
+  const subtypesText = normalizeExtractedText([
+    instinctInstructionText,
+    extractSpreadsheetFocusSourceText(parsedProfile, {
+      sectionMatchers: [/subtype/, /instinct/, /27\s*subtypes/],
+      pageAnchors: PDF_PAGE_ANCHORS.subtypesInstincts,
+    }),
+  ].join(" "));
   const communicationText = extractSpreadsheetFocusSourceText(parsedProfile, {
     sectionMatchers: [/communication/, /feedback/],
     pageAnchors: PDF_PAGE_ANCHORS.communication,
   });
-  const conflictText = extractSpreadsheetFocusSourceText(parsedProfile, {
-    sectionMatchers: [/conflict/, /trigger/],
-    pageAnchors: PDF_PAGE_ANCHORS.conflictTriggers,
-  });
-  const decisionText = extractSpreadsheetFocusSourceText(parsedProfile, {
-    sectionMatchers: [/decision/],
-    pageAnchors: PDF_PAGE_ANCHORS.decisionMaking,
-  });
-  const leadershipText = extractSpreadsheetFocusSourceText(parsedProfile, {
-    sectionMatchers: [/leadership/, /management/, /strategic/],
-    pageAnchors: PDF_PAGE_ANCHORS.leadershipManagement,
-  });
-  const teamText = extractSpreadsheetFocusSourceText(parsedProfile, {
-    sectionMatchers: [/team\s*behavio[u]?r/, /team\s*dynamics/, /forming/, /storming/, /norming/, /performing/],
-    pageAnchors: PDF_PAGE_ANCHORS.teamBehaviour,
-  });
-  const coachingText = extractSpreadsheetFocusSourceText(parsedProfile, {
-    sectionMatchers: [/coaching\s*relationship/, /coaching/],
-    pageAnchors: PDF_PAGE_ANCHORS.coachingRelationship,
-  });
+  const conflictText = normalizeExtractedText([
+    conflictResponseInstructionText,
+    conflictTriggeredInstructionText,
+    whatYouDoInstructionText,
+    extractSpreadsheetFocusSourceText(parsedProfile, {
+      sectionMatchers: [/conflict/, /trigger/],
+      pageAnchors: PDF_PAGE_ANCHORS.conflictTriggers,
+    }),
+  ].join(" "));
+  const decisionText = normalizeExtractedText([
+    centeredDecisionInstructionText,
+    decisionImpactInstructionText,
+    decisionStrainInstructionText,
+    extractSpreadsheetFocusSourceText(parsedProfile, {
+      sectionMatchers: [/decision/],
+      pageAnchors: PDF_PAGE_ANCHORS.decisionMaking,
+    }),
+  ].join(" "));
+  const leadershipText = normalizeExtractedText([
+    strategicLeadershipInstructionText,
+    extractSpreadsheetFocusSourceText(parsedProfile, {
+      sectionMatchers: [/leadership/, /management/, /strategic/],
+      pageAnchors: PDF_PAGE_ANCHORS.leadershipManagement,
+    }),
+  ].join(" "));
+  const teamText = normalizeExtractedText([
+    teamImpactInstructionText,
+    interdependenceInstructionText,
+    extractSpreadsheetFocusSourceText(parsedProfile, {
+      sectionMatchers: [/team\s*behavio[u]?r/, /team\s*dynamics/, /forming/, /storming/, /norming/, /performing/],
+      pageAnchors: PDF_PAGE_ANCHORS.teamBehaviour,
+    }),
+  ].join(" "));
+  const coachingText = normalizeExtractedText([
+    coachingInstructionText,
+    extractSpreadsheetFocusSourceText(parsedProfile, {
+      sectionMatchers: [/coaching\s*relationship/, /coaching/],
+      pageAnchors: PDF_PAGE_ANCHORS.coachingRelationship,
+    }),
+  ].join(" "));
 
   const focused = {
-    motivationSummary: extractSpreadsheetSnippetFromText(coreTypeText, ["Motivation", "Key motivations", "motivated"]),
+    motivationSummary: extractSpreadsheetSnippetFromText(
+      motivationInstructionText || coreTypeText,
+      ["Motivation", "Key motivations", "motivated"],
+    ),
     instinctGoals: extractInstinctGoalDefinitions(subtypesText),
-    developingAsCopy: extractSpreadsheetSnippetFromText(subtypesText, ["Developing as", "Development", "growth edge"]),
-    bodyLanguageRows: extractBodyLanguageRowsFromText(communicationText),
-    conflictResponseCopy: extractSpreadsheetSnippetFromText(conflictText, ["Response to Conflict", "conflict response"]),
-    conflictTriggeredCopy: extractSpreadsheetSnippetFromText(conflictText, ["What you do when triggered", "when triggered", "triggered"]),
-    centeredDecisionCopy: extractSpreadsheetSnippetFromText(decisionText, ["Centered Decisions", "centered decisions"]),
-    decisionImpactCopy: extractSpreadsheetSnippetFromText(decisionText, ["Impact of your Ennea style", "Impact of your Enneagram style", "Impact of your style"]),
-    decisionStrainCopy: extractSpreadsheetSnippetFromText(decisionText, ["Strain", "Level strain", "decision strain"]),
-    strategicLeadershipCopy: extractSpreadsheetSnippetFromText(leadershipText, ["Strategic Leadership", "Visioning", "Alignment", "Change Management"]),
-    teamImpactCopy: extractSpreadsheetSnippetFromText(teamText, ["Your Impact on Team", "Impact on Team"]),
-    interdependenceCopy: extractSpreadsheetSnippetFromText(teamText, ["Interdependence and Team Role", "Interdependence", "Team Role"]),
-    coachingRelationshipCopy: extractSpreadsheetSnippetFromText(coachingText, ["Coaching Relationship", "coaching relationship"]),
+    developingAsCopy: extractSpreadsheetSnippetFromText(
+      developingAsInstructionText || subtypesText,
+      ["Developing as", "Development", "growth edge", "Development Exercise"],
+    ),
+    bodyLanguageRows: bodyLanguageRuleRows.length
+      ? bodyLanguageRuleRows
+          .map((row) => compactInsightSnippet(row, 210))
+          .filter(Boolean)
+      : extractBodyLanguageRowsFromText(communicationText),
+    conflictResponseCopy: extractSpreadsheetSnippetFromText(
+      conflictResponseInstructionText || conflictText,
+      ["Response to Conflict", "conflict response"],
+    ),
+    conflictTriggeredCopy: extractSpreadsheetSnippetFromText(
+      whatYouDoInstructionText || conflictTriggeredInstructionText || conflictText,
+      ["What you do when triggered", "when triggered", "triggered", "What triggers you"],
+    ),
+    centeredDecisionCopy: extractSpreadsheetSnippetFromText(
+      centeredDecisionInstructionText || decisionText,
+      ["Centered Decisions", "Decision Making", "Experience", "Intelligibility", "Commitment"],
+    ),
+    decisionImpactCopy: extractSpreadsheetSnippetFromText(
+      decisionImpactInstructionText || decisionText,
+      ["Impact of your Ennea style", "Impact of your Enneagram style", "Impact of your style"],
+    ),
+    decisionStrainCopy: extractSpreadsheetSnippetFromText(
+      decisionStrainInstructionText || decisionText,
+      ["Ben your perceived level of Overall strain", "Overall Strain", "decision strain", "Strain"],
+    ),
+    strategicLeadershipCopy: extractSpreadsheetSnippetFromText(
+      strategicLeadershipInstructionText || leadershipText,
+      ["Strategic Leadership", "Visioning", "Alignment", "Change Management"],
+    ),
+    teamImpactCopy: extractSpreadsheetSnippetFromText(
+      teamImpactInstructionText || teamText,
+      ["Your Impact on Team", "Impact on Team"],
+    ),
+    interdependenceCopy: extractSpreadsheetSnippetFromText(
+      interdependenceInstructionText || teamText,
+      ["Interdependence and Team Role", "Intedependence and Team Role", "Interdependence", "Team Role"],
+    ),
+    coachingRelationshipCopy: extractSpreadsheetSnippetFromText(
+      coachingInstructionText || coachingText,
+      ["Ben, as an Ennea", "Coaching Relationship", "coaching relationship"],
+    ),
   };
+  if (!focused.instinctGoals) {
+    focused.instinctGoals = extractInstinctGoalDefinitions(
+      normalizeExtractedText(`${instinctInstructionText || ""} ${subtypesText || ""}`),
+    );
+  }
   console.log("[spreadsheet-focus] extracted structured section focuses", {
     hasMotivation: Boolean(focused.motivationSummary),
     hasInstinctGoals: Boolean(focused.instinctGoals),
@@ -4584,6 +5113,7 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
     hasStrategicLeadership: Boolean(focused.strategicLeadershipCopy),
     hasTeamImpact: Boolean(focused.teamImpactCopy),
     hasCoachingRelationship: Boolean(focused.coachingRelationshipCopy),
+    usedInstructionRules: true,
   });
   return focused;
 }
@@ -4603,7 +5133,7 @@ function extractSpreadsheetSectionFocusesFromPdfText(pdfText) {
     decisionStrainCopy: extractSpreadsheetSnippetFromText(normalized, ["Level strain", "decision strain", "Strain"]),
     strategicLeadershipCopy: extractSpreadsheetSnippetFromText(normalized, ["Strategic Leadership", "Visioning", "Alignment", "Change Management"]),
     teamImpactCopy: extractSpreadsheetSnippetFromText(normalized, ["Your Impact on Team", "Impact on Team"]),
-    interdependenceCopy: extractSpreadsheetSnippetFromText(normalized, ["Interdependence and Team Role", "Interdependence", "Team Role"]),
+    interdependenceCopy: extractSpreadsheetSnippetFromText(normalized, ["Interdependence and Team Role", "Intedependence and Team Role", "Interdependence", "Team Role"]),
     coachingRelationshipCopy: extractSpreadsheetSnippetFromText(normalized, ["Coaching Relationship", "coaching relationship"]),
   };
   console.log("[spreadsheet-focus] extracted PDF-text section focuses", {
@@ -4665,11 +5195,41 @@ function extractStrainQualitativeFromReportContent(parsedProfile) {
     ].join(" "),
   );
   const categories = ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"];
+  const ruleByCategory = {
+    happiness: ASSIGNED_PDF_INSTRUCTION_RULES.happinessStrain,
+    vocational: ASSIGNED_PDF_INSTRUCTION_RULES.vocationalStrain,
+    interpersonal: ASSIGNED_PDF_INSTRUCTION_RULES.interpersonalStrain,
+    physical: ASSIGNED_PDF_INSTRUCTION_RULES.physicalStrain,
+    environmental: ASSIGNED_PDF_INSTRUCTION_RULES.environmentalStrain,
+    psychological: ASSIGNED_PDF_INSTRUCTION_RULES.psychologicalStrain,
+  };
+
   if (!text) {
     return categories.map((category) => ({ category, text: "Not detected in structured report content." }));
   }
 
   return categories.map((category, index) => {
+    const categoryKey = String(category || "").toLowerCase();
+    const ruleText = extractInstructionTextFromReportContent(
+      parsedProfile,
+      ruleByCategory[categoryKey],
+      { includeStartAnchor: true },
+    );
+    if (ruleText) {
+      const levelMatch = String(ruleText).match(/perceived\s+level\s+of\s+[^.]{0,80}strain\s+is\s+(LOW|MEDIUM|HIGH|MODERATE)/i);
+      const level = String(levelMatch?.[1] || "").toUpperCase();
+      const bulletRows = extractBulletItemsFromText(ruleText, 6);
+      const explicitNarrative = level && bulletRows.length
+        ? cleanPdfExtractedValue(`${category} strain is ${level}. ${bulletRows.map((row) => `• ${row}`).join(" ")}`)
+        : cleanPdfExtractedValue(ruleText);
+      if (explicitNarrative && !isLowQualityStrainNarrative(explicitNarrative, category)) {
+        return {
+          category,
+          text: explicitNarrative,
+        };
+      }
+    }
+
     const bulletNarrative = extractBulletStrainNarrative({
       text,
       category,
@@ -4728,6 +5288,17 @@ function extractDevelopmentExercisesFromReportContent(parsedProfile) {
   );
   if (structuredBlockExercises.length) {
     return structuredBlockExercises;
+  }
+
+  const instructionExercises = splitDevelopmentExercisesTextBlock(
+    extractInstructionTextFromReportContent(
+      parsedProfile,
+      ASSIGNED_PDF_INSTRUCTION_RULES.developmentExercises,
+      { includeStartAnchor: true },
+    ),
+  );
+  if (instructionExercises.length) {
+    return instructionExercises;
   }
 
   const devSection = getSectionByTitle(parsedProfile, (title) => /development/i.test(title));
