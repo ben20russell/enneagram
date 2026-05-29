@@ -782,6 +782,7 @@ function getParsedProfileStrainScores(parsedProfile) {
   }
 
   const candidateSources = [
+    parsedProfile?.targetedSections?.strain_interpretation,
     parsedProfile?.strainScores,
     parsedProfile?.strain_scores,
     parsedProfile?.strainProfile,
@@ -844,6 +845,10 @@ function buildFlexibleLabelPattern(label) {
     .filter(Boolean)
     .map((word) => buildFlexibleWordPattern(word))
     .join("\\s*");
+}
+
+function buildFlexiblePhrasePattern(phrase) {
+  return buildFlexibleLabelPattern(phrase);
 }
 
 function extractLevelForLabel(text, label) {
@@ -1430,6 +1435,7 @@ async function ingestAssignedReportIntoDashboard(data) {
     const parsedProfileFeedbackRows = Array.isArray(parsedProfile?.feedbackGuideMatrix)
       ? parsedProfile.feedbackGuideMatrix
       : [];
+    const targetedFeedbackRows = extractFeedbackGuideFromTargetedSections(parsedProfile);
     const parsedProfileStrainRows = Array.isArray(parsedProfile?.strainQualitativeWriteups)
       ? parsedProfile.strainQualitativeWriteups
       : (parsedProfile?.strainNarratives && typeof parsedProfile.strainNarratives === "object"
@@ -1443,10 +1449,14 @@ async function ingestAssignedReportIntoDashboard(data) {
           .map((value, index) => ({ title: `Exercise ${index + 1}`, text: String(value || "").trim() }))
           .filter((row) => Boolean(row.text))
       : [];
+    const targetedDevelopmentExercises = extractDevelopmentExercisesFromTargetedSections(parsedProfile);
 
     const feedbackGuideMatrix = mergeFeedbackGuideRows(
       mergeFeedbackGuideRows(
-        parsedProfileFeedbackRows,
+        mergeFeedbackGuideRows(
+          parsedProfileFeedbackRows,
+          targetedFeedbackRows,
+        ),
         extractFeedbackGuideFromReportContent(parsedProfile),
       ),
       extractFeedbackGuideMatrix(pdfText),
@@ -1465,21 +1475,30 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractOverallStrainSummaryFromPdfText(pdfText);
     const developmentExercises = mergeDevelopmentExercises(
       mergeDevelopmentExercises(
-        parsedProfileDevelopmentExercises,
+        mergeDevelopmentExercises(
+          parsedProfileDevelopmentExercises,
+          targetedDevelopmentExercises,
+        ),
         extractDevelopmentExercisesFromReportContent(parsedProfile),
       ),
       extractDevelopmentExercises(pdfText),
     );
     const spreadsheetFocuses = mergeSpreadsheetSectionFocuses(
       mergeSpreadsheetSectionFocuses(
-        parsedProfile?.spreadsheetFocuses,
+        mergeSpreadsheetSectionFocuses(
+          parsedProfile?.spreadsheetFocuses,
+          extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile),
+        ),
         extractSpreadsheetSectionFocusesFromReportContent(parsedProfile),
       ),
       extractSpreadsheetSectionFocusesFromPdfText(pdfText),
     );
     const teamStageBreakdown = mergeTeamStageBreakdown(
       mergeTeamStageBreakdown(
-        parsedProfile?.teamStageBreakdown,
+        mergeTeamStageBreakdown(
+          parsedProfile?.teamStageBreakdown,
+          extractTeamStageBreakdownFromTargetedSections(parsedProfile),
+        ),
         extractTeamStageBreakdownFromReportContent(parsedProfile),
       ),
       extractTeamStageBreakdownFromPdfText(pdfText),
@@ -4769,6 +4788,180 @@ function extractTeamStageSnippet(text, stage, nextStages = []) {
 
   const fallback = extractSnippetFromLabels(normalized, [stage]);
   return cleanPdfExtractedValue(fallback || "") || null;
+}
+
+function getTargetedSections(parsedProfile) {
+  const targeted = parsedProfile?.targetedSections;
+  return targeted && typeof targeted === "object" ? targeted : {};
+}
+
+function normalizeTargetedSectionRows(value, options = {}) {
+  const safeOptions = options && typeof options === "object" ? options : {};
+  const maxItems = Number.isFinite(Number(safeOptions.maxItems)) ? Number(safeOptions.maxItems) : 8;
+  const maxLength = Number.isFinite(Number(safeOptions.maxLength)) ? Number(safeOptions.maxLength) : 240;
+  const values = Array.isArray(value) ? value : [value];
+  const rows = values
+    .map((item) => cleanPdfExtractedValue(item || ""))
+    .filter(Boolean)
+    .filter((item) => !isMissingExtractedText(item))
+    .map((item) => compactInsightSnippet(item, maxLength))
+    .filter(Boolean);
+  return Array.from(new Set(rows)).slice(0, maxItems);
+}
+
+function compactTargetedSectionText(value, options = {}) {
+  const safeOptions = options && typeof options === "object" ? options : {};
+  const maxLength = Number.isFinite(Number(safeOptions.maxLength)) ? Number(safeOptions.maxLength) : 420;
+  const maxItems = Number.isFinite(Number(safeOptions.maxItems)) ? Number(safeOptions.maxItems) : 8;
+  const joiner = String(safeOptions.joiner || " ");
+  const rows = normalizeTargetedSectionRows(value, { maxItems, maxLength });
+  if (!rows.length) return null;
+  return compactInsightSnippet(rows.join(joiner), maxLength);
+}
+
+function extractTeamStageBreakdownFromTargetedSections(parsedProfile) {
+  const teamDynamics = getTargetedSections(parsedProfile)?.team_dynamics;
+  if (!teamDynamics || typeof teamDynamics !== "object") return null;
+  const result = {
+    forming: compactTargetedSectionText(teamDynamics.forming),
+    storming: compactTargetedSectionText(teamDynamics.storming),
+    norming: compactTargetedSectionText(teamDynamics.norming),
+    performing: compactTargetedSectionText(teamDynamics.performing),
+  };
+  console.log("[team-stage] targeted-section extraction", {
+    hasForming: Boolean(result.forming),
+    hasStorming: Boolean(result.storming),
+    hasNorming: Boolean(result.norming),
+    hasPerforming: Boolean(result.performing),
+  });
+  if (Object.values(result).every((value) => !value)) return null;
+  return result;
+}
+
+function extractFeedbackGuideFromTargetedSections(parsedProfile) {
+  const guide = getTargetedSections(parsedProfile)?.feedback_guide;
+  if (!guide || typeof guide !== "object") return [];
+
+  const names = {
+    1: "Reformer",
+    2: "Helper",
+    3: "Achiever",
+    4: "Individualist",
+    5: "Investigator",
+    6: "Loyalist",
+    7: "Enthusiast",
+    8: "Challenger",
+    9: "Peacemaker",
+  };
+
+  const rows = Array.from({ length: 9 }, (_, index) => {
+    const type = index + 1;
+    const guidance = compactTargetedSectionText(guide?.[`type_${type}`], { maxItems: 12, maxLength: 620 });
+    return {
+      type: `Type ${type}`,
+      label: names[type],
+      guidance: guidance || "Not detected in structured report content.",
+    };
+  });
+
+  console.log("[feedback-guide] targeted-section extraction", {
+    populatedRows: rows.filter((row) => !isMissingExtractedText(row?.guidance)).length,
+  });
+  return rows;
+}
+
+function extractDevelopmentExercisesFromTargetedSections(parsedProfile) {
+  const development = getTargetedSections(parsedProfile)?.development_exercises;
+  if (!development || typeof development !== "object") return [];
+
+  const groups = [
+    "core_type",
+    "subtype",
+    "centers",
+    "integration",
+    "strain",
+    "conflict",
+    "management",
+    "strategic_leadership",
+  ];
+  const out = [];
+  groups.forEach((group) => {
+    const rows = normalizeTargetedSectionRows(development?.[group], { maxItems: 8, maxLength: 420 });
+    rows.forEach((row) => {
+      out.push({
+        title: `Exercise ${out.length + 1}`,
+        text: row,
+      });
+    });
+  });
+
+  console.log("[development-exercises] targeted-section extraction", {
+    rows: out.length,
+    groupsHydrated: groups.filter((group) => normalizeTargetedSectionRows(development?.[group], { maxItems: 1 }).length).length,
+  });
+  return out;
+}
+
+function extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile) {
+  const targeted = getTargetedSections(parsedProfile);
+  const decision = targeted?.decision_framework && typeof targeted.decision_framework === "object"
+    ? targeted.decision_framework
+    : {};
+  const strategic = targeted?.strategic_leadership && typeof targeted.strategic_leadership === "object"
+    ? targeted.strategic_leadership
+    : {};
+  const team = targeted?.team_dynamics && typeof targeted.team_dynamics === "object"
+    ? targeted.team_dynamics
+    : {};
+  const development = targeted?.development_exercises && typeof targeted.development_exercises === "object"
+    ? targeted.development_exercises
+    : {};
+
+  const conflictRows = normalizeTargetedSectionRows(development.conflict, { maxItems: 8, maxLength: 220 });
+  const strategicRows = [
+    ...normalizeTargetedSectionRows(strategic.visioning, { maxItems: 6, maxLength: 220 }),
+    ...normalizeTargetedSectionRows(strategic.strategic_thinking, { maxItems: 6, maxLength: 220 }),
+    ...normalizeTargetedSectionRows(strategic.alignment, { maxItems: 6, maxLength: 220 }),
+    ...normalizeTargetedSectionRows(strategic.change_management, { maxItems: 6, maxLength: 220 }),
+  ];
+  const teamImpactRows = [
+    ...normalizeTargetedSectionRows(team.forming, { maxItems: 6, maxLength: 220 }),
+    ...normalizeTargetedSectionRows(team.norming, { maxItems: 6, maxLength: 220 }),
+    ...normalizeTargetedSectionRows(team.performing, { maxItems: 6, maxLength: 220 }),
+  ];
+  const decisionImpactRows = [
+    ...normalizeTargetedSectionRows(decision.making_decisions, { maxItems: 6, maxLength: 220 }),
+    ...normalizeTargetedSectionRows(decision.receiving_decisions, { maxItems: 6, maxLength: 220 }),
+  ];
+
+  const focused = {
+    motivationSummary: null,
+    instinctGoals: null,
+    developingAsCopy: compactTargetedSectionText(development.subtype, { maxItems: 8, maxLength: 420 }),
+    bodyLanguageRows: normalizeTargetedSectionRows(targeted.body_language, { maxItems: 10, maxLength: 210 }),
+    conflictResponseCopy: compactTargetedSectionText(conflictRows.slice(0, 5), { maxItems: 5, maxLength: 420 }),
+    conflictTriggeredCopy: compactTargetedSectionText(conflictRows, { maxItems: 8, maxLength: 420 }),
+    centeredDecisionCopy: compactTargetedSectionText(decision.dominant_center_impact, { maxItems: 6, maxLength: 420 }),
+    decisionImpactCopy: compactTargetedSectionText(decisionImpactRows, { maxItems: 8, maxLength: 420 }),
+    decisionStrainCopy: compactTargetedSectionText(decision.strain_impact, { maxItems: 6, maxLength: 420 }),
+    strategicLeadershipCopy: compactTargetedSectionText(strategicRows, { maxItems: 10, maxLength: 420 }),
+    teamImpactCopy: compactTargetedSectionText(teamImpactRows, { maxItems: 8, maxLength: 420 }),
+    interdependenceCopy: compactTargetedSectionText(team.interdependence_and_role, { maxItems: 3, maxLength: 420 }),
+    coachingRelationshipCopy: compactTargetedSectionText(targeted.coaching_relationship, { maxItems: 8, maxLength: 420 }),
+  };
+
+  console.log("[spreadsheet-focus] targeted-section extraction", {
+    hasDevelopingAs: Boolean(focused.developingAsCopy),
+    bodyLanguageRows: focused.bodyLanguageRows.length,
+    hasConflictResponse: Boolean(focused.conflictResponseCopy),
+    hasCenteredDecision: Boolean(focused.centeredDecisionCopy),
+    hasDecisionImpact: Boolean(focused.decisionImpactCopy),
+    hasStrategicLeadership: Boolean(focused.strategicLeadershipCopy),
+    hasTeamImpact: Boolean(focused.teamImpactCopy),
+    hasInterdependence: Boolean(focused.interdependenceCopy),
+    hasCoachingRelationship: Boolean(focused.coachingRelationshipCopy),
+  });
+  return focused;
 }
 
 function extractTeamStageBreakdownFromPdfText(pdfText) {
