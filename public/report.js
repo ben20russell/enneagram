@@ -231,8 +231,21 @@ function selectMyReportInSelector() {
 
 function stripPdfFooterNoiseFragments(rawText) {
   return String(rawText || "")
-    .replace(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g, (match) => match.replace(/\s+/g, ""))
-    .replace(/\b(?:\d\s+){2,}\d\b/g, (match) => match.replace(/\s+/g, ""))
+    .replace(/\b(?:[A-Za-z](?:[ \t]+)){2,}[A-Za-z]\b/g, (match) => {
+      const source = String(match || "");
+      const marked = source.replace(/[ \t]{2,}/g, "\u0000");
+      const collapsed = marked.replace(/[ \t]+/g, "");
+      // If OCR removed all word boundaries, keep readable spacing between letters
+      // rather than returning one giant merged token.
+      if (!collapsed.includes("\u0000") && collapsed.length >= 24) {
+        return source.replace(/[ \t]+/g, " ").trim();
+      }
+      return collapsed.replace(/\u0000/g, " ");
+    })
+    .replace(/\b(?:\d(?:[ \t]+)){2,}\d\b/g, (match) => {
+      const marked = String(match || "").replace(/[ \t]{2,}/g, "\u0000");
+      return marked.replace(/[ \t]+/g, "").replace(/\u0000/g, " ");
+    })
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/Copyright\s*\d{4}\s*[-–]\s*\d{4}[\s\S]*?\d+\s*of\s*\d+/gis, " ")
     .replace(
@@ -251,8 +264,6 @@ function stripPdfFooterNoiseFragments(rawText) {
 
 function normalizeExtractedText(rawText) {
   return stripPdfFooterNoiseFragments(rawText)
-    .replace(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g, (match) => match.replace(/\s+/g, ""))
-    .replace(/\b(?:\d\s+){2,}\d\b/g, (match) => match.replace(/\s+/g, ""))
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/\s+/g, " ")
     .trim();
@@ -1013,7 +1024,12 @@ function extractIntegrationFromPdfText(pdfText) {
 }
 
 function sanitizeSnippet(value, fallback) {
-  const cleaned = String(value || "").replace(/\s+/g, " ").trim();
+  const cleaned = String(value || "")
+    .replace(/\s+/g, " ")
+    // OCR occasionally injects a bogus "C'" token ahead of sentence starts.
+    .replace(/(^|[.!?]\s+)\s*C['’`´]\s*(?=[A-Z])/g, "$1")
+    .replace(/^C['’`´]\s*(?=[A-Z])/, "")
+    .trim();
   if (!cleaned) return fallback;
   return cleaned;
 }
@@ -3264,6 +3280,62 @@ function buildAdaptiveTriggerGridHtml(items) {
     .join("");
 }
 
+function ensureSentencePunctuation(text) {
+  const value = cleanPdfExtractedValue(text || "");
+  if (!value) return "";
+  return /[.?!]$/.test(value) ? value : `${value}.`;
+}
+
+function summarizeSentence(text, maxWords = 18) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "";
+  if (words.length <= maxWords) return ensureSentencePunctuation(words.join(" "));
+  return `${ensureSentencePunctuation(words.slice(0, maxWords).join(" ")).replace(/[.?!]$/, "...")}`;
+}
+
+function extractFeedbackGuidancePoints(text, maxItems = 6) {
+  const normalized = normalizeExtractedText(text || "");
+  if (!normalized) return [];
+
+  const symbolRows = extractBulletItemsFromText(normalized, maxItems);
+  if (symbolRows.length) {
+    return symbolRows.map((row) => ensureSentencePunctuation(row)).filter(Boolean);
+  }
+
+  const cueSplitPattern =
+    /\s+(?=(?:Start|Keep|Be|Ask|Focus|Avoid|Reinforce|Position|Create|Allow|Answer|Use|Express|Give|Openly|State|Listen|Invite|Minimise|Don't|Do\s+not|Get|Try|Watch|When|If)\b)/g;
+  const cueRows = normalized
+    .split(cueSplitPattern)
+    .map((row) => ensureSentencePunctuation(row))
+    .filter(Boolean)
+    .filter((row) => row.length >= 16);
+  if (cueRows.length) {
+    return Array.from(new Set(cueRows)).slice(0, maxItems);
+  }
+
+  const sentenceRows = normalized
+    .split(/(?<=[.?!])\s+/)
+    .map((row) => ensureSentencePunctuation(row))
+    .filter(Boolean)
+    .filter((row) => row.length >= 16);
+  if (sentenceRows.length) {
+    return Array.from(new Set(sentenceRows)).slice(0, maxItems);
+  }
+
+  const fallback = ensureSentencePunctuation(normalized);
+  return fallback ? [fallback] : [];
+}
+
+function renderFeedbackGuidanceCell(text) {
+  const points = extractFeedbackGuidancePoints(text, 6);
+  if (!points.length) return escapeHtml("Not detected in assigned PDF.");
+  const summary = summarizeSentence(points[0], 16);
+  const bullets = buildAdaptiveListHtml(
+    points.map((point) => ({ tone: "neu", symbol: "•", text: point })),
+  );
+  return `<div style="margin-bottom:6px;font-size:12px;color:var(--text3)"><strong>Summary:</strong> ${escapeHtml(summary)}</div>${bullets}`;
+}
+
 function buildAdaptiveSectionCopy(report) {
   const typeNumber = String(report?.typeNumber || "?");
   const typeName = formatOptionalText(report?.typeName, "Profile");
@@ -3364,9 +3436,10 @@ function buildDevExercisePathHtml(paths) {
   return safePaths
     .map((path, index) => {
       const title = formatOptionalText(path?.title, `Growth Path ${index + 1}`);
-      const text = formatOptionalText(path?.text, "Not detected in assigned PDF.");
-      const source = formatOptionalText(path?.source, "Context");
-      return `<div class="dev-item"><div class="dev-item-title">${escapeHtml(title)}</div><p>${escapeHtml(text)}</p><div class="subh" style="margin:8px 0 0">${escapeHtml(source)}</div></div>`;
+      const text = sanitizeSnippet(formatOptionalText(path?.text, "Not detected in assigned PDF."), "Not detected in assigned PDF.");
+      const source = sanitizeSnippet(formatOptionalText(path?.source, ""), "");
+      const showSource = Boolean(source) && !/extracted\s+from\s+assigned\s+pdf/i.test(source);
+      return `<div class="dev-item"><div class="dev-item-title">${escapeHtml(title)}</div><p>${escapeHtml(text)}</p>${showSource ? `<div class="subh" style="margin:8px 0 0">${escapeHtml(source)}</div>` : ""}</div>`;
     })
     .join("");
 }
@@ -3406,8 +3479,8 @@ function buildDevExerciseComponentData(report) {
       if (!text || isMissingExtractedText(text)) return null;
       return {
         title,
-        text,
-        source: "Extracted from assigned PDF",
+        text: sanitizeSnippet(text, text),
+        source: "",
       };
     })
     .filter(Boolean);
@@ -3507,6 +3580,95 @@ function renderBodyLanguageRows(rows) {
   );
 }
 
+function extractTeamStageBulletItems(text, maxItems = 8) {
+  const normalized = normalizeExtractedText(text || "");
+  if (!normalized) return [];
+
+  const fromSymbols = extractBulletItemsFromText(normalized, maxItems);
+  if (fromSymbols.length) return fromSymbols;
+
+  const cueSplitPattern =
+    /\s+(?=(?:Make|Watch|Not|Assert|Forthright|Comfortably|Willing(?:ly)?|Reluctant|Demanding|Very|Be|Have|Miss|Try|Hold|Vacillate)\b)/g;
+  const cueRows = normalized
+    .split(cueSplitPattern)
+    .map((row) => cleanPdfExtractedValue(row))
+    .filter(Boolean)
+    .filter((row) => row.length >= 18);
+  if (cueRows.length) return Array.from(new Set(cueRows)).slice(0, maxItems);
+
+  const sentenceRows = normalized
+    .split(/(?<=[.?!])\s+/)
+    .map((row) => cleanPdfExtractedValue(row))
+    .filter(Boolean)
+    .filter((row) => row.length >= 18);
+  if (sentenceRows.length) return Array.from(new Set(sentenceRows)).slice(0, maxItems);
+
+  const fallback = cleanPdfExtractedValue(normalized);
+  return fallback ? [fallback] : [];
+}
+
+function renderTeamStageBullets(text) {
+  const rows = extractTeamStageBulletItems(text, 8);
+  if (!rows.length) {
+    return buildAdaptiveListHtml([
+      { tone: "neu", symbol: "•", text: "Not detected in assigned PDF." },
+    ]);
+  }
+  return buildAdaptiveListHtml(
+    rows.map((row) => ({
+      tone: "neu",
+      symbol: "•",
+      text: row,
+    })),
+  );
+}
+
+function extractNarrativeBulletItems(text, maxItems = 8) {
+  const normalized = normalizeExtractedText(text || "");
+  if (!normalized) return [];
+
+  const symbolRows = extractBulletItemsFromText(normalized, maxItems);
+  if (symbolRows.length) return symbolRows;
+
+  const cueSplitPattern =
+    /\s+(?=(?:Quick|Able|Preference|Willingness|Your|You|At|Be|Consider|As|Make|Watch|Not|Forthright|Comfortably|Willing(?:ly)?|Reluctant|Demanding|Very|Have|Miss|Try|Hold|Vacillate)\b)/g;
+  const cueRows = normalized
+    .split(cueSplitPattern)
+    .map((row) => cleanPdfExtractedValue(row))
+    .filter(Boolean)
+    .filter((row) => row.length >= 18);
+  if (cueRows.length) return Array.from(new Set(cueRows)).slice(0, maxItems);
+
+  const sentenceRows = normalized
+    .split(/(?<=[.?!])\s+/)
+    .map((row) => cleanPdfExtractedValue(row))
+    .filter(Boolean)
+    .filter((row) => row.length >= 18);
+  if (sentenceRows.length) return Array.from(new Set(sentenceRows)).slice(0, maxItems);
+
+  const fallback = cleanPdfExtractedValue(normalized);
+  return fallback ? [fallback] : [];
+}
+
+function renderNarrativeBullets(text, options = {}) {
+  const safeOptions = options && typeof options === "object" ? options : {};
+  const maxItems = Number.isFinite(Number(safeOptions.maxItems)) ? Number(safeOptions.maxItems) : 8;
+  const fallbackText = formatOptionalText(safeOptions.fallbackText, "Not detected in assigned PDF.");
+  const rows = extractNarrativeBulletItems(text, maxItems);
+  if (!rows.length) {
+    return buildAdaptiveListHtml([
+      { tone: "neu", symbol: "•", text: fallbackText },
+    ]);
+  }
+  return buildAdaptiveListHtml(
+    rows.map((row) => ({
+      tone: "neu",
+      symbol: "•",
+      text: row,
+    })),
+  );
+}
+
 function renderAdaptiveSectionCopy(report) {
   const copy = buildAdaptiveSectionCopy(report || {});
   setHtml('strengthsList', buildAdaptiveListHtml(copy.strengths));
@@ -3528,10 +3690,10 @@ function renderAdaptiveSectionCopy(report) {
   setHtml('communicationListeningList', buildAdaptiveListHtml(copy.communicationListening));
   setHtml('communicationFeedbackList', buildAdaptiveListHtml(copy.communicationFeedback));
 
-  setText('teamStageForming', formatOptionalText(copy.teamStages?.forming, "Not detected in assigned PDF."));
-  setText('teamStageStorming', formatOptionalText(copy.teamStages?.storming, "Not detected in assigned PDF."));
-  setText('teamStageNorming', formatOptionalText(copy.teamStages?.norming, "Not detected in assigned PDF."));
-  setText('teamStagePerforming', formatOptionalText(copy.teamStages?.performing, "Not detected in assigned PDF."));
+  setHtml('teamStageForming', renderTeamStageBullets(formatOptionalText(copy.teamStages?.forming, "Not detected in assigned PDF.")));
+  setHtml('teamStageStorming', renderTeamStageBullets(formatOptionalText(copy.teamStages?.storming, "Not detected in assigned PDF.")));
+  setHtml('teamStageNorming', renderTeamStageBullets(formatOptionalText(copy.teamStages?.norming, "Not detected in assigned PDF.")));
+  setHtml('teamStagePerforming', renderTeamStageBullets(formatOptionalText(copy.teamStages?.performing, "Not detected in assigned PDF.")));
   return copy;
 }
 
@@ -4471,8 +4633,19 @@ function getReportPageTextByNumber(parsedProfile) {
     )
       .replace(/\u0000/g, " ")
       .replace(/\r\n?/g, "\n")
-      .replace(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g, (match) => match.replace(/\s+/g, ""))
-      .replace(/\b(?:\d\s+){2,}\d\b/g, (match) => match.replace(/\s+/g, ""))
+      .replace(/\b(?:[A-Za-z](?:[ \t]+)){2,}[A-Za-z]\b/g, (match) => {
+        const source = String(match || "");
+        const marked = source.replace(/[ \t]{2,}/g, "\u0000");
+        const collapsed = marked.replace(/[ \t]+/g, "");
+        if (!collapsed.includes("\u0000") && collapsed.length >= 24) {
+          return source.replace(/[ \t]+/g, " ").trim();
+        }
+        return collapsed.replace(/\u0000/g, " ");
+      })
+      .replace(/\b(?:\d(?:[ \t]+)){2,}\d\b/g, (match) => {
+        const marked = String(match || "").replace(/[ \t]{2,}/g, "\u0000");
+        return marked.replace(/[ \t]+/g, "").replace(/\u0000/g, " ");
+      })
       .replace(/([a-z])([A-Z])/g, "$1 $2")
       .replace(/[ \t\f\v]+/g, " ")
       .replace(/[ \t]+\n/g, "\n")
@@ -5941,7 +6114,7 @@ function renderReportFromState(isExampleMode) {
       .map(
         (row, idx) => `<tr>
   <td style="padding:8px;${idx < feedbackRows.length - 1 ? "border-bottom:1px solid var(--border2);" : ""}"><strong>${row.type}</strong>${row.label ? ` · ${row.label}` : ""}</td>
-  <td style="padding:8px;${idx < feedbackRows.length - 1 ? "border-bottom:1px solid var(--border2);" : ""}">${formatOptionalText(row.guidance, "Not detected in assigned PDF.")}</td>
+  <td style="padding:8px;${idx < feedbackRows.length - 1 ? "border-bottom:1px solid var(--border2);" : ""}">${renderFeedbackGuidanceCell(formatOptionalText(row.guidance, "Not detected in assigned PDF."))}</td>
 </tr>`,
       )
       .join(""),
@@ -5970,7 +6143,7 @@ function renderReportFromState(isExampleMode) {
     exercises
       .map(
         (exercise) =>
-          `<div class="dev-item"><div class="dev-item-title">${formatOptionalText(exercise.title, "Development Exercise")}</div><p>${formatOptionalText(exercise.text, "Not detected in assigned PDF.")}</p></div>`,
+          `<div class="dev-item"><div class="dev-item-title">${escapeHtml(sanitizeSnippet(formatOptionalText(exercise.title, "Development Exercise"), "Development Exercise"))}</div><p>${escapeHtml(sanitizeSnippet(formatOptionalText(exercise.text, "Not detected in assigned PDF."), "Not detected in assigned PDF."))}</p></div>`,
       )
       .join(""),
   );
@@ -6115,33 +6288,33 @@ function renderReportFromState(isExampleMode) {
     'conflictTriggeredCopy',
     resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictTriggeredCopy),
   );
-  setText(
+  setHtml(
     'centeredDecisionCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.centeredDecisionCopy),
+    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.centeredDecisionCopy), { maxItems: 8 }),
   );
-  setText(
+  setHtml(
     'decisionImpactCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionImpactCopy),
+    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionImpactCopy), { maxItems: 10 }),
   );
-  setText(
+  setHtml(
     'decisionStrainCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionStrainCopy),
+    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionStrainCopy), { maxItems: 8 }),
   );
-  setText(
+  setHtml(
     'strategicLeadershipCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.strategicLeadershipCopy),
+    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.strategicLeadershipCopy), { maxItems: 10 }),
   );
-  setText(
+  setHtml(
     'teamImpactCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.teamImpactCopy),
+    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.teamImpactCopy), { maxItems: 10 }),
   );
-  setText(
+  setHtml(
     'interdependenceCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.interdependenceCopy),
+    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.interdependenceCopy), { maxItems: 6 }),
   );
-  setText(
+  setHtml(
     'coachingRelationshipCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.coachingRelationshipCopy),
+    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.coachingRelationshipCopy), { maxItems: 10 }),
   );
   const bodyLanguageRows = Array.isArray(spreadsheetFocusesFromReport.bodyLanguageRows)
     ? spreadsheetFocusesFromReport.bodyLanguageRows.filter(Boolean)
@@ -6171,10 +6344,10 @@ function renderReportFromState(isExampleMode) {
     if (primary && !isMissingExtractedText(primary)) return primary;
     return missingAssignedPdfText;
   };
-  setText('teamStageForming', resolveTeamStageText(teamStagesFromReport.forming));
-  setText('teamStageStorming', resolveTeamStageText(teamStagesFromReport.storming));
-  setText('teamStageNorming', resolveTeamStageText(teamStagesFromReport.norming));
-  setText('teamStagePerforming', resolveTeamStageText(teamStagesFromReport.performing));
+  setHtml('teamStageForming', renderTeamStageBullets(resolveTeamStageText(teamStagesFromReport.forming)));
+  setHtml('teamStageStorming', renderTeamStageBullets(resolveTeamStageText(teamStagesFromReport.storming)));
+  setHtml('teamStageNorming', renderTeamStageBullets(resolveTeamStageText(teamStagesFromReport.norming)));
+  setHtml('teamStagePerforming', renderTeamStageBullets(resolveTeamStageText(teamStagesFromReport.performing)));
   console.log('[team-stage] rendered stage breakdown', {
     source: Object.keys(teamStagesFromReport).length ? "report-content" : "not-detected",
     forming: Boolean(teamStagesFromReport.forming),
