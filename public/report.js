@@ -3006,13 +3006,35 @@ function formatTypeLine(line) {
 function setText(id, value) {
   const node = document.getElementById(id);
   if (!node) return;
-  node.textContent = value;
+  node.textContent = ensureSentenceStartsCapitalized(String(value == null ? "" : value));
+}
+
+function normalizeDashboardHtmlCopy(value) {
+  const source = String(value == null ? "" : value);
+  if (!source) return "";
+  if (typeof document === "undefined" || typeof document.createElement !== "function") {
+    return ensureSentenceStartsCapitalized(source);
+  }
+
+  const template = document.createElement("template");
+  template.innerHTML = source;
+  const showTextNodeFilter = typeof NodeFilter === "undefined" ? 4 : NodeFilter.SHOW_TEXT;
+  const walker = document.createTreeWalker(template.content, showTextNodeFilter);
+  let node = walker.nextNode();
+  while (node) {
+    const text = String(node.nodeValue || "");
+    if (text.trim()) {
+      node.nodeValue = ensureSentenceStartsCapitalized(text);
+    }
+    node = walker.nextNode();
+  }
+  return template.innerHTML;
 }
 
 function setHtml(id, value) {
   const node = document.getElementById(id);
   if (!node) return;
-  node.innerHTML = value;
+  node.innerHTML = normalizeDashboardHtmlCopy(value);
 }
 
 function formatScoreObject(labelMap, scores) {
@@ -3359,7 +3381,7 @@ function renderFeedbackGuidanceCell(text) {
     visibleCount: visiblePoints.length,
     hiddenCount: hiddenPoints.length,
   });
-  return `<div data-feedback-guidance-cell="true" data-testid="feedback-guide-cell"><div style="margin-bottom:6px;font-size:12px;color:var(--text3)"><strong>Summary:</strong> ${escapeHtml(summary)}</div><div data-feedback-guidance-primary="true">${visibleBullets}</div><div data-feedback-guidance-extra="true" style="display:none;margin-top:4px">${hiddenBullets}</div><button type="button" onclick="toggleFeedbackGuidanceExpansion(this)" data-feedback-guidance-toggle="collapsed" data-testid="feedback-guide-expand-button" aria-expanded="false" style="margin-top:8px;padding:0;background:none;border:none;color:var(--primary);font-size:12px;font-weight:700;cursor:pointer">Show more</button></div>`;
+  return `<div data-feedback-guidance-cell="true" data-testid="feedback-guide-cell"><div style="margin-bottom:6px;font-size:12px;color:var(--text3)"><strong>Summary:</strong> ${escapeHtml(summary)}</div><div data-feedback-guidance-primary="true">${visibleBullets}</div><div data-feedback-guidance-extra="true" style="display:none;margin-top:4px">${hiddenBullets}</div><button type="button" onclick="toggleFeedbackGuidanceExpansion(this)" data-feedback-guidance-toggle="collapsed" data-testid="feedback-guide-expand-button" aria-expanded="false" style="margin-top:8px;padding:0;background:none;border:none;color:var(--primary);font-size:12px;font-weight:400;cursor:pointer">Show more</button></div>`;
 }
 
 function toggleFeedbackGuidanceExpansion(button) {
@@ -3983,9 +4005,40 @@ function isLikelyGarbledDevelopmentExerciseText(value) {
 function ensureSentenceStartsCapitalized(value) {
   const cleaned = sanitizeSnippet(value || "", "");
   if (!cleaned) return "";
-  return cleaned.replace(/(^|[.!?]\s+)(["'(\[]*)([a-z])/g, (match, prefix, wrappers, firstChar) => (
-    `${prefix || ""}${wrappers || ""}${String(firstChar || "").toUpperCase()}`
-  ));
+  const normalized = cleaned.replace(/^\s*[,;:]+\s*(?=[A-Za-z])/, "");
+  let output = "";
+  let shouldCapitalize = true;
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index];
+    if (shouldCapitalize && /[a-z]/.test(char)) {
+      output += char.toUpperCase();
+      shouldCapitalize = false;
+      continue;
+    }
+
+    output += char;
+
+    if (/[A-Za-z0-9]/.test(char)) {
+      shouldCapitalize = false;
+      continue;
+    }
+
+    if (/[.!?]/.test(char) || char === "\n" || char === "\r") {
+      shouldCapitalize = true;
+      continue;
+    }
+
+    if (char === "•" || char === "·" || char === "▪" || char === "◦" || char === "-" || char === "*") {
+      const previous = normalized[index - 1] || "";
+      const next = normalized[index + 1] || "";
+      if ((!previous || /\s/.test(previous)) && (!next || /\s/.test(next))) {
+        shouldCapitalize = true;
+      }
+    }
+  }
+
+  return output;
 }
 
 function splitDevelopmentExercisesTextBlock(value) {
@@ -6394,7 +6447,12 @@ function renderReportFromState(isExampleMode) {
   setText('worldviewValue', REPORT.worldview);
   setText('focusValue', REPORT.focus);
   setText('selfTalkValue', REPORT.selfTalk);
-  document.getElementById('deepTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('users', 12, 'var(--blue)')}</span></span>${REPORT.deepTitle}`;
+  setHtml(
+    'deepTitle',
+    `<span class="title-icon-chip"><span class="title-icon">${iconSvg('users', 12, 'var(--blue)')}</span></span>${escapeHtml(
+      ensureSentenceStartsCapitalized(formatOptionalText(REPORT.deepTitle, "Not detected in assigned PDF.")),
+    )}`,
+  );
   setText('deepP1', REPORT.deep[0]);
   setText('deepP2', REPORT.deep[1]);
   setText('deepP3', REPORT.deep[2]);
@@ -6513,7 +6571,11 @@ function renderReportFromState(isExampleMode) {
   });
 
   const traitChips = document.getElementById('traitChips');
-  traitChips.innerHTML = (REPORT.traits || []).map(trait => `<span class="chip cgn">${trait}</span>`).join('');
+  if (traitChips) {
+    traitChips.innerHTML = (Array.isArray(REPORT.traits) ? REPORT.traits : [])
+      .map((trait) => `<span class="chip cgn">${escapeHtml(ensureSentenceStartsCapitalized(formatOptionalText(trait, "")))}</span>`)
+      .join('');
+  }
 
   updateCharts();
   buildReportModuleIndex();
@@ -6635,7 +6697,7 @@ function genReflection() {
   const choice = options[Math.floor(Math.random() * options.length)];
   console.log('[reflection] category', refCat, 'choice', choice);
   document.getElementById('refCatTag').textContent = refCatLabels[refCat];
-  document.getElementById('refCard').innerHTML = `<p class="sb-tip">${choice}</p>`;
+  setHtml('refCard', `<p class="sb-tip">${escapeHtml(ensureSentenceStartsCapitalized(choice))}</p>`);
 }
 
 function setRef(cat, btn) {
