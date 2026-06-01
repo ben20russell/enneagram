@@ -102,12 +102,6 @@ let lastAppliedExampleType = "8";
 let latestAdminClientReports = [];
 let latestAdminClientReportsById = new Map();
 let currentClientReportId = null;
-let developmentExerciseCarouselState = {
-  items: [],
-  index: 0,
-  intervalId: null,
-  rotationMs: 5200,
-};
 
 function resetClientReportSelectorSelection() {
   const clientReportSelector = getClientReportSelector();
@@ -3786,7 +3780,7 @@ function buildDevExercisePathHtml(paths) {
     .join("");
 }
 
-function normalizeDevelopmentExerciseCarouselItems(exercises, maxItems = 20) {
+function normalizeDevelopmentExerciseGridItems(exercises, maxItems = 20) {
   const safeExercises = Array.isArray(exercises) ? exercises : [];
   const out = [];
   const seen = new Set();
@@ -3813,91 +3807,13 @@ function normalizeDevelopmentExerciseCarouselItems(exercises, maxItems = 20) {
   return out;
 }
 
-function stopDevelopmentExerciseCarouselAutoplay() {
-  if (!Number.isFinite(Number(developmentExerciseCarouselState?.intervalId))) return;
-  window.clearInterval(developmentExerciseCarouselState.intervalId);
-  developmentExerciseCarouselState.intervalId = null;
-}
-
-function renderDevelopmentExerciseCarouselSlide() {
-  const items = Array.isArray(developmentExerciseCarouselState?.items) && developmentExerciseCarouselState.items.length
-    ? developmentExerciseCarouselState.items
-    : [{ title: "Exercise 1", text: "Not detected in assigned PDF." }];
-  const count = items.length;
-  if (!count) return;
-
-  if (developmentExerciseCarouselState.index < 0 || developmentExerciseCarouselState.index >= count) {
-    developmentExerciseCarouselState.index = 0;
-  }
-
-  const currentItem = items[developmentExerciseCarouselState.index] || items[0];
-  setText("developmentExerciseSlideTitle", formatOptionalText(currentItem?.title, "Exercise 1"));
-  setText("developmentExerciseSlideText", formatOptionalText(currentItem?.text, "Not detected in assigned PDF."));
-  setText("developmentExercisesCounter", `${developmentExerciseCarouselState.index + 1} / ${count}`);
-
-  const prevButton = document.getElementById("developmentExercisesPrev");
-  const nextButton = document.getElementById("developmentExercisesNext");
-  const disableNav = count <= 1;
-  if (prevButton) prevButton.disabled = disableNav;
-  if (nextButton) nextButton.disabled = disableNav;
-}
-
-function shiftDevelopmentExerciseCarousel(delta = 1) {
-  const items = Array.isArray(developmentExerciseCarouselState?.items) ? developmentExerciseCarouselState.items : [];
-  const count = items.length;
-  if (!count) return;
-  const offset = Number.isFinite(Number(delta)) ? Number(delta) : 1;
-  developmentExerciseCarouselState.index =
-    (developmentExerciseCarouselState.index + offset + count) % count;
-  renderDevelopmentExerciseCarouselSlide();
-}
-
-function startDevelopmentExerciseCarouselAutoplay() {
-  stopDevelopmentExerciseCarouselAutoplay();
-  const items = Array.isArray(developmentExerciseCarouselState?.items) ? developmentExerciseCarouselState.items : [];
-  if (items.length <= 1) return;
-  if (typeof window === "undefined" || typeof window.setInterval !== "function") return;
-  developmentExerciseCarouselState.intervalId = window.setInterval(() => {
-    shiftDevelopmentExerciseCarousel(1);
-  }, developmentExerciseCarouselState.rotationMs);
-}
-
-function setDevelopmentExerciseCarouselItems(exercises) {
-  developmentExerciseCarouselState.items = normalizeDevelopmentExerciseCarouselItems(exercises, 20);
-  developmentExerciseCarouselState.index = 0;
-  renderDevelopmentExerciseCarouselSlide();
-  startDevelopmentExerciseCarouselAutoplay();
-  console.log("[development-exercises] carousel hydrated", {
-    count: developmentExerciseCarouselState.items.length,
+function renderDevelopmentExerciseGridItems(exercises) {
+  const normalized = normalizeDevelopmentExerciseGridItems(exercises, 20);
+  const html = buildDevExercisePathHtml(normalized);
+  console.log("[development-exercises] grid hydrated", {
+    count: normalized.length,
   });
-}
-
-function setupDevelopmentExerciseCarouselControls() {
-  const prevButton = document.getElementById("developmentExercisesPrev");
-  const nextButton = document.getElementById("developmentExercisesNext");
-  const carousel = document.getElementById("developmentExercisesCarousel");
-
-  if (prevButton && prevButton.dataset.bound !== "1") {
-    prevButton.addEventListener("click", () => {
-      shiftDevelopmentExerciseCarousel(-1);
-      startDevelopmentExerciseCarouselAutoplay();
-    });
-    prevButton.dataset.bound = "1";
-  }
-
-  if (nextButton && nextButton.dataset.bound !== "1") {
-    nextButton.addEventListener("click", () => {
-      shiftDevelopmentExerciseCarousel(1);
-      startDevelopmentExerciseCarouselAutoplay();
-    });
-    nextButton.dataset.bound = "1";
-  }
-
-  if (carousel && carousel.dataset.bound !== "1") {
-    carousel.addEventListener("mouseenter", stopDevelopmentExerciseCarouselAutoplay);
-    carousel.addEventListener("mouseleave", startDevelopmentExerciseCarouselAutoplay);
-    carousel.dataset.bound = "1";
-  }
+  return html || '<div class="dev-item"><div class="dev-item-title">Exercise 1</div><p>Not detected in assigned PDF.</p></div>';
 }
 
 function buildDevExerciseComponentData(report) {
@@ -7062,7 +6978,6 @@ function renderReportFromState(isExampleMode) {
         { title: "Exercise 2", text: "Not detected in assigned PDF." },
         { title: "Exercise 3", text: "Not detected in assigned PDF." },
       ];
-  setDevelopmentExerciseCarouselItems(exercises);
   const devExerciseComponentData = buildDevExerciseComponentData({
     ...REPORT,
     developmentExercises: exercises,
@@ -7076,8 +6991,7 @@ function renderReportFromState(isExampleMode) {
   );
   setHtml(
     'devExercisePaths',
-    buildDevExercisePathHtml(devExerciseComponentData.paths) ||
-      '<div class="dev-item"><div class="dev-item-title">Growth Path 1</div><p>Not detected in assigned PDF.</p></div>',
+    renderDevelopmentExerciseGridItems(exercises),
   );
 
   const diagnostics = REPORT.dataQualityDiagnostics || null;
@@ -7478,7 +7392,6 @@ window.addEventListener('load', () => {
   // Bind report selector first so it still works even if later setup code fails.
   setupReportSelectorHandler();
   setupClientReportSelectorHandler();
-  setupDevelopmentExerciseCarouselControls();
   window.setInterval(syncSelectedExampleReport, 400);
   decorateInterfaceIcons();
   buildReportModuleIndex();
