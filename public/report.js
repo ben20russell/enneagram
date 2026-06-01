@@ -196,16 +196,6 @@ function getReportSelector() {
   return document.getElementById("reportSelector");
 }
 
-function getMyReportSelectorOption() {
-  return document.getElementById("reportSelectorMyReportOption");
-}
-
-function setMyReportOptionVisible(visible) {
-  const option = getMyReportSelectorOption();
-  if (!option) return;
-  option.style.display = visible ? "block" : "none";
-}
-
 function setOverviewAdminDiagnosticsVisible(email) {
   const isAdmin = hasAdminAccess(email);
   const diagnosticsSection = document.getElementById("sec-test");
@@ -228,14 +218,6 @@ function isAssignedReportAvailable(data) {
   const hasAssignedReport = Boolean(data.hasAssignedReport) || Boolean(data.reportFileName);
   const isPdfRenderable = Boolean(data.isPdfRenderable);
   return hasAssignedReport && isPdfRenderable;
-}
-
-function selectMyReportInSelector() {
-  const selector = getReportSelector();
-  if (!selector) return;
-  const option = getMyReportSelectorOption();
-  if (!option || option.style.display === "none") return;
-  selector.value = "my-report";
 }
 
 function stripPdfFooterNoiseFragments(rawText) {
@@ -1835,7 +1817,6 @@ async function refreshReportActiveUi() {
           isAuthenticated: Boolean(currentSignedInUser),
         }),
       );
-      setMyReportOptionVisible(false);
       latestAssignedPdfReport = null;
       if (currentReportViewMode !== "example") {
         applySelectedExampleReportOrFallback();
@@ -1866,7 +1847,6 @@ async function refreshReportActiveUi() {
     const shouldShowExampleReports = !Boolean(data?.isAuthenticated) || isAdmin;
     const canExportDashboardPdf =
       Boolean(data?.isAuthenticated) && (Boolean(hasAssignedReportAvailable) || Boolean(shouldShowExampleReports));
-    setMyReportOptionVisible(hasAssignedReportAvailable);
     setExportPdfState({ visible: true, enabled: canExportDashboardPdf });
     setReportActiveChipVisible(isReady);
     setReportSwitchVisible(shouldShowExampleReports);
@@ -1879,11 +1859,24 @@ async function refreshReportActiveUi() {
       ingestionStatus: data?.ingestionStatus || null,
       reviewStatus: data?.reviewStatus || null,
     });
+    if (currentClientReportId) {
+      const selectedClientReport = latestAdminClientReportsById.get(String(currentClientReportId).trim());
+      if (selectedClientReport) {
+        currentReportViewMode = "client-report";
+        assignedReportIngested = false;
+        latestAssignedPdfReport = null;
+        ingestAssignedReportIntoDashboard(selectedClientReport);
+        return;
+      }
+      currentClientReportId = null;
+      resetClientReportSelectorSelection();
+    }
     if (hasAssignedReportAvailable) {
       currentClientReportId = null;
       resetClientReportSelectorSelection();
-      currentReportViewMode = "my-report";
-      selectMyReportInSelector();
+      currentReportViewMode = "assigned-report";
+      assignedReportIngested = false;
+      latestAssignedPdfReport = null;
       ingestAssignedReportIntoDashboard(data);
     } else {
       latestAssignedPdfReport = null;
@@ -1907,7 +1900,6 @@ async function refreshReportActiveUi() {
         isAuthenticated: Boolean(currentSignedInUser),
       }),
     );
-    setMyReportOptionVisible(false);
     latestAssignedPdfReport = null;
     if (currentReportViewMode !== "example") {
       applySelectedExampleReportOrFallback();
@@ -1948,7 +1940,6 @@ function setSignedOutAuthUi() {
   setExportPdfState({ visible: false, enabled: false });
   setReportActiveChipVisible(false);
   setReportSwitchVisible(true);
-  setMyReportOptionVisible(false);
   setOverviewAdminDiagnosticsVisible(null);
   currentReportViewMode = "example";
   latestAssignedPdfReport = null;
@@ -6872,7 +6863,7 @@ function renderReportFromState(isExampleMode) {
   setText('profileWheelBadgeType', REPORT.typeNumber);
   setText('profileWheelBadgeKeyword', String(REPORT.keyword || '').toUpperCase());
   setText('profileWheelBadgeInstinct', String(REPORT.instinct || '').split('—')[0].trim() || 'N/A');
-  // Render the wheel early so My Report still shows the graphic even if later blocks throw.
+  // Render the wheel early so assigned/client reports still show the graphic even if later blocks throw.
   try {
     renderProfileWheel();
   } catch (error) {
@@ -7260,7 +7251,7 @@ function applyAssignedPdfReport(payload) {
     REPORT = buildPdfOnlyReport(payload);
     latestAssignedPdfReport = REPORT;
     const isClientReportView = currentReportViewMode === "client-report";
-    currentReportViewMode = isClientReportView ? "client-report" : "my-report";
+    currentReportViewMode = isClientReportView ? "client-report" : "assigned-report";
     reflectionDeck = buildReflectionDeck(REPORT);
     renderReportFromState(false);
   } catch (error) {
@@ -7292,18 +7283,11 @@ function setupClientReportSelectorHandler() {
 
 function syncSelectedExampleReport() {
   try {
-    if (currentReportViewMode === "client-report") return;
+    if (currentReportViewMode !== "example") return;
     const reportSelector = getReportSelector();
     if (!reportSelector) return;
     const selectedType = String(reportSelector.value || "").trim();
     if (!/^[1-9]$/.test(selectedType)) return;
-    if (currentReportViewMode !== "example") {
-      console.log("[report-switch] forcing example mode from selector value", {
-        selectedType,
-        previousMode: currentReportViewMode,
-      });
-      currentReportViewMode = "example";
-    }
     if (selectedType === String(lastAppliedExampleType || "")) return;
     console.log("[report-switch] selector/render drift detected; reapplying", {
       selectedType,
@@ -7317,23 +7301,15 @@ function syncSelectedExampleReport() {
 
 function onReportSelectorChange(event) {
   const selectedType = String(event?.target?.value || getReportSelector()?.value || "").trim();
-  const isMyReport = selectedType === "my-report";
   console.log('[report-switch] selector changed to', selectedType);
-  if (isMyReport) {
-    currentClientReportId = null;
-    resetClientReportSelectorSelection();
-    currentReportViewMode = "my-report";
-    if (latestReportActiveData?.isAuthenticated && isAssignedReportAvailable(latestReportActiveData)) {
-      assignedReportIngested = false;
-      latestAssignedPdfReport = null;
-      ingestAssignedReportIntoDashboard(latestReportActiveData);
-      return;
-    }
-    alert("No active assigned report was found for this account.");
-    const fallbackType = String(REPORT?.typeNumber || "8");
+  if (!/^[1-9]$/.test(selectedType)) {
+    const fallbackType = String(lastAppliedExampleType || "8");
     if (event?.target) event.target.value = fallbackType;
-    currentReportViewMode = "example";
-    applyReport(fallbackType);
+    console.log("[report-switch] ignored invalid example type selection", {
+      selectedType,
+      fallbackType,
+      currentReportViewMode,
+    });
     return;
   }
   currentClientReportId = null;
