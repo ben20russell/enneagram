@@ -249,13 +249,14 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .strain-detail-list .ti{gap:8px}
 .strain-detail-row-icon{width:18px;height:18px;border-radius:999px;font-size:10px;line-height:1;margin-top:2px}
 .strain-detail-row-text{font-size:13px;line-height:1.55;color:var(--text2)}
-.strain-cards-pack{column-count:3;column-gap:14px}
-.strain-cards-pack .card{display:inline-block;width:100%;margin:0 0 14px;break-inside:avoid}
+.strain-cards-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+.strain-cards-pack{display:contents}
+.strain-cards-pack .card{margin:0;break-inside:avoid}
 .strain-breakdown-card{display:flex;flex-direction:column;overflow:hidden}
 .strain-breakdown-header{margin-bottom:6px;padding-bottom:12px;border-bottom:1px solid var(--border);flex-shrink:0}
 .strain-breakdown-scroll{margin-top:12px;flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable}
-@media(max-width:980px){.strain-cards-pack{column-count:2}}
-@media(max-width:700px){.strain-cards-pack{column-count:1}}
+@media(max-width:980px){.strain-cards-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.strain-cards-grid{grid-template-columns:1fr}}
 .center-chip-high{background:var(--green-lt);color:var(--green)}
 .center-chip-medium{background:var(--gold-lt);color:var(--gold)}
 .center-chip-low{background:var(--surface2);color:var(--text3)}
@@ -786,7 +787,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
       </div>
 
       <div id="sec-strain" class="sec">
-        <div class="mb24">
+        <div id="strainCardsGrid" class="strain-cards-grid mb24" data-testid="strain-cards-grid">
           <div class="card strain-breakdown-card" id="strainBreakdownCard" data-testid="strain-breakdown-card">
             <div class="ct">Strain Area Breakdown</div>
             <div class="strain-breakdown-header">
@@ -802,16 +803,16 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
               <div class="brow"><div class="blbl">Psychological</div><span class="chip strain-chip-low">Low</span></div>
             </div>
           </div>
-        </div>
 
-        <div id="strainWriteupCards" class="strain-cards-pack mb24" data-testid="strain-writeup-cards">
-          <div class="card"><div class="ct">Overall Strain — Medium</div><div class="chip cg" style="margin-bottom:10px">Moderate load detected</div><p style="font-size:13px;color:var(--text2)">Overall strain is currently moderate across the report context.</p></div>
-          <div class="card"><div class="ct">Vocational — Medium</div><div class="chip cg" style="margin-bottom:10px">Balanced but mixed</div><p style="font-size:13px;color:var(--text2)">Work-related strain appears present but manageable.</p></div>
-          <div class="card"><div class="ct">Physical — Medium</div><div class="chip cg" style="margin-bottom:10px">Body load is mixed</div><p style="font-size:13px;color:var(--text2)">Physical strain indicators suggest moderate stress in energy and regulation.</p></div>
-          <div class="card"><div class="ct">Interpersonal — Medium</div><div class="chip cg" style="margin-bottom:10px">Relational friction present</div><p style="font-size:13px;color:var(--text2)">Interpersonal dynamics appear to carry moderate strain.</p></div>
-          <div class="card"><div class="ct">Happiness — Low</div><div class="chip cr" style="margin-bottom:10px">Mood strain is low</div><p style="font-size:13px;color:var(--text2)">Happiness-related strain signals are currently on the lower side.</p></div>
-          <div class="card"><div class="ct">Environmental — Low</div><div class="chip cgn" style="margin-bottom:10px">External stress is limited</div><p style="font-size:13px;color:var(--text2)">Contextual and environmental factors currently show lower strain signals.</p></div>
-          <div class="card"><div class="ct">Psychological — Low</div><div class="chip cgn" style="margin-bottom:10px">Internal pressure limited</div><p style="font-size:13px;color:var(--text2)">Psychological strain markers currently indicate a lower level of pressure.</p></div>
+          <div id="strainWriteupCards" class="strain-cards-pack" data-testid="strain-writeup-cards">
+            <div class="card"><div class="ct">Overall Strain — Medium</div><div class="chip cg" style="margin-bottom:10px">Moderate load detected</div><p style="font-size:13px;color:var(--text2)">Overall strain is currently moderate across the report context.</p></div>
+            <div class="card"><div class="ct">Vocational — Medium</div><div class="chip cg" style="margin-bottom:10px">Balanced but mixed</div><p style="font-size:13px;color:var(--text2)">Work-related strain appears present but manageable.</p></div>
+            <div class="card"><div class="ct">Physical — Medium</div><div class="chip cg" style="margin-bottom:10px">Body load is mixed</div><p style="font-size:13px;color:var(--text2)">Physical strain indicators suggest moderate stress in energy and regulation.</p></div>
+            <div class="card"><div class="ct">Interpersonal — Medium</div><div class="chip cg" style="margin-bottom:10px">Relational friction present</div><p style="font-size:13px;color:var(--text2)">Interpersonal dynamics appear to carry moderate strain.</p></div>
+            <div class="card"><div class="ct">Happiness — Low</div><div class="chip cr" style="margin-bottom:10px">Mood strain is low</div><p style="font-size:13px;color:var(--text2)">Happiness-related strain signals are currently on the lower side.</p></div>
+            <div class="card"><div class="ct">Environmental — Low</div><div class="chip cgn" style="margin-bottom:10px">External stress is limited</div><p style="font-size:13px;color:var(--text2)">Contextual and environmental factors currently show lower strain signals.</p></div>
+            <div class="card"><div class="ct">Psychological — Low</div><div class="chip cgn" style="margin-bottom:10px">Internal pressure limited</div><p style="font-size:13px;color:var(--text2)">Psychological strain markers currently indicate a lower level of pressure.</p></div>
+          </div>
         </div>
       </div>
 
