@@ -3359,7 +3359,7 @@ function renderFeedbackGuidanceCell(text) {
     visibleCount: visiblePoints.length,
     hiddenCount: hiddenPoints.length,
   });
-  return `<div data-feedback-guidance-cell="true" data-testid="feedback-guide-cell"><div style="margin-bottom:6px;font-size:12px;color:var(--text3)"><strong>Summary:</strong> ${escapeHtml(summary)}</div><div data-feedback-guidance-primary="true">${visibleBullets}</div><div data-feedback-guidance-extra="true" style="display:none;margin-top:4px">${hiddenBullets}</div><button type="button" onclick="toggleFeedbackGuidanceExpansion(this)" data-feedback-guidance-toggle="collapsed" data-testid="feedback-guide-expand-button" aria-expanded="false" style="margin-top:8px;padding:0;background:none;border:none;color:var(--primary);font-size:12px;font-weight:700;cursor:pointer">Expand feedback</button></div>`;
+  return `<div data-feedback-guidance-cell="true" data-testid="feedback-guide-cell"><div style="margin-bottom:6px;font-size:12px;color:var(--text3)"><strong>Summary:</strong> ${escapeHtml(summary)}</div><div data-feedback-guidance-primary="true">${visibleBullets}</div><div data-feedback-guidance-extra="true" style="display:none;margin-top:4px">${hiddenBullets}</div><button type="button" onclick="toggleFeedbackGuidanceExpansion(this)" data-feedback-guidance-toggle="collapsed" data-testid="feedback-guide-expand-button" aria-expanded="false" style="margin-top:8px;padding:0;background:none;border:none;color:var(--primary);font-size:12px;font-weight:700;cursor:pointer">Show more</button></div>`;
 }
 
 function toggleFeedbackGuidanceExpansion(button) {
@@ -3373,7 +3373,7 @@ function toggleFeedbackGuidanceExpansion(button) {
     extraRows.style.display = "none";
     button.setAttribute("data-feedback-guidance-toggle", "collapsed");
     button.setAttribute("aria-expanded", "false");
-    button.textContent = "Expand feedback";
+    button.textContent = "Show more";
     console.log("[feedback-guide] collapsed extra guidance bullets");
     return;
   }
