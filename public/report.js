@@ -4005,7 +4005,7 @@ function isLikelyGarbledDevelopmentExerciseText(value) {
 function ensureSentenceStartsCapitalized(value) {
   const cleaned = sanitizeSnippet(value || "", "");
   if (!cleaned) return "";
-  const normalized = cleaned.replace(/^\s*[,;:]+\s*(?=[A-Za-z])/, "");
+  const normalized = cleaned.replace(/^\s*[-–—.,;:!?]+\s*(?=[A-Za-z])/, "");
   let output = "";
   let shouldCapitalize = true;
 
@@ -4653,11 +4653,11 @@ const PDF_PAGE_ANCHORS = {
   strainProfile: {
     overall: [18, 34],
     vocational: [19, 20],
-    environmental: [19, 20],
+    environmental: [20],
     physical: [20, 21],
     interpersonal: [20, 21],
     psychological: [21, 22],
-    happiness: [21, 22],
+    happiness: [22],
   },
   communication: [24],
   feedbackGuide: [28, 29],
@@ -4765,7 +4765,7 @@ const ASSIGNED_PDF_INSTRUCTION_RULES = {
     mode: "full_page",
   },
   environmentalStrain: {
-    pageNumbers: [19, 20],
+    pageNumbers: [20],
     startAnchor: "Ben your perceived level of Environmental strain",
     endAnchor: "Ben your perceived level of Vocational strain",
     preferHeadingStart: true,
@@ -4800,9 +4800,9 @@ const ASSIGNED_PDF_INSTRUCTION_RULES = {
     mode: "bullets",
   },
   happinessStrain: {
-    pageNumbers: [21, 22],
+    pageNumbers: [22],
     startAnchor: "Ben your perceived level of Happiness strain",
-    endAnchor: "Psychological Strain",
+    endAnchor: "end of page",
     preferHeadingStart: true,
     mode: "bullets",
   },

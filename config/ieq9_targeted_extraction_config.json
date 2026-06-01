@@ -1,6 +1,6 @@
 {
   "section_page_map": {
-    "strain_interpretation": [18, 19, 20, 21, 22],
+    "strain_interpretation": [20, 21, 22],
     "body_language": [25],
     "feedback_guide": [28, 29],
     "decision_framework": [32, 33, 34],
@@ -21,7 +21,6 @@
   },
   "section_header_titles": {
     "strain_interpretation": [
-      "Your Overall Strain Level",
       "Environmental",
       "Vocational",
       "Physical",
