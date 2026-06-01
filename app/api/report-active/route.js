@@ -5,6 +5,42 @@ import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabas
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 import { authOptions } from "../auth/[...nextauth]/route";
 
+function isLocalhostHostValue(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized === "localhost" ||
+    normalized.startsWith("localhost:") ||
+    normalized === "127.0.0.1" ||
+    normalized.startsWith("127.0.0.1:") ||
+    normalized === "[::1]" ||
+    normalized.startsWith("[::1]:")
+  );
+}
+
+function parseHostFromHeaderValue(value) {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) return "";
+  try {
+    return String(new URL(rawValue).host || "").toLowerCase();
+  } catch (_error) {
+    return rawValue.toLowerCase();
+  }
+}
+
+function isLocalhostPreviewRequest(request) {
+  const hostHeader = request?.headers?.get("host") || "";
+  if (isLocalhostHostValue(hostHeader)) return true;
+
+  const originHeader = request?.headers?.get("origin") || "";
+  if (isLocalhostHostValue(parseHostFromHeaderValue(originHeader))) return true;
+
+  const refererHeader = request?.headers?.get("referer") || "";
+  if (isLocalhostHostValue(parseHostFromHeaderValue(refererHeader))) return true;
+
+  return false;
+}
+
 function getIngestedDashboardContext(resultsData) {
   const normalized = normalizeResultsData(resultsData);
   if (!normalized) return null;
@@ -219,11 +255,12 @@ async function listAdminClientReports({ supabaseAdmin }) {
   return mapped.filter((item) => Boolean(item?.id));
 }
 
-export async function GET() {
+export async function GET(request) {
+  const isLocalhostPreview = isLocalhostPreviewRequest(request);
   const session = await getServerSession(authOptions);
   const userEmail = session?.user?.email || null;
 
-  if (!userEmail) {
+  if (!userEmail && !isLocalhostPreview) {
     return NextResponse.json(
       {
         isAuthenticated: false,
@@ -237,12 +274,29 @@ export async function GET() {
 
   const normalizedUserEmail = normalizeEmail(userEmail);
   const isAdmin = hasAdminAccess(normalizeEmail(userEmail));
+  const canAccessAdminClientReports = isAdmin || isLocalhostPreview;
 
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const adminClientReports = isAdmin
+    const adminClientReports = canAccessAdminClientReports
       ? await listAdminClientReports({ supabaseAdmin })
       : [];
+
+    if (!userEmail) {
+      return NextResponse.json(
+        {
+          isAuthenticated: false,
+          isAdmin: false,
+          adminClientReports: canAccessAdminClientReports ? adminClientReports : [],
+          hasAssignedReport: false,
+          isReportActive: false,
+          isAssignedReportReady: false,
+          isPdfRenderable: false,
+        },
+        { status: 200 },
+      );
+    }
+
     const assignedReport = await getAssignedReportByUserEmail(userEmail);
     const hasAssignedPdfMetadata =
       Boolean(assignedReport?.id) &&
@@ -254,7 +308,7 @@ export async function GET() {
         {
           isAuthenticated: true,
           isAdmin,
-          adminClientReports: isAdmin ? adminClientReports : [],
+          adminClientReports: canAccessAdminClientReports ? adminClientReports : [],
           hasAssignedReport: false,
           isReportActive: false,
           isAssignedReportReady: false,
@@ -279,7 +333,7 @@ export async function GET() {
       {
         isAuthenticated: true,
         isAdmin,
-        adminClientReports: isAdmin ? adminClientReports : [],
+        adminClientReports: canAccessAdminClientReports ? adminClientReports : [],
         hasAssignedReport: hasAssignedPdfMetadata,
         isReportActive,
         isAssignedReportReady: isReportActive,
@@ -301,7 +355,7 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json(
       {
-        isAuthenticated: true,
+        isAuthenticated: Boolean(userEmail),
         isAdmin,
         adminClientReports: [],
         hasAssignedReport: false,

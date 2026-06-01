@@ -171,11 +171,11 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .div{height:1px;background:var(--border);margin:16px 0}.quote{border-left:3px solid var(--blue);padding:3px 0 3px 16px;margin:12px 0}.quote p{font-size:17px;font-weight:500;color:var(--text2);line-height:1.45;overflow-wrap:anywhere}
 .brow{display:flex;align-items:center;gap:10px;margin-bottom:10px}.brow:last-child{margin-bottom:0}.blbl{font-size:13px;color:var(--text2);min-width:130px;flex-shrink:0}.btrk{flex:1;height:4px;background:var(--surface3);border-radius:100px;overflow:hidden}.bfil{height:100%;border-radius:100px}.bval{font-size:12px;font-weight:500;color:var(--text);min-width:36px;text-align:right}
 .chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:500;line-height:1.4}.cr{background:var(--red-lt);color:var(--red)}.cg{background:var(--gold-lt);color:var(--gold)}.cgn{background:var(--green-lt);color:var(--green)}.cb{background:var(--blue-lt);color:var(--blue)}.cx{background:var(--surface2);color:var(--text3)}
-.tlist{display:flex;flex-direction:column;gap:11px}.ti{display:flex;gap:11px;align-items:flex-start}.tic{width:26px;height:26px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;margin-top:1px}.tic.pos{background:var(--green-lt);color:var(--green)}.tic.neg{background:var(--red-lt);color:var(--red)}.tic.neu{background:var(--gold-lt);color:var(--gold)}.tic.inf{background:var(--blue-lt);color:var(--blue)}.tt{font-size:13px;color:var(--text2);line-height:1.65}.tt strong{color:var(--text);font-weight:600}
+.tlist{display:flex;flex-direction:column;gap:11px}.ti{display:flex;gap:11px;align-items:flex-start}.tic{width:26px;height:26px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;margin-top:-2px}.tic.pos{background:var(--green-lt);color:var(--green)}.tic.neg{background:var(--red-lt);color:var(--red)}.tic.neu{background:var(--gold-lt);color:var(--gold)}.tic.inf{background:var(--blue-lt);color:var(--blue)}.tt{font-size:13px;color:var(--text2);line-height:1.65}.tt strong{color:var(--text);font-weight:600}
 .sh{font-size:20px;font-weight:700;margin-bottom:14px}.subh{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:16px 0 8px}
 .tg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.tg-item{background:var(--red-lt);border-left:3px solid var(--red);border-radius:var(--r-sm);padding:12px}.tg-title{font-size:12px;font-weight:600;color:var(--red);margin-bottom:3px}.tg-desc{font-size:12px;color:var(--text3);line-height:1.5}
 .ibox{background:var(--blue-lt);border-left:3px solid var(--blue);border-radius:var(--r-sm);padding:13px 15px}.ibox p{font-size:13px;color:var(--blue);line-height:1.6}
-.devbox{background:var(--gold-lt);border:1px solid rgba(154,110,26,.15);border-radius:var(--r);padding:18px}.devbox-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);margin-bottom:12px}.dev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.dev-item{background:rgba(255,255,255,.75);border-radius:var(--r-sm);padding:12px}.dev-item-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.dev-item p{font-size:12px;color:var(--text2);line-height:1.6}
+.devbox{background:var(--gold-lt);border:1px solid rgba(154,110,26,.15);border-radius:var(--r);padding:18px}.devbox-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);margin-bottom:12px}.dev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.dev-item{background:rgba(255,255,255,.75);border-radius:var(--r-sm);padding:12px}.dev-item-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.dev-item p{font-size:12px;color:var(--text2);line-height:1.6}.dev-carousel{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:stretch}.dev-carousel-viewport{min-width:0}.dev-carousel-slide{height:100%;min-height:148px}.dev-carousel-nav{border:1px solid rgba(154,110,26,.3);background:#fff;color:var(--gold);border-radius:10px;padding:0 12px;font:700 12px var(--font-sans);cursor:pointer}.dev-carousel-nav:hover{background:#fff5df}.dev-carousel-nav:disabled{opacity:.5;cursor:not-allowed}.dev-carousel-meta{display:flex;justify-content:flex-end;margin-top:8px}.dev-carousel-counter{font:600 11px var(--font-mono);color:var(--text3)}@media(max-width:700px){.dev-carousel{grid-template-columns:1fr}.dev-carousel-nav{min-height:34px}}
 .dev-summary{font-size:13px;color:var(--text2);line-height:1.7;margin:0 0 12px}
 .team-stage-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:700px){.team-stage-grid{grid-template-columns:1fr}}
@@ -249,9 +249,9 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .strain-detail-list .ti{gap:8px}
 .strain-detail-row-icon{width:18px;height:18px;border-radius:999px;font-size:10px;line-height:1;margin-top:2px}
 .strain-detail-row-text{font-size:13px;line-height:1.55;color:var(--text2)}
-.strain-cards-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+.strain-cards-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:stretch}
 .strain-cards-pack{display:contents}
-.strain-cards-pack .card{margin:0;break-inside:avoid}
+.strain-cards-pack .card{margin:0;break-inside:avoid;height:100%}
 .strain-breakdown-card{display:flex;flex-direction:column;overflow:hidden}
 .strain-breakdown-header{margin-bottom:6px;padding-bottom:12px;border-bottom:1px solid var(--border);flex-shrink:0}
 .strain-breakdown-scroll{margin-top:12px;flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable}
@@ -520,15 +520,10 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </div>
           <div class="card" id="deepSummaryCard">
             <div class="ct" id="deepTitle">A Deeper Understanding of the SX — 8</div>
-            <div class="g2">
-              <div>
-                <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="deepP1">You are passionate, intense and charismatic, with great personal magnetism. When you go after a goal or ideal you tend to have a big impact on the environment.</p>
-                <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="deepP2">You may act impulsively and provocatively, standing out as a rebel or trail blazer. Material things do not particularly interest you as much as power, attention, and influence.</p>
-              </div>
-              <div>
-                <p style="font-size:14px;color:var(--text2);margin-bottom:10px" id="deepP3">You collect a small group of trusted people around you and are a loyal, reliable and protective friend.</p>
-                <p style="font-size:14px;color:var(--text2)" id="deepP4">On some level you are seeking a true equal — someone who can offer you the guidance, protection and challenge that you give to others.</p>
-              </div>
+            <div class="tlist" id="corePatternBulletsList" data-testid="core-pattern-bullets-list">
+              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Typical Action Patterns:</strong> Not detected in assigned PDF.</div></div>
+              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Typical Thinking Patterns:</strong> Not detected in assigned PDF.</div></div>
+              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Typical Feeling Patterns:</strong> Not detected in assigned PDF.</div></div>
             </div>
           </div>
         </div>
@@ -596,7 +591,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </div>
           <div class="div"></div>
           <p style="font-size:13px;color:var(--text3);margin-bottom:6px"><strong>Developing As...</strong></p>
-          <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0" id="developingAsCopy">Not detected in assigned PDF.</p>
+          <div class="tlist" id="developingAsCopy"><div class="ti"><div class="tic neu">•</div><div class="tt">Not detected in assigned PDF.</div></div></div>
         </div>
       </div>
 
@@ -649,9 +644,9 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
         <div class="card mb24" data-testid="conflict-response-card">
           <div class="ct">Conflict Response &amp; Triggered Pattern</div>
           <p style="font-size:13px;color:var(--text3);margin-bottom:6px"><strong>Response to Conflict</strong></p>
-          <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0 0 12px" id="conflictResponseCopy">Not detected in assigned PDF.</p>
+          <div class="tlist" id="conflictResponseCopy" style="margin-bottom:12px"><div class="ti"><div class="tic neu">•</div><div class="tt">Not detected in assigned PDF.</div></div></div>
           <p style="font-size:13px;color:var(--text3);margin-bottom:6px"><strong>What You Do When Triggered</strong></p>
-          <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0" id="conflictTriggeredCopy">Not detected in assigned PDF.</p>
+          <div class="tlist" id="conflictTriggeredCopy"><div class="ti"><div class="tic neu">•</div><div class="tt">Not detected in assigned PDF.</div></div></div>
         </div>
       </div>
 
@@ -885,11 +880,17 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </div>
           <div class="div"></div>
           <div class="devbox-title">Development Exercise Library</div>
-          <div class="dev-grid" id="developmentExercisesList" data-testid="development-exercises-list">
-            <div class="dev-item"><div class="dev-item-title">Exercise 1</div><p>Not detected in assigned PDF.</p></div>
-            <div class="dev-item"><div class="dev-item-title">Exercise 2</div><p>Not detected in assigned PDF.</p></div>
-            <div class="dev-item"><div class="dev-item-title">Exercise 3</div><p>Not detected in assigned PDF.</p></div>
+          <div class="dev-carousel" id="developmentExercisesCarousel" data-testid="development-exercises-carousel">
+            <button class="dev-carousel-nav" id="developmentExercisesPrev" type="button" aria-label="Previous development exercise">Prev</button>
+            <div class="dev-carousel-viewport">
+              <div class="dev-item dev-carousel-slide" id="developmentExerciseSlide">
+                <div class="dev-item-title" id="developmentExerciseSlideTitle">Exercise 1</div>
+                <p id="developmentExerciseSlideText">Not detected in assigned PDF.</p>
+              </div>
+            </div>
+            <button class="dev-carousel-nav" id="developmentExercisesNext" type="button" aria-label="Next development exercise">Next</button>
           </div>
+          <div class="dev-carousel-meta"><span class="dev-carousel-counter" id="developmentExercisesCounter">1 / 1</span></div>
         </div>
       </div>
 

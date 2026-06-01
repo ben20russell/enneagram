@@ -53,6 +53,15 @@ function hasAdminAccess(email) {
   return ADMIN_EMAILS.has(normalizeEmail(email));
 }
 
+function isLocalhostHostname(hostname) {
+  const normalized = String(hostname || "").trim().toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "[::1]";
+}
+
+function isLocalhostRuntime() {
+  return isLocalhostHostname(window.location.hostname);
+}
+
 function updateAdminPageLink(email) {
   const adminLink = getAdminPageLink();
   if (!adminLink) return;
@@ -93,6 +102,12 @@ let lastAppliedExampleType = "8";
 let latestAdminClientReports = [];
 let latestAdminClientReportsById = new Map();
 let currentClientReportId = null;
+let developmentExerciseCarouselState = {
+  items: [],
+  index: 0,
+  intervalId: null,
+  rotationMs: 5200,
+};
 
 function resetClientReportSelectorSelection() {
   const clientReportSelector = getClientReportSelector();
@@ -455,26 +470,151 @@ function extractCoreIdentityBlock(pdfText) {
   };
 }
 
-function extractCorePatternLinesFromText(text) {
-  const normalized = normalizeExtractedText(text);
-  if (!normalized) return [];
-  const match = normalized.match(
-    /Typical\s+Feeling\s+Patterns\s*:?\s*([\s\S]{40,2600}?)(?=Blind\s+Spots\b|World\s*view\b|Worldview\b|Focus\s+of\s+Attention\b|Core\s+Fear\b|DEVELOPMENT\s+EXERCISE\b|$)/i,
-  );
-  const block = cleanPdfExtractedValue(match?.[1] || "");
-  if (!block) return [];
-  const bullets = block
-    .replace(/\s*[•●◦▪]\s*/g, "\n")
-    .split(/\n+/)
-    .map((line) => cleanPdfExtractedValue(line.replace(/^[-–—]\s*/, "")))
-    .filter((line) => line && line.length >= 24 && !/^typical feeling patterns[:\s]*$/i.test(line));
-  let lines = bullets;
-  if (!lines.length) {
-    lines = (block.match(/[^.!?]+[.!?]/g) || [])
-      .map((line) => cleanPdfExtractedValue(line))
-      .filter((line) => line && line.length >= 24);
+const CORE_PATTERN_BULLET_DEFINITIONS = [
+  {
+    key: "action",
+    label: "Typical Action Patterns",
+    fallbackText: "Not detected in assigned PDF.",
+  },
+  {
+    key: "thinking",
+    label: "Typical Thinking Patterns",
+    fallbackText: "Not detected in assigned PDF.",
+  },
+  {
+    key: "feeling",
+    label: "Typical Feeling Patterns",
+    fallbackText: "Not detected in assigned PDF.",
+  },
+];
+
+function sanitizeCorePatternBulletText(value) {
+  const source = cleanPdfExtractedValue(value || "");
+  if (!source) return null;
+
+  let cleaned = source
+    .replace(/^\s*Typical\s+(?:Action|Thinking|Feeling)\s+Patterns?\s*[:\-]?\s*/i, "")
+    .replace(/:\s*(?=[A-Za-z])/g, ": ")
+    .trim();
+
+  if (!cleaned) return null;
+
+  const spilloverPattern =
+    /\b(?:Worldview|World\s*View|Focus\s*of\s*Attention|Core\s*Fear|Self[-\s]*Talk|Gifts?|Vices?)\b\s*(?:[:.\-]|$)/i;
+  const spilloverMatch = spilloverPattern.exec(cleaned);
+  if (spilloverMatch) {
+    const boundaryIndex = Number(spilloverMatch.index || 0);
+    if (boundaryIndex === 0) return null;
+    cleaned = cleaned.slice(0, boundaryIndex).trim();
   }
-  return Array.from(new Set(lines)).slice(0, 4);
+
+  if (!cleaned) return null;
+  return ensureSentenceStartsCapitalized(cleaned);
+}
+
+function normalizeCorePatternBullets(value) {
+  const rows = Array.isArray(value) ? value : [];
+  const byKey = new Map();
+  const byLabel = new Map();
+  rows.forEach((row) => {
+    if (!row || typeof row !== "object") return;
+    const key = String(row?.key || "").trim().toLowerCase();
+    const label = String(row?.label || "").trim();
+    const text = sanitizeCorePatternBulletText(row?.text);
+    if (!text) return;
+    if (key) byKey.set(key, text);
+    if (label) byLabel.set(label.toLowerCase(), text);
+  });
+
+  return CORE_PATTERN_BULLET_DEFINITIONS.map((definition) => {
+    const text =
+      byKey.get(definition.key) ||
+      byLabel.get(String(definition.label || "").toLowerCase()) ||
+      null;
+    return {
+      key: definition.key,
+      label: definition.label,
+      text: text || definition.fallbackText,
+    };
+  });
+}
+
+function mergeCorePatternBullets(preferredBullets, fallbackBullets) {
+  const preferred = normalizeCorePatternBullets(preferredBullets);
+  const fallback = normalizeCorePatternBullets(fallbackBullets);
+  return CORE_PATTERN_BULLET_DEFINITIONS.map((definition, index) => {
+    const preferredRow = preferred[index] || {};
+    const fallbackRow = fallback[index] || {};
+    const preferredText = sanitizeSnippet(preferredRow?.text, null);
+    const fallbackText = sanitizeSnippet(fallbackRow?.text, null);
+    const text =
+      (preferredText && !isMissingExtractedText(preferredText) ? preferredText : null) ||
+      (fallbackText && !isMissingExtractedText(fallbackText) ? fallbackText : null) ||
+      definition.fallbackText;
+    return {
+      key: definition.key,
+      label: definition.label,
+      text,
+    };
+  });
+}
+
+function extractCorePatternSectionByAnchors(text, startAnchor, endAnchors = []) {
+  const source = normalizeExtractedText(text || "");
+  if (!source) return "";
+  const startMatch = findInstructionAnchorMatch(source, startAnchor, { startIndex: 0, preferHeading: true }) ||
+    findInstructionAnchorMatch(source, startAnchor, { startIndex: 0, preferHeading: false });
+  if (!startMatch) return "";
+  const startIndex = startMatch.index + startMatch.length;
+  let endIndex = source.length;
+  const boundaries = Array.isArray(endAnchors) ? endAnchors : [];
+  boundaries.forEach((anchor) => {
+    const match = findInstructionAnchorMatch(source, anchor, { startIndex, preferHeading: true }) ||
+      findInstructionAnchorMatch(source, anchor, { startIndex, preferHeading: false });
+    if (!match) return;
+    if (match.index >= startIndex && match.index < endIndex) {
+      endIndex = match.index;
+    }
+  });
+  return cleanPdfExtractedValue(source.slice(startIndex, endIndex)) || "";
+}
+
+function extractCorePatternBulletsFromText(text) {
+  const actionText = extractCorePatternSectionByAnchors(text, "Typical Action Patterns", [
+    "Typical Thinking Patterns",
+    "Typical Feeling Patterns",
+    "Blind Spots",
+    "Worldview",
+    "World View",
+  ]);
+  const thinkingText = extractCorePatternSectionByAnchors(text, "Typical Thinking Patterns", [
+    "Typical Feeling Patterns",
+    "Blind Spots",
+    "Worldview",
+    "World View",
+  ]);
+  const feelingText = extractCorePatternSectionByAnchors(text, "Typical Feeling Patterns", [
+    "Blind Spots",
+    "Worldview",
+    "World View",
+    "Focus of Attention",
+    "Core Fear",
+    "DEVELOPMENT EXERCISE",
+  ]);
+
+  return normalizeCorePatternBullets([
+    { key: "action", label: "Typical Action Patterns", text: actionText || null },
+    { key: "thinking", label: "Typical Thinking Patterns", text: thinkingText || null },
+    { key: "feeling", label: "Typical Feeling Patterns", text: feelingText || null },
+  ]);
+}
+
+function extractCorePatternLinesFromText(text) {
+  const bullets = extractCorePatternBulletsFromText(text);
+  return bullets
+    .map((row) => sanitizeSnippet(row?.text, null))
+    .filter(Boolean)
+    .filter((line) => !isMissingExtractedText(line));
 }
 
 function extractSubtypeKeywordFromPdfText(pdfText, detectedType) {
@@ -1043,11 +1183,63 @@ function cleanupTypeName(value) {
     .trim();
 }
 
+const META_MESSAGE_SHORT_WORDS = new Set([
+  "a", "am", "an", "as", "at",
+  "be", "by",
+  "do",
+  "go",
+  "he", "her", "his",
+  "i", "if", "in", "is", "it",
+  "me", "my",
+  "no", "not",
+  "of", "on", "or", "our",
+  "so",
+  "the", "to", "too",
+  "up", "us",
+  "we",
+  "you",
+]);
+
+function normalizeMetaMessageLetterSpacing(value) {
+  let text = String(value || "");
+  if (!text) return text;
+
+  // Repair hard OCR splits such as "d i f f e r e n c e".
+  text = text.replace(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g, (match) => {
+    const parts = String(match || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return match;
+    const first = String(parts[0] || "");
+    const firstLower = first.toLowerCase();
+    if (parts.length >= 4 && first === firstLower && META_MESSAGE_SHORT_WORDS.has(firstLower)) {
+      return `${first} ${parts.slice(1).join("")}`;
+    }
+    return parts.join("");
+  });
+
+  // Repair 3-part splits such as "di ff erence" while avoiding common short-word phrases.
+  text = text.replace(/\b([A-Za-z]{1,3})\s+([A-Za-z]{1,2})\s+([A-Za-z]{3,})\b/g, (match, partA, partB, partC) => {
+    const lowerA = String(partA || "").toLowerCase();
+    const lowerB = String(partB || "").toLowerCase();
+    if (META_MESSAGE_SHORT_WORDS.has(lowerA) || META_MESSAGE_SHORT_WORDS.has(lowerB)) return match;
+    return `${partA}${partB}${partC}`;
+  });
+
+  // Repair 2-part splits such as "di fference" while avoiding common two-letter words.
+  text = text.replace(/\b([A-Za-z]{1,2})\s+([A-Za-z]{4,})\b/g, (match, prefix, suffix) => {
+    const lowerPrefix = String(prefix || "").toLowerCase();
+    if (META_MESSAGE_SHORT_WORDS.has(lowerPrefix)) return match;
+    return `${prefix}${suffix}`;
+  });
+
+  return text;
+}
+
 function cleanupMetaQuote(value) {
   const cleaned = String(value || "")
     .replace(/^YOUR\s+META-MESSAGE\s*[:\-]?\s*/i, "")
     .replace(/\s+Communication\s*$/i, "");
-  return sanitizeSnippet(cleaned, null);
+  const normalized = normalizeMetaMessageLetterSpacing(cleaned);
+  return sanitizeSnippet(normalized, null);
 }
 
 function extractSnippet(pdfText, label) {
@@ -1204,6 +1396,12 @@ async function ingestAssignedReportIntoDashboard(data) {
           .filter(Boolean)
           .slice(0, 4)
       : [];
+    let corePatternBullets = normalizeCorePatternBullets(
+      parsedProfile?.corePatternBullets ||
+        parsedProfile?.corePattern?.bullets ||
+        parsedProfile?.corePattern?.patterns ||
+        [],
+    );
     let instinctScoresRaw = normalizeScoreScale(parsedProfile?.instinctScores || null);
     let centerScoresRaw = normalizeScoreScale(parsedProfile?.centerScores || null);
     let strainScoresRaw = getParsedProfileStrainScores(parsedProfile);
@@ -1446,11 +1644,27 @@ async function ingestAssignedReportIntoDashboard(data) {
       passion = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.vices;
       console.log("[report-ingest] locked Core Belief & Attention Pattern to Ben Russell PRO page 7 Type 8 source text");
     }
+    const corePatternBulletsFromReportContent = extractCorePatternBulletsFromReportContent(parsedProfile);
+    corePatternBullets = mergeCorePatternBullets(corePatternBullets, corePatternBulletsFromReportContent);
+
+    const corePatternBulletsFromText = mergeCorePatternBullets(
+      extractCorePatternBulletsFromText(reportContentText),
+      extractCorePatternBulletsFromText(pdfText),
+    );
+    corePatternBullets = mergeCorePatternBullets(corePatternBullets, corePatternBulletsFromText);
+
     if (!corePatternLines.length) {
-      corePatternLines =
-        extractCorePatternLinesFromText(reportContentText) ||
-        extractCorePatternLinesFromText(pdfText) ||
-        [];
+      corePatternLines = corePatternBullets
+        .map((row) => sanitizeSnippet(row?.text, null))
+        .filter(Boolean)
+        .filter((line) => !isMissingExtractedText(line))
+        .slice(0, 4);
+    }
+    if (!corePatternLines.length) {
+      corePatternLines = extractCorePatternLinesFromText(reportContentText);
+    }
+    if (!corePatternLines.length) {
+      corePatternLines = extractCorePatternLinesFromText(pdfText);
     }
     if (!corePatternTitle && corePatternLines.length) {
       corePatternTitle = `Type ${detectedType || "?"} Core Pattern`;
@@ -1553,6 +1767,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       focus,
       corePatternTitle,
       corePatternLines,
+      corePatternBullets,
       reportSummary: parsedProfile?.reportSummary || null,
       clientName: parsedProfile?.clientName || null,
       reportDate: parsedProfile?.reportDate || null,
@@ -1641,6 +1856,7 @@ async function refreshReportActiveUi() {
     const hasAssignedReportAvailable = isAssignedReportAvailable(data);
     latestReportActiveData = data;
     const isAdmin = Boolean(data?.isAuthenticated) && hasAdminAccess(currentSignedInUser?.email);
+    const isLocalhostClientPreview = isLocalhostRuntime();
     const adminClientReports = Array.isArray(data?.adminClientReports) ? data.adminClientReports : [];
     latestAdminClientReports = adminClientReports;
     latestAdminClientReportsById = new Map(
@@ -1649,8 +1865,8 @@ async function refreshReportActiveUi() {
         .filter(([reportId]) => Boolean(reportId)),
     );
     populateClientReportSelector(adminClientReports);
-    setClientReportSwitchVisible(isAdmin && adminClientReports.length > 0);
-    if (!isAdmin) {
+    setClientReportSwitchVisible((isAdmin || isLocalhostClientPreview) && adminClientReports.length > 0);
+    if (!(isAdmin || isLocalhostClientPreview)) {
       currentClientReportId = null;
     }
     const shouldShowExampleReports = !Boolean(data?.isAuthenticated) || isAdmin;
@@ -1756,6 +1972,11 @@ function setSignedOutAuthUi() {
   button.setAttribute("data-testid", "sign-in-google");
   button.onclick = openGoogleSignInPopup;
   button.removeAttribute("title");
+
+  if (isLocalhostRuntime()) {
+    console.log("[auth] localhost preview detected; refreshing report-active data while signed out");
+    refreshReportActiveUi();
+  }
 }
 
 function setSignedInAuthUi(user) {
@@ -3051,6 +3272,46 @@ function formatOptionalText(value, fallback = "Not detected") {
   return normalized || fallback;
 }
 
+function resolveReportTraitChips(report, traitsByType = REPORT_EXAMPLES, options = {}) {
+  const maxItemsRaw = Number(options?.maxItems);
+  const maxItems = Number.isFinite(maxItemsRaw) && maxItemsRaw > 0 ? Math.floor(maxItemsRaw) : 5;
+  const fromReport = Array.isArray(report?.traits) ? report.traits : [];
+  const typeNumber = String(report?.typeNumber || "").match(/^[1-9]$/)?.[0] || "";
+  const fromTypeDefaults =
+    traitsByType &&
+    typeof traitsByType === "object" &&
+    Array.isArray(traitsByType?.[typeNumber]?.traits)
+      ? traitsByType[typeNumber].traits
+      : [];
+
+  const fallbackTraits = [
+    "Reliable",
+    "Supportive",
+    "Focused",
+    "Collaborative",
+    "Grounded",
+  ];
+
+  const preferredSource = fromReport.length ? fromReport : fromTypeDefaults.length ? fromTypeDefaults : fallbackTraits;
+  const uniqueTraits = [];
+  const seen = new Set();
+
+  preferredSource.forEach((trait) => {
+    const cleaned = ensureSentenceStartsCapitalized(formatOptionalText(sanitizeSnippet(trait, ""), ""));
+    if (!cleaned) return;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    uniqueTraits.push(cleaned);
+  });
+
+  if (!uniqueTraits.length) {
+    return fallbackTraits.slice(0, maxItems);
+  }
+
+  return uniqueTraits.slice(0, maxItems);
+}
+
 const INTEGRATION_LEVELS = ["Very Low", "Low", "Moderate", "High", "Very High"];
 const INTEGRATION_LEVEL_SIGNALS = {
   "Very Low": [
@@ -3301,6 +3562,17 @@ function buildAdaptiveBulletListHtml(items) {
     .join("");
 }
 
+function renderCorePatternBulletList(bullets) {
+  const rows = normalizeCorePatternBullets(bullets);
+  return rows
+    .map((row) => {
+      const label = formatOptionalText(row?.label, "Typical Pattern");
+      const text = sanitizeCorePatternBulletText(row?.text) || "Not detected in assigned PDF.";
+      return `<div class="ti"><div class="tic neu">•</div><div class="tt"><strong>${escapeHtml(label)}:</strong>&nbsp;${escapeHtml(text)}</div></div>`;
+    })
+    .join("");
+}
+
 function buildAdaptiveTriggerGridHtml(items) {
   const rows = Array.isArray(items) ? items.filter(Boolean) : [];
   if (!rows.length) return "";
@@ -3514,6 +3786,120 @@ function buildDevExercisePathHtml(paths) {
     .join("");
 }
 
+function normalizeDevelopmentExerciseCarouselItems(exercises, maxItems = 20) {
+  const safeExercises = Array.isArray(exercises) ? exercises : [];
+  const out = [];
+  const seen = new Set();
+  const max = Number.isFinite(Number(maxItems)) ? Math.max(1, Number(maxItems)) : 20;
+
+  for (const entry of safeExercises) {
+    const rawText = ensureSentenceStartsCapitalized(
+      cleanPdfExtractedValue(String(entry?.text ?? entry ?? "")),
+    );
+    if (!rawText || isMissingExtractedText(rawText)) continue;
+    const key = normalizeExtractedText(rawText).toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      title: `Exercise ${out.length + 1}`,
+      text: rawText,
+    });
+    if (out.length >= max) break;
+  }
+
+  if (!out.length) {
+    return [{ title: "Exercise 1", text: "Not detected in assigned PDF." }];
+  }
+  return out;
+}
+
+function stopDevelopmentExerciseCarouselAutoplay() {
+  if (!Number.isFinite(Number(developmentExerciseCarouselState?.intervalId))) return;
+  window.clearInterval(developmentExerciseCarouselState.intervalId);
+  developmentExerciseCarouselState.intervalId = null;
+}
+
+function renderDevelopmentExerciseCarouselSlide() {
+  const items = Array.isArray(developmentExerciseCarouselState?.items) && developmentExerciseCarouselState.items.length
+    ? developmentExerciseCarouselState.items
+    : [{ title: "Exercise 1", text: "Not detected in assigned PDF." }];
+  const count = items.length;
+  if (!count) return;
+
+  if (developmentExerciseCarouselState.index < 0 || developmentExerciseCarouselState.index >= count) {
+    developmentExerciseCarouselState.index = 0;
+  }
+
+  const currentItem = items[developmentExerciseCarouselState.index] || items[0];
+  setText("developmentExerciseSlideTitle", formatOptionalText(currentItem?.title, "Exercise 1"));
+  setText("developmentExerciseSlideText", formatOptionalText(currentItem?.text, "Not detected in assigned PDF."));
+  setText("developmentExercisesCounter", `${developmentExerciseCarouselState.index + 1} / ${count}`);
+
+  const prevButton = document.getElementById("developmentExercisesPrev");
+  const nextButton = document.getElementById("developmentExercisesNext");
+  const disableNav = count <= 1;
+  if (prevButton) prevButton.disabled = disableNav;
+  if (nextButton) nextButton.disabled = disableNav;
+}
+
+function shiftDevelopmentExerciseCarousel(delta = 1) {
+  const items = Array.isArray(developmentExerciseCarouselState?.items) ? developmentExerciseCarouselState.items : [];
+  const count = items.length;
+  if (!count) return;
+  const offset = Number.isFinite(Number(delta)) ? Number(delta) : 1;
+  developmentExerciseCarouselState.index =
+    (developmentExerciseCarouselState.index + offset + count) % count;
+  renderDevelopmentExerciseCarouselSlide();
+}
+
+function startDevelopmentExerciseCarouselAutoplay() {
+  stopDevelopmentExerciseCarouselAutoplay();
+  const items = Array.isArray(developmentExerciseCarouselState?.items) ? developmentExerciseCarouselState.items : [];
+  if (items.length <= 1) return;
+  if (typeof window === "undefined" || typeof window.setInterval !== "function") return;
+  developmentExerciseCarouselState.intervalId = window.setInterval(() => {
+    shiftDevelopmentExerciseCarousel(1);
+  }, developmentExerciseCarouselState.rotationMs);
+}
+
+function setDevelopmentExerciseCarouselItems(exercises) {
+  developmentExerciseCarouselState.items = normalizeDevelopmentExerciseCarouselItems(exercises, 20);
+  developmentExerciseCarouselState.index = 0;
+  renderDevelopmentExerciseCarouselSlide();
+  startDevelopmentExerciseCarouselAutoplay();
+  console.log("[development-exercises] carousel hydrated", {
+    count: developmentExerciseCarouselState.items.length,
+  });
+}
+
+function setupDevelopmentExerciseCarouselControls() {
+  const prevButton = document.getElementById("developmentExercisesPrev");
+  const nextButton = document.getElementById("developmentExercisesNext");
+  const carousel = document.getElementById("developmentExercisesCarousel");
+
+  if (prevButton && prevButton.dataset.bound !== "1") {
+    prevButton.addEventListener("click", () => {
+      shiftDevelopmentExerciseCarousel(-1);
+      startDevelopmentExerciseCarouselAutoplay();
+    });
+    prevButton.dataset.bound = "1";
+  }
+
+  if (nextButton && nextButton.dataset.bound !== "1") {
+    nextButton.addEventListener("click", () => {
+      shiftDevelopmentExerciseCarousel(1);
+      startDevelopmentExerciseCarouselAutoplay();
+    });
+    nextButton.dataset.bound = "1";
+  }
+
+  if (carousel && carousel.dataset.bound !== "1") {
+    carousel.addEventListener("mouseenter", stopDevelopmentExerciseCarouselAutoplay);
+    carousel.addEventListener("mouseleave", startDevelopmentExerciseCarouselAutoplay);
+    carousel.dataset.bound = "1";
+  }
+}
+
 function buildDevExerciseComponentData(report) {
   const typeLabel = `Type ${String(report?.typeNumber || "?")}`;
   const integrationLevel = normalizeIntegrationLevel(report?.integration);
@@ -3573,7 +3959,7 @@ function buildDevExerciseComponentData(report) {
     },
   ];
 
-  const mergedPaths = [...extractedPaths, ...generatedPaths];
+  const mergedPaths = [...generatedPaths];
   const deduped = [];
   const seenTexts = new Set();
   for (const item of mergedPaths) {
@@ -3602,6 +3988,10 @@ function buildDevExerciseComponentData(report) {
 function buildSpreadsheetFocusFallbacks(report, adaptiveCopy = {}) {
   const centerLabel = formatOptionalText(report?.centreOfIntelligence, "current center");
   const integrationLevel = normalizeIntegrationLevel(report?.integration);
+  const developingAsFallbackCopy = firstPresentSnippet(
+    [report?.motivation2, report?.giftsDesc],
+    "Development guidance was not detected in the assigned PDF.",
+  );
   const fallbackBodyLanguageRows = [
     "Posture and tone often intensify when urgency rises.",
     "Deliberate pacing and softer delivery improve receptivity.",
@@ -3617,13 +4007,12 @@ function buildSpreadsheetFocusFallbacks(report, adaptiveCopy = {}) {
       social: "Social focuses on contribution, belonging, and role within the wider group.",
       oneOnOne: "One-on-One focuses on intensity, attraction, and depth in key relationships.",
     },
-    developingAsCopy: firstPresentSnippet(
-      [report?.motivation2, report?.giftsDesc],
-      "Development guidance was not detected in the assigned PDF.",
-    ),
+    developingAsCopy: developingAsFallbackCopy,
+    developingAsBullets: extractNarrativeBulletItems(developingAsFallbackCopy, 8),
     bodyLanguageRows: fallbackBodyLanguageRows,
     conflictResponseCopy: `Conflict response often reflects your ${formatOptionalText(report?.conflictStyle, "adaptive")} style under pressure.`,
     conflictTriggeredCopy: "When triggered, slowing the reaction cycle and naming impact improves outcomes.",
+    conflictTriggeredBullets: ["When triggered, slowing the reaction cycle and naming impact improves outcomes."],
     centeredDecisionCopy: `Decisions often center through your ${centerLabel} perspective before balancing the other centers.`,
     decisionImpactCopy: `Your style can influence decisions through ${formatOptionalText(report?.focus, "focused pattern recognition")} and fast priority weighting.`,
     decisionStrainCopy: `At ${integrationLevel.toUpperCase()} integration, strain effects can amplify speed and certainty while reducing collaboration signals.`,
@@ -3697,8 +4086,17 @@ function extractNarrativeBulletItems(text, maxItems = 8) {
   const normalized = normalizeExtractedText(text || "");
   if (!normalized) return [];
 
-  const symbolRows = extractBulletItemsFromText(normalized, maxItems);
-  if (symbolRows.length) return symbolRows;
+  const source = String(text || "");
+  const hasExplicitBulletSymbols = /[•●▪◦·]/.test(source);
+  const extractedRows = extractBulletItemsFromText(normalized, maxItems)
+    .map((row) => cleanPdfExtractedValue(row))
+    .filter(Boolean);
+  if (hasExplicitBulletSymbols && extractedRows.length) {
+    return Array.from(new Set(extractedRows)).slice(0, maxItems);
+  }
+  if (extractedRows.length > 1) {
+    return Array.from(new Set(extractedRows)).slice(0, maxItems);
+  }
 
   const cueSplitPattern =
     /\s+(?=(?:Quick|Able|Preference|Willingness|Your|You|At|Be|Consider|As|Make|Watch|Not|Forthright|Comfortably|Willing(?:ly)?|Reluctant|Demanding|Very|Have|Miss|Try|Hold|Vacillate)\b)/g;
@@ -3707,14 +4105,15 @@ function extractNarrativeBulletItems(text, maxItems = 8) {
     .map((row) => cleanPdfExtractedValue(row))
     .filter(Boolean)
     .filter((row) => row.length >= 18);
-  if (cueRows.length) return Array.from(new Set(cueRows)).slice(0, maxItems);
+  if (cueRows.length >= 2) return Array.from(new Set(cueRows)).slice(0, maxItems);
 
   const sentenceRows = normalized
     .split(/(?<=[.?!])\s+/)
     .map((row) => cleanPdfExtractedValue(row))
     .filter(Boolean)
     .filter((row) => row.length >= 18);
-  if (sentenceRows.length) return Array.from(new Set(sentenceRows)).slice(0, maxItems);
+  if (sentenceRows.length >= 2) return Array.from(new Set(sentenceRows)).slice(0, maxItems);
+  if (extractedRows.length) return Array.from(new Set(extractedRows)).slice(0, maxItems);
 
   const fallback = cleanPdfExtractedValue(normalized);
   return fallback ? [fallback] : [];
@@ -4426,11 +4825,17 @@ function extractStrainQualitativeWriteups(pdfText) {
 }
 
 function summarizeOverallStrainText(rawText, options = {}) {
-  const maxWords = Number.isFinite(Number(options?.maxWords))
-    ? Math.max(12, Math.min(80, Number(options.maxWords)))
-    : 36;
+  const rawMaxWords = Number(options?.maxWords);
+  const hasWordLimit = Number.isFinite(rawMaxWords) && rawMaxWords > 0;
+  const maxWords = hasWordLimit ? Math.max(12, Math.min(220, rawMaxWords)) : null;
   let normalized = normalizeExtractedText(rawText || "");
   if (!normalized) return null;
+
+  const preferredLeadMatch = normalized.match(/\bYour\s+strain\s+profile\s+provides\b/i);
+  if (preferredLeadMatch && Number.isFinite(Number(preferredLeadMatch.index))) {
+    const leadIndex = Number(preferredLeadMatch.index);
+    if (leadIndex > 0) normalized = normalizeExtractedText(normalized.slice(leadIndex));
+  }
 
   const categoryBoundary = normalized.match(
     /\b(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+Strain\b/i,
@@ -4472,9 +4877,11 @@ function summarizeOverallStrainText(rawText, options = {}) {
     .trim();
   if (!summary) return null;
 
-  const words = summary.split(/\s+/).filter(Boolean);
-  if (words.length > maxWords) {
-    summary = `${words.slice(0, maxWords).join(" ")}...`;
+  if (Number.isFinite(maxWords) && maxWords > 0) {
+    const words = summary.split(/\s+/).filter(Boolean);
+    if (words.length > maxWords) {
+      summary = words.slice(0, maxWords).join(" ");
+    }
   }
   return summary;
 }
@@ -4493,7 +4900,7 @@ function extractOverallStrainSummaryFromReportContent(parsedProfile) {
       getSectionCompositeText(parsedProfile, strainSection),
     ].join(" "),
   );
-  return summarizeOverallStrainText(summarySource, { maxWords: 34 });
+  return summarizeOverallStrainText(summarySource, { maxWords: 0 });
 }
 
 function extractOverallStrainSummaryFromPdfText(pdfText) {
@@ -4502,7 +4909,7 @@ function extractOverallStrainSummaryFromPdfText(pdfText) {
   const overallBlock = normalized.match(
     /Overall\s*Strain[\s\S]{24,1800}(?=\b(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+Strain\b|$)/i,
   );
-  return summarizeOverallStrainText(overallBlock?.[0] || normalized, { maxWords: 34 });
+  return summarizeOverallStrainText(overallBlock?.[0] || normalized, { maxWords: 0 });
 }
 
 function extractBulletItemsFromText(text, maxItems = 6) {
@@ -4665,6 +5072,29 @@ const PDF_PAGE_ANCHORS = {
 };
 
 const ASSIGNED_PDF_INSTRUCTION_RULES = {
+  typicalActionPatterns: {
+    pageNumbers: [6, 7],
+    startAnchor: "Typical Action Patterns",
+    endAnchor: "Typical Thinking Patterns",
+    preferHeadingStart: true,
+    mode: "single_snippet",
+  },
+  typicalThinkingPatterns: {
+    pageNumbers: [6, 7],
+    startAnchor: "Typical Thinking Patterns",
+    endAnchor: "Typical Feeling Patterns",
+    preferHeadingStart: true,
+    mode: "single_snippet",
+  },
+  typicalFeelingPatterns: {
+    pageNumbers: [6, 7],
+    startAnchor: "Typical Feeling Patterns",
+    endAnchor: "Blind Spots",
+    endAnchors: ["Worldview", "World View", "Focus of Attention", "Core Fear", "Self-Talk", "Self Talk", "Gifts", "Vices"],
+    preferHeadingStart: true,
+    preferHeadingEnd: true,
+    mode: "single_snippet",
+  },
   motivationSummary: {
     pageNumbers: [6],
     startAnchor: "Motivation",
@@ -4673,8 +5103,30 @@ const ASSIGNED_PDF_INSTRUCTION_RULES = {
   },
   instinctGoals: {
     pageNumbers: [10],
-    startAnchor: "Ben, you are an Enneagram type",
-    endAnchor: "Definitions of the three instinctual goals",
+    startAnchor: "Definitions of the three instinctual goals",
+    endAnchor: "end of page",
+    preferHeadingStart: true,
+    mode: "full_page",
+  },
+  instinctGoalOneOnOne: {
+    pageNumbers: [10],
+    startAnchor: "One-On-One - SX",
+    endAnchor: "Social - SO",
+    preferHeadingStart: true,
+    mode: "single_snippet",
+  },
+  instinctGoalSocial: {
+    pageNumbers: [10],
+    startAnchor: "Social - SO",
+    endAnchor: "Self-Preservation - SP",
+    preferHeadingStart: true,
+    mode: "single_snippet",
+  },
+  instinctGoalSelfPres: {
+    pageNumbers: [10],
+    startAnchor: "Self-Preservation - SP",
+    endAnchor: "end of page",
+    preferHeadingStart: true,
     mode: "single_snippet",
   },
   developingAsCopy: {
@@ -4693,6 +5145,13 @@ const ASSIGNED_PDF_INSTRUCTION_RULES = {
     pageNumbers: [30, 31],
     startAnchor: "What you do when triggered",
     endAnchor: "What others should do",
+    preferHeadingStart: true,
+    mode: "bullets",
+  },
+  conflictDevelopmentGoals: {
+    pageNumbers: [31],
+    startAnchor: "Development goals",
+    endAnchor: "end of page",
     preferHeadingStart: true,
     mode: "bullets",
   },
@@ -4723,9 +5182,9 @@ const ASSIGNED_PDF_INSTRUCTION_RULES = {
     mode: "full_page",
   },
   overallStrainSignal: {
-    pageNumbers: [18, 34],
-    startAnchor: "Ben your perceived level of Overall strain",
-    endAnchor: "end of page",
+    pageNumbers: [18],
+    startAnchor: "Your strain profile provides",
+    endAnchor: "Ben your perceived level of Vocational strain",
     mode: "single_snippet",
   },
   strategicLeadershipCopy: {
@@ -4926,6 +5385,10 @@ function extractInstructionTextFromReportContent(parsedProfile, rule, options = 
 
   const startAnchor = normalizeInstructionAnchor(safeRule.startAnchor);
   const endAnchor = normalizeInstructionAnchor(safeRule.endAnchor);
+  const endAnchors = Array.from(new Set([
+    endAnchor,
+    ...(Array.isArray(safeRule.endAnchors) ? safeRule.endAnchors.map((anchor) => normalizeInstructionAnchor(anchor)) : []),
+  ])).filter((anchor) => anchor && anchor !== "end_of_page");
   const includeStartAnchor = Boolean(options?.includeStartAnchor ?? safeRule.includeStartAnchor);
   const includeEndAnchor = Boolean(options?.includeEndAnchor ?? safeRule.includeEndAnchor);
   const shouldRequireStartAnchor = Boolean(startAnchor && startAnchor !== "end_of_page");
@@ -4948,15 +5411,17 @@ function extractInstructionTextFromReportContent(parsedProfile, rule, options = 
     if (!startMatched) return null;
 
     let endIndex = source.length;
-    if (endAnchor && endAnchor !== "end_of_page") {
-      const endMatch = findInstructionAnchorMatch(source, endAnchor, {
+    endAnchors.forEach((anchor) => {
+      const endMatch = findInstructionAnchorMatch(source, anchor, {
         startIndex,
         preferHeading: Boolean(safeRule.preferHeadingEnd),
       });
-      if (endMatch) {
-        endIndex = includeEndAnchor ? endMatch.index + endMatch.length : endMatch.index;
+      if (!endMatch) return;
+      const candidateEndIndex = includeEndAnchor ? endMatch.index + endMatch.length : endMatch.index;
+      if (candidateEndIndex >= startIndex && candidateEndIndex < endIndex) {
+        endIndex = candidateEndIndex;
       }
-    }
+    });
     const snippet = String(source.slice(startIndex, endIndex) || "").trim();
     if (!snippet) return null;
     if (options?.raw) return snippet;
@@ -5013,6 +5478,27 @@ function extractInstructionBulletRowsFromReportContent(parsedProfile, rule, maxI
     .filter((line) => !/^development\s*exercise$/i.test(line));
   const symbolRows = extractBulletItemsFromText(text, maxItems);
   return Array.from(new Set([...symbolRows, ...starBulletRows])).slice(0, maxItems);
+}
+
+function extractCorePatternBulletsFromReportContent(parsedProfile) {
+  const actionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.typicalActionPatterns,
+  );
+  const thinkingText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.typicalThinkingPatterns,
+  );
+  const feelingText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.typicalFeelingPatterns,
+  );
+
+  return normalizeCorePatternBullets([
+    { key: "action", label: "Typical Action Patterns", text: actionText || null },
+    { key: "thinking", label: "Typical Thinking Patterns", text: thinkingText || null },
+    { key: "feeling", label: "Typical Feeling Patterns", text: feelingText || null },
+  ]);
 }
 
 function getPageAnchoredText(parsedProfile, pageNumbers) {
@@ -5306,14 +5792,17 @@ function extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile) {
     ...normalizeTargetedSectionRows(decision.making_decisions, { maxItems: 6, maxLength: 220 }),
     ...normalizeTargetedSectionRows(decision.receiving_decisions, { maxItems: 6, maxLength: 220 }),
   ];
+  const developingRows = normalizeTargetedSectionRows(development.subtype, { maxItems: 8, maxLength: 220 });
 
   const focused = {
     motivationSummary: null,
     instinctGoals: null,
-    developingAsCopy: compactTargetedSectionText(development.subtype, { maxItems: 8, maxLength: 420 }),
+    developingAsCopy: compactTargetedSectionText(developingRows, { maxItems: 8, maxLength: 420 }),
+    developingAsBullets: developingRows,
     bodyLanguageRows: normalizeTargetedSectionRows(targeted.body_language, { maxItems: 10, maxLength: 210 }),
     conflictResponseCopy: compactTargetedSectionText(conflictRows.slice(0, 5), { maxItems: 5, maxLength: 420 }),
     conflictTriggeredCopy: compactTargetedSectionText(conflictRows, { maxItems: 8, maxLength: 420 }),
+    conflictTriggeredBullets: conflictRows,
     centeredDecisionCopy: compactTargetedSectionText(decision.dominant_center_impact, { maxItems: 6, maxLength: 420 }),
     decisionImpactCopy: compactTargetedSectionText(decisionImpactRows, { maxItems: 8, maxLength: 420 }),
     decisionStrainCopy: compactTargetedSectionText(decision.strain_impact, { maxItems: 6, maxLength: 420 }),
@@ -5325,8 +5814,10 @@ function extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile) {
 
   console.log("[spreadsheet-focus] targeted-section extraction", {
     hasDevelopingAs: Boolean(focused.developingAsCopy),
+    developingAsBullets: focused.developingAsBullets.length,
     bodyLanguageRows: focused.bodyLanguageRows.length,
     hasConflictResponse: Boolean(focused.conflictResponseCopy),
+    conflictTriggeredBullets: focused.conflictTriggeredBullets.length,
     hasCenteredDecision: Boolean(focused.centeredDecisionCopy),
     hasDecisionImpact: Boolean(focused.decisionImpactCopy),
     hasStrategicLeadership: Boolean(focused.strategicLeadershipCopy),
@@ -5448,15 +5939,24 @@ function extractInstinctGoalDefinitions(rawText) {
       ? stopLabels.map((value) => buildFlexiblePhrasePattern(value)).join("|")
       : "$";
     const match = normalized.match(
-      new RegExp(`(?:${startPattern})\\s*[:\\-]?\\s*([\\s\\S]{18,360}?)(?=\\s*(?:${stopPattern}))`, "i"),
+      new RegExp(`(?:${startPattern})\\s*[:\\-]?\\s*([\\s\\S]{18,760}?)(?=\\s*(?:${stopPattern}))`, "i"),
     );
     const extracted = cleanPdfExtractedValue(match?.[1] || "");
-    return extracted ? compactInsightSnippet(extracted, 240) : null;
+    return extracted ? compactInsightSnippet(extracted, 420) : null;
   };
 
-  const social = segmentFor(["Social", "SO"], ["Self-Preservation", "Self Preservation", "One-on-One", "Sexual", "SX"]);
-  const selfPres = segmentFor(["Self-Preservation", "Self Preservation", "SP"], ["Social", "One-on-One", "Sexual", "SX"]);
-  const oneOnOne = segmentFor(["One-on-One", "One to One", "Sexual", "SX"], ["Social", "Self-Preservation", "Self Preservation", "SP"]);
+  const oneOnOne = segmentFor(
+    ["One-On-One - SX", "One-On-One", "One to One", "Sexual Instinct", "One-to-One instinct"],
+    ["Social - SO", "Self-Preservation - SP", "Self Preservation - SP"],
+  );
+  const social = segmentFor(
+    ["Social - SO", "Social instinct", "Social"],
+    ["Self-Preservation - SP", "Self Preservation - SP"],
+  );
+  const selfPres = segmentFor(
+    ["Self-Preservation - SP", "Self Preservation - SP", "Self-Preservation instinct", "Self Preservation instinct"],
+    [],
+  );
   if (!social && !selfPres && !oneOnOne) return null;
   return { social, selfPres, oneOnOne };
 }
@@ -5493,10 +5993,27 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
     ASSIGNED_PDF_INSTRUCTION_RULES.instinctGoals,
     { includeStartAnchor: true },
   );
+  const instinctOneOnOneInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.instinctGoalOneOnOne,
+  );
+  const instinctSocialInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.instinctGoalSocial,
+  );
+  const instinctSelfPresInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.instinctGoalSelfPres,
+  );
   const developingAsInstructionText = extractInstructionTextFromReportContent(
     parsedProfile,
     ASSIGNED_PDF_INSTRUCTION_RULES.developingAsCopy,
     { includeStartAnchor: true },
+  );
+  const developingAsInstructionRows = extractInstructionBulletRowsFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.developingAsCopy,
+    10,
   );
   const bodyLanguageRuleRows = extractInstructionBulletRowsFromReportContent(
     parsedProfile,
@@ -5517,6 +6034,21 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
     parsedProfile,
     ASSIGNED_PDF_INSTRUCTION_RULES.whatYouDoWhenTriggered,
     { includeStartAnchor: true },
+  );
+  const whatYouDoInstructionRows = extractInstructionBulletRowsFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.whatYouDoWhenTriggered,
+    10,
+  );
+  const conflictDevelopmentGoalsInstructionText = extractInstructionTextFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.conflictDevelopmentGoals,
+    { includeStartAnchor: true },
+  );
+  const conflictDevelopmentGoalRows = extractInstructionBulletRowsFromReportContent(
+    parsedProfile,
+    ASSIGNED_PDF_INSTRUCTION_RULES.conflictDevelopmentGoals,
+    12,
   );
   const centeredDecisionInstructionText = extractInstructionTextFromReportContent(
     parsedProfile,
@@ -5612,17 +6144,57 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
       pageAnchors: PDF_PAGE_ANCHORS.coachingRelationship,
     }),
   ].join(" "));
+  const developingAsRowsFromText = splitDevelopmentExercisesTextBlock(
+    developingAsInstructionText || "",
+  )
+    .map((row) => compactInsightSnippet(row?.text || "", 210))
+    .filter(Boolean)
+    .filter((row) => !isMissingExtractedText(row))
+    .filter((row) => !isLikelyGarbledDevelopmentExerciseText(row));
+  const developingAsBulletRows = Array.from(
+    new Set(
+      [
+        ...developingAsInstructionRows.map((row) => compactInsightSnippet(row || "", 210)).filter(Boolean),
+        ...developingAsRowsFromText,
+      ]
+        .map((row) => cleanPdfExtractedValue(row))
+        .filter(Boolean)
+        .filter((row) => !isMissingExtractedText(row))
+        .filter((row) => !isLikelyGarbledDevelopmentExerciseText(row)),
+    ),
+  ).slice(0, 10);
+  const developingAsFallbackCopy = extractSpreadsheetSnippetFromText(
+    developingAsInstructionText || subtypesText,
+    ["Developing as", "Development", "growth edge", "Development Exercise"],
+  );
+  const developingAsRows = developingAsBulletRows.length
+    ? developingAsBulletRows
+    : extractNarrativeBulletItems(developingAsFallbackCopy || "", 8);
+  const conflictTriggeredBulletRows = Array.from(
+    new Set(
+      [
+        ...conflictDevelopmentGoalRows.map((row) => compactInsightSnippet(row || "", 210)).filter(Boolean),
+        ...whatYouDoInstructionRows.map((row) => compactInsightSnippet(row || "", 210)).filter(Boolean),
+      ]
+        .map((row) => cleanPdfExtractedValue(row))
+        .filter(Boolean)
+        .filter((row) => !isMissingExtractedText(row)),
+    ),
+  ).slice(0, 12);
+  const conflictTriggeredFallbackText =
+    conflictDevelopmentGoalsInstructionText || whatYouDoInstructionText || conflictTriggeredInstructionText || conflictText;
+  const conflictTriggeredRows = conflictTriggeredBulletRows.length
+    ? conflictTriggeredBulletRows
+    : extractNarrativeBulletItems(conflictTriggeredFallbackText || "", 12);
 
   const focused = {
     motivationSummary: extractSpreadsheetSnippetFromText(
       motivationInstructionText || coreTypeText,
       ["Motivation", "Key motivations", "motivated"],
     ),
-    instinctGoals: extractInstinctGoalDefinitions(subtypesText),
-    developingAsCopy: extractSpreadsheetSnippetFromText(
-      developingAsInstructionText || subtypesText,
-      ["Developing as", "Development", "growth edge", "Development Exercise"],
-    ),
+    instinctGoals: null,
+    developingAsCopy: developingAsFallbackCopy,
+    developingAsBullets: developingAsRows,
     bodyLanguageRows: bodyLanguageRuleRows.length
       ? bodyLanguageRuleRows
           .map((row) => compactInsightSnippet(row, 210))
@@ -5633,9 +6205,10 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
       ["Response to Conflict", "conflict response"],
     ),
     conflictTriggeredCopy: extractSpreadsheetSnippetFromText(
-      whatYouDoInstructionText || conflictTriggeredInstructionText || conflictText,
-      ["What you do when triggered", "when triggered", "triggered", "What triggers you"],
+      conflictTriggeredFallbackText,
+      ["Development goals", "What you do when triggered", "when triggered", "triggered", "What triggers you"],
     ),
+    conflictTriggeredBullets: conflictTriggeredRows,
     centeredDecisionCopy: extractSpreadsheetSnippetFromText(
       centeredDecisionInstructionText || decisionText,
       ["Centered Decisions", "Decision Making", "Experience", "Intelligibility", "Commitment"],
@@ -5647,6 +6220,7 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
     decisionStrainCopy: extractSpreadsheetSnippetFromText(
       decisionStrainInstructionText || decisionText,
       ["Ben your perceived level of Overall strain", "Overall Strain", "decision strain", "Strain"],
+      2000,
     ),
     strategicLeadershipCopy: extractSpreadsheetSnippetFromText(
       strategicLeadershipInstructionText || leadershipText,
@@ -5665,16 +6239,51 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
       ["Ben, as an Ennea", "Coaching Relationship", "coaching relationship"],
     ),
   };
-  if (!focused.instinctGoals) {
-    focused.instinctGoals = extractInstinctGoalDefinitions(
-      normalizeExtractedText(`${instinctInstructionText || ""} ${subtypesText || ""}`),
-    );
+  const instinctGoalsFromAnchoredParagraphs = {
+    oneOnOne: compactInsightSnippet(cleanPdfExtractedValue(instinctOneOnOneInstructionText || ""), 420),
+    social: compactInsightSnippet(cleanPdfExtractedValue(instinctSocialInstructionText || ""), 420),
+    selfPres: compactInsightSnippet(cleanPdfExtractedValue(instinctSelfPresInstructionText || ""), 420),
+  };
+  const instinctGoalsFromDefinitionsBlock = extractInstinctGoalDefinitions(subtypesText);
+  const instinctGoalsFromFallback = extractInstinctGoalDefinitions(
+    normalizeExtractedText(`${instinctInstructionText || ""} ${subtypesText || ""}`),
+  );
+  const pickInstinctGoal = (...values) => {
+    for (const value of values) {
+      const snippet = sanitizeSnippet(value || "", "");
+      if (!snippet) continue;
+      if (isMissingExtractedText(snippet)) continue;
+      return snippet;
+    }
+    return null;
+  };
+  focused.instinctGoals = {
+    selfPres: pickInstinctGoal(
+      instinctGoalsFromAnchoredParagraphs.selfPres,
+      instinctGoalsFromDefinitionsBlock?.selfPres,
+      instinctGoalsFromFallback?.selfPres,
+    ),
+    social: pickInstinctGoal(
+      instinctGoalsFromAnchoredParagraphs.social,
+      instinctGoalsFromDefinitionsBlock?.social,
+      instinctGoalsFromFallback?.social,
+    ),
+    oneOnOne: pickInstinctGoal(
+      instinctGoalsFromAnchoredParagraphs.oneOnOne,
+      instinctGoalsFromDefinitionsBlock?.oneOnOne,
+      instinctGoalsFromFallback?.oneOnOne,
+    ),
+  };
+  if (!focused.instinctGoals.selfPres && !focused.instinctGoals.social && !focused.instinctGoals.oneOnOne) {
+    focused.instinctGoals = null;
   }
   console.log("[spreadsheet-focus] extracted structured section focuses", {
     hasMotivation: Boolean(focused.motivationSummary),
     hasInstinctGoals: Boolean(focused.instinctGoals),
+    developingAsBullets: Array.isArray(focused.developingAsBullets) ? focused.developingAsBullets.length : 0,
     bodyLanguageRows: focused.bodyLanguageRows.length,
     hasConflictResponse: Boolean(focused.conflictResponseCopy),
+    conflictTriggeredBullets: Array.isArray(focused.conflictTriggeredBullets) ? focused.conflictTriggeredBullets.length : 0,
     hasCenteredDecision: Boolean(focused.centeredDecisionCopy),
     hasStrategicLeadership: Boolean(focused.strategicLeadershipCopy),
     hasTeamImpact: Boolean(focused.teamImpactCopy),
@@ -5687,16 +6296,29 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
 function extractSpreadsheetSectionFocusesFromPdfText(pdfText) {
   const normalized = normalizeExtractedText(pdfText || "");
   if (!normalized) return {};
+  const developingAsCopy = extractSpreadsheetSnippetFromText(normalized, ["Developing as", "Development", "growth edge"]);
+  const developingAsBullets = extractNarrativeBulletItems(developingAsCopy || "", 8)
+    .map((row) => cleanPdfExtractedValue(row))
+    .filter(Boolean)
+    .filter((row) => !isMissingExtractedText(row));
   const focused = {
     motivationSummary: extractSpreadsheetSnippetFromText(normalized, ["Motivation", "Key motivations", "motivated"]),
     instinctGoals: extractInstinctGoalDefinitions(normalized),
-    developingAsCopy: extractSpreadsheetSnippetFromText(normalized, ["Developing as", "Development", "growth edge"]),
+    developingAsCopy,
+    developingAsBullets,
     bodyLanguageRows: extractBodyLanguageRowsFromText(normalized),
     conflictResponseCopy: extractSpreadsheetSnippetFromText(normalized, ["Response to Conflict", "conflict response"]),
     conflictTriggeredCopy: extractSpreadsheetSnippetFromText(normalized, ["What you do when triggered", "when triggered", "triggered"]),
+    conflictTriggeredBullets: extractNarrativeBulletItems(
+      extractSpreadsheetSnippetFromText(normalized, ["Development goals", "What you do when triggered", "when triggered", "triggered"]),
+      12,
+    )
+      .map((row) => cleanPdfExtractedValue(row))
+      .filter(Boolean)
+      .filter((row) => !isMissingExtractedText(row)),
     centeredDecisionCopy: extractSpreadsheetSnippetFromText(normalized, ["Centered Decisions", "centered decisions"]),
     decisionImpactCopy: extractSpreadsheetSnippetFromText(normalized, ["Impact of your Ennea style", "Impact of your Enneagram style", "Impact of your style"]),
-    decisionStrainCopy: extractSpreadsheetSnippetFromText(normalized, ["Level strain", "decision strain", "Strain"]),
+    decisionStrainCopy: extractSpreadsheetSnippetFromText(normalized, ["Level strain", "decision strain", "Strain"], 2000),
     strategicLeadershipCopy: extractSpreadsheetSnippetFromText(normalized, ["Strategic Leadership", "Visioning", "Alignment", "Change Management"]),
     teamImpactCopy: extractSpreadsheetSnippetFromText(normalized, ["Your Impact on Team", "Impact on Team"]),
     interdependenceCopy: extractSpreadsheetSnippetFromText(normalized, ["Interdependence and Team Role", "Intedependence and Team Role", "Interdependence", "Team Role"]),
@@ -5705,8 +6327,10 @@ function extractSpreadsheetSectionFocusesFromPdfText(pdfText) {
   console.log("[spreadsheet-focus] extracted PDF-text section focuses", {
     hasMotivation: Boolean(focused.motivationSummary),
     hasInstinctGoals: Boolean(focused.instinctGoals),
+    developingAsBullets: focused.developingAsBullets.length,
     bodyLanguageRows: focused.bodyLanguageRows.length,
     hasConflictResponse: Boolean(focused.conflictResponseCopy),
+    conflictTriggeredBullets: focused.conflictTriggeredBullets.length,
     hasCenteredDecision: Boolean(focused.centeredDecisionCopy),
     hasStrategicLeadership: Boolean(focused.strategicLeadershipCopy),
     hasTeamImpact: Boolean(focused.teamImpactCopy),
@@ -5719,30 +6343,95 @@ function mergeSpreadsheetSectionFocuses(structuredFocuses, pdfFocuses) {
   const structured = structuredFocuses && typeof structuredFocuses === "object" ? structuredFocuses : {};
   const pdf = pdfFocuses && typeof pdfFocuses === "object" ? pdfFocuses : {};
   const fallback = "Not detected in assigned PDF.";
-  const mergeGoal = (key) => firstPresentSnippet([structured?.instinctGoals?.[key], pdf?.instinctGoals?.[key]], fallback);
+  const pickHydratedSnippet = (values) => {
+    const candidates = Array.isArray(values) ? values : [];
+    for (const value of candidates) {
+      const normalized = sanitizeSnippet(value || "", "");
+      if (!normalized) continue;
+      if (isMissingExtractedText(normalized)) continue;
+      return normalized;
+    }
+    for (const value of candidates) {
+      const normalized = sanitizeSnippet(value || "", "");
+      if (normalized) return normalized;
+    }
+    return fallback;
+  };
+  const mergeGoal = (key) => pickHydratedSnippet([structured?.instinctGoals?.[key], pdf?.instinctGoals?.[key]]);
+  const bulletRowsFromSnippet = (snippet, maxItems = 10) => {
+    const normalized = sanitizeSnippet(snippet || "", "");
+    if (!normalized || isMissingExtractedText(normalized)) return [];
+    const symbolSplit = normalized
+      .split(/\s*[•·▪◦*]\s+/)
+      .map((row) => cleanPdfExtractedValue(row))
+      .filter(Boolean);
+    const rows = symbolSplit.length > 1
+      ? symbolSplit
+      : normalized
+          .split(/(?<=[.?!])\s+/)
+          .map((row) => cleanPdfExtractedValue(row))
+          .filter(Boolean);
+    return rows
+      .map((row) => row.replace(/^\s*[-–—.,;:!?]+\s*(?=[A-Za-z])/, ""))
+      .map((row) => row.replace(/^\s*([a-z])/, (_, char) => char.toUpperCase()))
+      .filter(Boolean)
+      .slice(0, maxItems);
+  };
+  const mergedDevelopingAsBullets = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(structured.developingAsBullets) ? structured.developingAsBullets : []),
+        ...(Array.isArray(pdf.developingAsBullets) ? pdf.developingAsBullets : []),
+        ...bulletRowsFromSnippet(structured.developingAsCopy),
+        ...bulletRowsFromSnippet(pdf.developingAsCopy),
+      ]
+        .map((row) => cleanPdfExtractedValue(row || ""))
+        .map((row) => row.replace(/^\s*[-–—.,;:!?]+\s*(?=[A-Za-z])/, ""))
+        .map((row) => row.replace(/^\s*([a-z])/, (_, char) => char.toUpperCase()))
+        .filter(Boolean)
+        .filter((row) => !isMissingExtractedText(row)),
+    ),
+  ).slice(0, 12);
+  const mergedConflictTriggeredBullets = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(structured.conflictTriggeredBullets) ? structured.conflictTriggeredBullets : []),
+        ...(Array.isArray(pdf.conflictTriggeredBullets) ? pdf.conflictTriggeredBullets : []),
+        ...bulletRowsFromSnippet(structured.conflictTriggeredCopy, 12),
+        ...bulletRowsFromSnippet(pdf.conflictTriggeredCopy, 12),
+      ]
+        .map((row) => cleanPdfExtractedValue(row || ""))
+        .map((row) => row.replace(/^\s*[-–—.,;:!?]+\s*(?=[A-Za-z])/, ""))
+        .map((row) => row.replace(/^\s*([a-z])/, (_, char) => char.toUpperCase()))
+        .filter(Boolean)
+        .filter((row) => !isMissingExtractedText(row)),
+    ),
+  ).slice(0, 16);
   const mergedBodyRows = [...(Array.isArray(structured.bodyLanguageRows) ? structured.bodyLanguageRows : []), ...(Array.isArray(pdf.bodyLanguageRows) ? pdf.bodyLanguageRows : [])]
     .map((row) => cleanPdfExtractedValue(row || ""))
     .filter(Boolean)
     .filter((row) => !isMissingExtractedText(row))
     .slice(0, 6);
   return {
-    motivationSummary: firstPresentSnippet([structured.motivationSummary, pdf.motivationSummary], fallback),
+    motivationSummary: pickHydratedSnippet([structured.motivationSummary, pdf.motivationSummary]),
     instinctGoals: {
       selfPres: mergeGoal("selfPres"),
       social: mergeGoal("social"),
       oneOnOne: mergeGoal("oneOnOne"),
     },
-    developingAsCopy: firstPresentSnippet([structured.developingAsCopy, pdf.developingAsCopy], fallback),
+    developingAsCopy: pickHydratedSnippet([structured.developingAsCopy, pdf.developingAsCopy, mergedDevelopingAsBullets[0]]),
+    developingAsBullets: mergedDevelopingAsBullets,
     bodyLanguageRows: mergedBodyRows.length ? mergedBodyRows : [fallback],
-    conflictResponseCopy: firstPresentSnippet([structured.conflictResponseCopy, pdf.conflictResponseCopy], fallback),
-    conflictTriggeredCopy: firstPresentSnippet([structured.conflictTriggeredCopy, pdf.conflictTriggeredCopy], fallback),
-    centeredDecisionCopy: firstPresentSnippet([structured.centeredDecisionCopy, pdf.centeredDecisionCopy], fallback),
-    decisionImpactCopy: firstPresentSnippet([structured.decisionImpactCopy, pdf.decisionImpactCopy], fallback),
-    decisionStrainCopy: firstPresentSnippet([structured.decisionStrainCopy, pdf.decisionStrainCopy], fallback),
-    strategicLeadershipCopy: firstPresentSnippet([structured.strategicLeadershipCopy, pdf.strategicLeadershipCopy], fallback),
-    teamImpactCopy: firstPresentSnippet([structured.teamImpactCopy, pdf.teamImpactCopy], fallback),
-    interdependenceCopy: firstPresentSnippet([structured.interdependenceCopy, pdf.interdependenceCopy], fallback),
-    coachingRelationshipCopy: firstPresentSnippet([structured.coachingRelationshipCopy, pdf.coachingRelationshipCopy], fallback),
+    conflictResponseCopy: pickHydratedSnippet([structured.conflictResponseCopy, pdf.conflictResponseCopy]),
+    conflictTriggeredCopy: pickHydratedSnippet([structured.conflictTriggeredCopy, pdf.conflictTriggeredCopy, mergedConflictTriggeredBullets[0]]),
+    conflictTriggeredBullets: mergedConflictTriggeredBullets,
+    centeredDecisionCopy: pickHydratedSnippet([structured.centeredDecisionCopy, pdf.centeredDecisionCopy]),
+    decisionImpactCopy: pickHydratedSnippet([structured.decisionImpactCopy, pdf.decisionImpactCopy]),
+    decisionStrainCopy: pickHydratedSnippet([structured.decisionStrainCopy, pdf.decisionStrainCopy]),
+    strategicLeadershipCopy: pickHydratedSnippet([structured.strategicLeadershipCopy, pdf.strategicLeadershipCopy]),
+    teamImpactCopy: pickHydratedSnippet([structured.teamImpactCopy, pdf.teamImpactCopy]),
+    interdependenceCopy: pickHydratedSnippet([structured.interdependenceCopy, pdf.interdependenceCopy]),
+    coachingRelationshipCopy: pickHydratedSnippet([structured.coachingRelationshipCopy, pdf.coachingRelationshipCopy]),
   };
 }
 
@@ -6103,8 +6792,23 @@ function buildPdfOnlyReport(payload) {
         .filter(Boolean)
         .slice(0, 4)
     : [];
-  const deepLines = (parsedCorePatternLines.length
-    ? parsedCorePatternLines
+  const corePatternBullets = normalizeCorePatternBullets(
+    Array.isArray(payload?.corePatternBullets) && payload.corePatternBullets.length
+      ? payload.corePatternBullets
+      : [
+          { key: "action", label: "Typical Action Patterns", text: parsedCorePatternLines[0] || null },
+          { key: "thinking", label: "Typical Thinking Patterns", text: parsedCorePatternLines[1] || null },
+          { key: "feeling", label: "Typical Feeling Patterns", text: parsedCorePatternLines[2] || null },
+        ],
+  );
+  const deepLines = (corePatternBullets
+    .map((row) => sanitizeSnippet(row?.text, null))
+    .filter(Boolean)
+    .filter((line) => !isMissingExtractedText(line)).length
+    ? corePatternBullets
+        .map((row) => sanitizeSnippet(row?.text, null))
+        .filter(Boolean)
+        .filter((line) => !isMissingExtractedText(line))
     : [
         `Type: ${typeNumber} — ${typeName}`,
         `Dominant instinct: ${instinct}`,
@@ -6132,6 +6836,7 @@ function buildPdfOnlyReport(payload) {
     traits: [],
     deepTitle: sanitizeSnippet(payload?.corePatternTitle, null) || `Type ${typeNumber} Core Pattern`,
     deep: deepLines,
+    corePatternBullets,
     meta: sanitizeSnippet(payload?.metaQuote, fallbackText),
     clientName: sanitizeSnippet(payload?.clientName, "Not detected"),
     reportDate: sanitizeSnippet(payload?.reportDate, "Not detected"),
@@ -6166,6 +6871,11 @@ function buildPdfOnlyReport(payload) {
             oneOnOne: sanitizeSnippet(payload?.spreadsheetFocuses?.instinctGoals?.oneOnOne, "Not detected in assigned PDF."),
           },
           developingAsCopy: sanitizeSnippet(payload.spreadsheetFocuses.developingAsCopy, "Not detected in assigned PDF."),
+          developingAsBullets: Array.isArray(payload.spreadsheetFocuses.developingAsBullets)
+            ? payload.spreadsheetFocuses.developingAsBullets
+                .map((row) => sanitizeSnippet(row, null))
+                .filter(Boolean)
+            : [],
           bodyLanguageRows: Array.isArray(payload.spreadsheetFocuses.bodyLanguageRows)
             ? payload.spreadsheetFocuses.bodyLanguageRows
                 .map((row) => sanitizeSnippet(row, null))
@@ -6173,6 +6883,11 @@ function buildPdfOnlyReport(payload) {
             : [],
           conflictResponseCopy: sanitizeSnippet(payload.spreadsheetFocuses.conflictResponseCopy, "Not detected in assigned PDF."),
           conflictTriggeredCopy: sanitizeSnippet(payload.spreadsheetFocuses.conflictTriggeredCopy, "Not detected in assigned PDF."),
+          conflictTriggeredBullets: Array.isArray(payload.spreadsheetFocuses.conflictTriggeredBullets)
+            ? payload.spreadsheetFocuses.conflictTriggeredBullets
+                .map((row) => sanitizeSnippet(row, null))
+                .filter(Boolean)
+            : [],
           centeredDecisionCopy: sanitizeSnippet(payload.spreadsheetFocuses.centeredDecisionCopy, "Not detected in assigned PDF."),
           decisionImpactCopy: sanitizeSnippet(payload.spreadsheetFocuses.decisionImpactCopy, "Not detected in assigned PDF."),
           decisionStrainCopy: sanitizeSnippet(payload.spreadsheetFocuses.decisionStrainCopy, "Not detected in assigned PDF."),
@@ -6347,15 +7062,7 @@ function renderReportFromState(isExampleMode) {
         { title: "Exercise 2", text: "Not detected in assigned PDF." },
         { title: "Exercise 3", text: "Not detected in assigned PDF." },
       ];
-  setHtml(
-    'developmentExercisesList',
-    exercises
-      .map(
-        (exercise) =>
-          `<div class="dev-item"><div class="dev-item-title">${escapeHtml(ensureSentenceStartsCapitalized(sanitizeSnippet(formatOptionalText(exercise.title, "Development Exercise"), "Development Exercise")))}</div><p>${escapeHtml(ensureSentenceStartsCapitalized(sanitizeSnippet(formatOptionalText(exercise.text, "Not detected in assigned PDF."), "Not detected in assigned PDF.")))}</p></div>`,
-      )
-      .join(""),
-  );
+  setDevelopmentExerciseCarouselItems(exercises);
   const devExerciseComponentData = buildDevExerciseComponentData({
     ...REPORT,
     developmentExercises: exercises,
@@ -6453,10 +7160,14 @@ function renderReportFromState(isExampleMode) {
       ensureSentenceStartsCapitalized(formatOptionalText(REPORT.deepTitle, "Not detected in assigned PDF.")),
     )}`,
   );
-  setText('deepP1', REPORT.deep[0]);
-  setText('deepP2', REPORT.deep[1]);
-  setText('deepP3', REPORT.deep[2]);
-  setText('deepP4', REPORT.deep[3]);
+  const corePatternBulletsForRender = Array.isArray(REPORT.corePatternBullets) && REPORT.corePatternBullets.length
+    ? REPORT.corePatternBullets
+    : [
+        { key: "action", label: "Typical Action Patterns", text: REPORT.deep?.[0] || null },
+        { key: "thinking", label: "Typical Thinking Patterns", text: REPORT.deep?.[1] || null },
+        { key: "feeling", label: "Typical Feeling Patterns", text: REPORT.deep?.[2] || null },
+      ];
+  setHtml('corePatternBulletsList', renderCorePatternBulletList(corePatternBulletsForRender));
   const deepSummaryCard = document.getElementById('deepSummaryCard');
   if (deepSummaryCard) {
     const isAssignedPdfSummary = /assigned\s+pdf\s+summary/i.test(String(REPORT.deepTitle || ""));
@@ -6490,17 +7201,64 @@ function renderReportFromState(isExampleMode) {
     'instinctGoalOneOnOne',
     resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.oneOnOne),
   );
-  setText(
-    'developingAsCopy',
+  const developingAsRows = (Array.isArray(spreadsheetFocusesFromReport.developingAsBullets)
+    ? spreadsheetFocusesFromReport.developingAsBullets
+    : [])
+    .map((row) => cleanPdfExtractedValue(formatOptionalText(row, "")))
+    .filter(Boolean)
+    .filter((row) => !isMissingExtractedText(row));
+  const developingAsFallbackRows = extractNarrativeBulletItems(
     resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.developingAsCopy),
+    12,
+  )
+    .map((row) => cleanPdfExtractedValue(row))
+    .filter(Boolean)
+    .filter((row) => !isMissingExtractedText(row));
+  const developingAsItems = developingAsRows.length
+    ? developingAsRows
+    : (developingAsFallbackRows.length ? developingAsFallbackRows : [missingAssignedPdfText]);
+  setHtml(
+    'developingAsCopy',
+    buildAdaptiveListHtml(
+      developingAsItems.map((text) => ({
+        tone: "neu",
+        symbol: "•",
+        text,
+      })),
+    ),
   );
-  setText(
+  setHtml(
     'conflictResponseCopy',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictResponseCopy),
+    renderNarrativeBullets(
+      resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictResponseCopy),
+      { maxItems: 8 },
+    ),
   );
-  setText(
-    'conflictTriggeredCopy',
+  const conflictTriggeredRows = (Array.isArray(spreadsheetFocusesFromReport.conflictTriggeredBullets)
+    ? spreadsheetFocusesFromReport.conflictTriggeredBullets
+    : [])
+    .map((row) => cleanPdfExtractedValue(formatOptionalText(row, "")))
+    .filter(Boolean)
+    .filter((row) => !isMissingExtractedText(row));
+  const conflictTriggeredFallbackRows = extractNarrativeBulletItems(
     resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictTriggeredCopy),
+    16,
+  )
+    .map((row) => cleanPdfExtractedValue(row))
+    .filter(Boolean)
+    .filter((row) => !isMissingExtractedText(row));
+  const conflictTriggeredItems = conflictTriggeredRows.length
+    ? conflictTriggeredRows
+    : (conflictTriggeredFallbackRows.length ? conflictTriggeredFallbackRows : [missingAssignedPdfText]);
+  setHtml(
+    'conflictTriggeredCopy',
+    buildAdaptiveListHtml(
+      conflictTriggeredItems.map((text) => ({
+        tone: "neu",
+        symbol: "•",
+        text,
+      })),
+    ),
   );
   setHtml(
     'centeredDecisionCopy',
@@ -6572,8 +7330,9 @@ function renderReportFromState(isExampleMode) {
 
   const traitChips = document.getElementById('traitChips');
   if (traitChips) {
-    traitChips.innerHTML = (Array.isArray(REPORT.traits) ? REPORT.traits : [])
-      .map((trait) => `<span class="chip cgn">${escapeHtml(ensureSentenceStartsCapitalized(formatOptionalText(trait, "")))}</span>`)
+    const resolvedTraitChips = resolveReportTraitChips(REPORT, REPORT_EXAMPLES, { maxItems: 5 });
+    traitChips.innerHTML = resolvedTraitChips
+      .map((trait) => `<span class="chip cgn">${escapeHtml(trait)}</span>`)
       .join('');
   }
 
@@ -6719,6 +7478,7 @@ window.addEventListener('load', () => {
   // Bind report selector first so it still works even if later setup code fails.
   setupReportSelectorHandler();
   setupClientReportSelectorHandler();
+  setupDevelopmentExerciseCarouselControls();
   window.setInterval(syncSelectedExampleReport, 400);
   decorateInterfaceIcons();
   buildReportModuleIndex();
