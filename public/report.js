@@ -3032,14 +3032,14 @@ function formatOptionalText(value, fallback = "Not detected") {
 const INTEGRATION_LEVELS = ["Very Low", "Low", "Moderate", "High", "Very High"];
 const INTEGRATION_LEVEL_SIGNALS = {
   "Very Low": [
-    { tone: "neg", text: "Reactivity is likely to feel intense and hard to regulate right now." },
-    { tone: "neg", text: "Criticism may land as threat and trigger defensive or forceful responses." },
+    { tone: "neg", text: "Reactivity is likely to feel intense and difficult to regulate right now." },
+    { tone: "neg", text: "Feedback can feel threatening, which may trigger defensive responses." },
     { tone: "neg", text: "Rest, grounding, and support are essential before pushing through major pressure." },
   ],
   "Low": [
-    { tone: "neg", text: "Reactive and aggressive behaviours are more likely to show up frequently." },
-    { tone: "neg", text: "You may be especially sensitive to criticism from people you protect." },
-    { tone: "neg", text: "Controlling explosive anger may be difficult when you feel vulnerable or controlled." },
+    { tone: "neg", text: "Reactive patterns are more likely to show up frequently under strain." },
+    { tone: "neg", text: "Criticism may feel personal and reduce flexibility in the moment." },
+    { tone: "neg", text: "Pausing and co-regulation can prevent escalation and improve clarity." },
   ],
   "Moderate": [
     { tone: "neu", text: "You can usually regulate pressure, though stress may still narrow your flexibility." },
@@ -6163,6 +6163,14 @@ function buildGrowthCopyForDisplay(report) {
 
 function renderReportFromState(isExampleMode) {
   const missingAssignedPdfText = "Not detected in assigned PDF.";
+  const growthKeyChallengesBox = document.getElementById('growthKeyChallengesBox');
+  if (growthKeyChallengesBox) {
+    growthKeyChallengesBox.style.display = isExampleMode ? "block" : "none";
+    console.log("[growth] toggled static key challenges panel", {
+      mode: isExampleMode ? "example" : "assigned-or-client",
+      visible: isExampleMode,
+    });
+  }
   setText('typeBadge', REPORT.typeNumber);
   setText('headerSubtitle', `Type ${REPORT.typeNumber} · ${REPORT.instinct}`);
   setText('reportTitle', isExampleMode ? `Type ${REPORT.typeNumber} Example Report` : `Type ${REPORT.typeNumber} Assigned PDF Report`);
