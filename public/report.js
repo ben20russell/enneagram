@@ -1188,7 +1188,12 @@ async function ingestAssignedReportIntoDashboard(data) {
         }
       : null;
     profileScores = normalizeScoreScale(profileScores);
-    let integrationLevel = serverContext?.integrationLevel || parsedProfile?.integrationLevel || null;
+    let integrationLevel =
+      serverContext?.integrationLevel ||
+      serverContext?.integration ||
+      parsedProfile?.integrationLevel ||
+      parsedProfile?.integration ||
+      null;
     let metaQuote = parsedProfile?.metaMessage || parsedProfile?.selfTalk || null;
     let worldview = parsedProfile?.worldview || null;
     let focus = parsedProfile?.focusOfAttention || null;
@@ -1282,7 +1287,11 @@ async function ingestAssignedReportIntoDashboard(data) {
       profileScores = normalizeScoreScale(extractEnneagramProfileScores(pdfText));
     }
     integrationLevel =
-      integrationLevel || extractIntegrationFromPdfText(pdfText) || extractSnippet(pdfText, "Integration Level");
+      integrationLevel ||
+      extractIntegrationFromPdfText(pdfText) ||
+      extractSnippet(pdfText, "Integration Level") ||
+      extractSnippetFromLabels(reportContentText, ["Integration Level", "Integration"]) ||
+      extractSnippetFromLabels(pdfText, ["Integration Level", "Integration"]);
     const extractedStrainScores = extractStrainScoresFromPdfText(pdfText);
     if (!hasInformativeScoreMap(strainScoresRaw, 1) && hasInformativeScoreMap(extractedStrainScores, 1)) {
       strainScoresRaw = extractedStrainScores;
@@ -3331,13 +3340,48 @@ function extractFeedbackGuidancePoints(text, maxItems = 6) {
 }
 
 function renderFeedbackGuidanceCell(text) {
+  const collapsedLimit = 3;
   const points = extractFeedbackGuidancePoints(text, 6);
   if (!points.length) return escapeHtml("Not detected in assigned PDF.");
   const summary = summarizeSentence(points[0], 16);
-  const bullets = buildAdaptiveListHtml(
-    points.map((point) => ({ tone: "neu", symbol: "•", text: point })),
+  const visiblePoints = points.slice(0, collapsedLimit);
+  const hiddenPoints = points.slice(collapsedLimit);
+  const visibleBullets = buildAdaptiveListHtml(
+    visiblePoints.map((point) => ({ tone: "neu", symbol: "•", text: point })),
   );
-  return `<div style="margin-bottom:6px;font-size:12px;color:var(--text3)"><strong>Summary:</strong> ${escapeHtml(summary)}</div>${bullets}`;
+  if (!hiddenPoints.length) {
+    return `<div data-feedback-guidance-cell="true" data-testid="feedback-guide-cell"><div style="margin-bottom:6px;font-size:12px;color:var(--text3)"><strong>Summary:</strong> ${escapeHtml(summary)}</div>${visibleBullets}</div>`;
+  }
+  const hiddenBullets = buildAdaptiveListHtml(
+    hiddenPoints.map((point) => ({ tone: "neu", symbol: "•", text: point })),
+  );
+  console.log("[feedback-guide] rendering collapsed guidance cell", {
+    visibleCount: visiblePoints.length,
+    hiddenCount: hiddenPoints.length,
+  });
+  return `<div data-feedback-guidance-cell="true" data-testid="feedback-guide-cell"><div style="margin-bottom:6px;font-size:12px;color:var(--text3)"><strong>Summary:</strong> ${escapeHtml(summary)}</div><div data-feedback-guidance-primary="true">${visibleBullets}</div><div data-feedback-guidance-extra="true" style="display:none;margin-top:4px">${hiddenBullets}</div><button type="button" onclick="toggleFeedbackGuidanceExpansion(this)" data-feedback-guidance-toggle="collapsed" data-testid="feedback-guide-expand-button" aria-expanded="false" style="margin-top:8px;padding:0;background:none;border:none;color:var(--primary);font-size:12px;font-weight:700;cursor:pointer">Expand feedback</button></div>`;
+}
+
+function toggleFeedbackGuidanceExpansion(button) {
+  if (!button) return;
+  const parentCell = button.closest('[data-feedback-guidance-cell="true"]');
+  if (!parentCell) return;
+  const extraRows = parentCell.querySelector('[data-feedback-guidance-extra="true"]');
+  if (!extraRows) return;
+  const isExpanded = button.getAttribute("data-feedback-guidance-toggle") === "expanded";
+  if (isExpanded) {
+    extraRows.style.display = "none";
+    button.setAttribute("data-feedback-guidance-toggle", "collapsed");
+    button.setAttribute("aria-expanded", "false");
+    button.textContent = "Expand feedback";
+    console.log("[feedback-guide] collapsed extra guidance bullets");
+    return;
+  }
+  extraRows.style.display = "block";
+  button.setAttribute("data-feedback-guidance-toggle", "expanded");
+  button.setAttribute("aria-expanded", "true");
+  button.textContent = "Show less";
+  console.log("[feedback-guide] expanded extra guidance bullets");
 }
 
 function buildAdaptiveSectionCopy(report) {
@@ -3735,6 +3779,48 @@ function renderIntegrationPanel(levelRaw) {
       )
       .join(""),
   );
+}
+
+function getWingTypeNumbers(typeNumberRaw) {
+  const numericType = Number.parseInt(String(typeNumberRaw || ""), 10);
+  if (!Number.isFinite(numericType) || numericType < 1 || numericType > 9) {
+    return { leftWing: 9, rightWing: 1 };
+  }
+  return {
+    leftWing: numericType === 1 ? 9 : numericType - 1,
+    rightWing: numericType === 9 ? 1 : numericType + 1,
+  };
+}
+
+function renderWingInfluencePanel(report, integrationLevelRaw) {
+  const headingNode = document.getElementById("wingInfluenceHeading");
+  const gridNode = document.getElementById("wingInfluenceGrid");
+  if (!headingNode || !gridNode) return;
+
+  const typeNumber = String(report?.typeNumber || "").trim();
+  const normalizedIntegrationLevel = normalizeIntegrationLevel(integrationLevelRaw);
+  const { leftWing, rightWing } = getWingTypeNumbers(typeNumber);
+  const leftWingTypeName = formatOptionalText(REPORT_EXAMPLES?.[String(leftWing)]?.typeName, "Wing");
+  const rightWingTypeName = formatOptionalText(REPORT_EXAMPLES?.[String(rightWing)]?.typeName, "Wing");
+  headingNode.textContent = `Wing Influence — Types ${leftWing} & ${rightWing}`;
+  gridNode.innerHTML = `
+    <div data-testid="wing-influence-left">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--gold-lt);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--gold)">${leftWing}</div><div><div style="font-size:13px;font-weight:600">Wing ${leftWing}</div><div style="font-size:11px;color:var(--text3)">${normalizedIntegrationLevel} integration</div></div></div>
+      <div class="wing-item">Type ${typeNumber} can borrow steadiness and perspective from Type ${leftWing} (${escapeHtml(leftWingTypeName)}).</div>
+      <div class="wing-item">At ${normalizedIntegrationLevel.toLowerCase()} integration, this wing is most useful when balancing your default style under pressure.</div>
+    </div>
+    <div data-testid="wing-influence-right">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:32px;height:32px;border-radius:50%;background:var(--blue-lt);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:17px;font-weight:700;color:var(--blue)">${rightWing}</div><div><div style="font-size:13px;font-weight:600">Wing ${rightWing}</div><div style="font-size:11px;color:var(--text3)">${normalizedIntegrationLevel} integration</div></div></div>
+      <div class="wing-item">Type ${typeNumber} can also draw initiative and expression from Type ${rightWing} (${escapeHtml(rightWingTypeName)}).</div>
+      <div class="wing-item">Use this wing to broaden your range while keeping communication clear and collaborative.</div>
+    </div>
+  `;
+  console.log("[integration] rendered wing influence panel", {
+    typeNumber,
+    leftWing,
+    rightWing,
+    integrationLevel: normalizedIntegrationLevel,
+  });
 }
 
 function formatStrainCardDetailContent(detail, item) {
@@ -5940,7 +6026,7 @@ function buildPdfOnlyReport(payload) {
     release = formatTypeLine(canonicalPoints.release);
     stretch = formatTypeLine(canonicalPoints.stretch);
   }
-  const integration = sanitizeSnippet(payload?.integrationLevel, fallbackText);
+  const integration = sanitizeSnippet(payload?.integrationLevel || payload?.integration, fallbackText);
   const profile = buildPdfOnlyProfile(typeNumber, payload?.profileScores);
   const strainScoresRaw = getParsedProfileStrainScores({ strainScores: payload?.strainScoresRaw });
   const strain = strainScoresRaw
@@ -6105,6 +6191,7 @@ function renderReportFromState(isExampleMode) {
   const normalizedIntegrationLevel = normalizeIntegrationLevel(REPORT.integration);
   setText('integrationValue', normalizedIntegrationLevel);
   renderIntegrationPanel(normalizedIntegrationLevel);
+  renderWingInfluencePanel(REPORT, normalizedIntegrationLevel);
   setText('metaQuote', `"${REPORT.meta}"`);
   const coreFearValue = String(REPORT.coreFear || '').replace(/^basic\s*fear\s*:\s*/i, '').trim() || REPORT.coreFear;
   const coreFearDisplay = coreFearValue
