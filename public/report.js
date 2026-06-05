@@ -1314,6 +1314,15 @@ async function ingestAssignedReportIntoDashboard(data) {
   try {
     const serverContext = data?.ingestedDashboardContext || null;
     const parsedProfile = data?.ingestedParsedProfile || null;
+    const parseDiagnostics = data?.parseDiagnostics && typeof data.parseDiagnostics === "object"
+      ? data.parseDiagnostics
+      : null;
+    const parserVerification = parseDiagnostics?.verification && typeof parseDiagnostics.verification === "object"
+      ? parseDiagnostics.verification
+      : null;
+    const verificationResolvedFields = parserVerification?.resolvedFields && typeof parserVerification.resolvedFields === "object"
+      ? parserVerification.resolvedFields
+      : {};
     const reportContentText = normalizeExtractedText(
       Array.isArray(parsedProfile?.reportContent?.pages)
         ? parsedProfile.reportContent.pages
@@ -1328,13 +1337,16 @@ async function ingestAssignedReportIntoDashboard(data) {
     let pdfText = "";
     let detectedType =
       serverContext?.detectedType ||
-      (parsedProfile?.primaryType ? String(parsedProfile.primaryType) : null);
-    let detectedTypeSource = serverContext?.detectedTypeSource || null;
+      (parsedProfile?.primaryType ? String(parsedProfile.primaryType) : null) ||
+      (verificationResolvedFields?.primaryType ? String(verificationResolvedFields.primaryType) : null);
+    let detectedTypeSource =
+      serverContext?.detectedTypeSource ||
+      (parserVerification?.available ? `python-cross-check:${parserVerification.source || "extract_report_pdf"}` : null);
     let basicFear = serverContext?.basicFear || parsedProfile?.coreFear || null;
     let basicDesire = serverContext?.basicDesire || parsedProfile?.coreDesire || null;
     let passion = serverContext?.passion || parsedProfile?.passion || null;
-    let typeName = parsedProfile?.typeName || null;
-    let instinct = instinctCodeToLabel(parsedProfile?.instinctualVariant) || null;
+    let typeName = parsedProfile?.typeName || verificationResolvedFields?.typeName || null;
+    let instinct = instinctCodeToLabel(parsedProfile?.instinctualVariant || verificationResolvedFields?.instinctualVariant) || null;
     let subtypeKeyword = parsedProfile?.subtypeKeyword || null;
     let connectedLineA = parsedProfile?.connectedLineA || (parsedProfile?.arrowDynamics?.integration
       ? `Type ${parsedProfile.arrowDynamics.integration}`
@@ -1361,6 +1373,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       serverContext?.integration ||
       parsedProfile?.integrationLevel ||
       parsedProfile?.integration ||
+      verificationResolvedFields?.integrationLevel ||
       null;
     let metaQuote = parsedProfile?.metaMessage || parsedProfile?.selfTalk || null;
     let worldview = parsedProfile?.worldview || null;
@@ -1720,7 +1733,7 @@ async function ingestAssignedReportIntoDashboard(data) {
     );
     const dataQualityDiagnostics = buildDataQualityDiagnostics({
       parsedProfile,
-      parseDiagnostics: data?.parseDiagnostics || null,
+      parseDiagnostics,
       feedbackGuideMatrix,
       strainQualitativeWriteups,
       developmentExercises,
@@ -6559,6 +6572,27 @@ function buildDataQualityDiagnostics({ parsedProfile, parseDiagnostics, feedback
   const detectedTotalPages = Number(parseDiagnostics?.extraction?.detectedTotalPages || 0);
   const minExpectedPages = Number(parseDiagnostics?.extraction?.minExpectedPages || 0);
   const sections = Number(parseDiagnostics?.extraction?.sections || 0);
+  const parserVerification =
+    parseDiagnostics?.verification && typeof parseDiagnostics.verification === "object"
+      ? parseDiagnostics.verification
+      : null;
+  const pythonChecks =
+    parserVerification?.checks && typeof parserVerification.checks === "object"
+      ? parserVerification.checks
+      : {};
+  const pythonCheckKeys = Object.keys(pythonChecks).filter((key) => key !== "pageCoverage");
+  const pythonChecksTotal = pythonCheckKeys.length;
+  const pythonChecksMatched = pythonCheckKeys.filter(
+    (key) => String(pythonChecks?.[key]?.status || "") === "match",
+  ).length;
+  const pythonMismatches = Number.isFinite(Number(parserVerification?.mismatchCount))
+    ? Number(parserVerification.mismatchCount)
+    : pythonCheckKeys.filter((key) => String(pythonChecks?.[key]?.status || "") === "mismatch").length;
+  const pythonVerificationSummary = !parserVerification
+    ? "not provided"
+    : parserVerification?.available
+      ? `${pythonChecksMatched}/${pythonChecksTotal || 0} checks matched`
+      : `unavailable (${String(parserVerification?.reason || "unknown")})`;
   const typeScoresPopulated = Number.isFinite(Number(parseDiagnostics?.scoreCoverage?.typeScoresNonNull))
     ? Number(parseDiagnostics.scoreCoverage.typeScoresNonNull)
     : Object.values(typeScores).filter((value) => value != null && Number.isFinite(Number(value))).length;
@@ -6572,6 +6606,15 @@ function buildDataQualityDiagnostics({ parsedProfile, parseDiagnostics, feedback
   if (typeScoresPopulated < typeScoresTotal) {
     issues.push(`Type score coverage incomplete: ${typeScoresPopulated}/${typeScoresTotal} populated.`);
   }
+  if (parserVerification && !parserVerification.available) {
+    issues.push(`Python verification unavailable: ${String(parserVerification.reason || "unknown")}.`);
+  }
+  if (pythonMismatches > 0) {
+    const mismatchFields = Array.isArray(parserVerification?.mismatchKeys) && parserVerification.mismatchKeys.length
+      ? parserVerification.mismatchKeys.join(", ")
+      : "unknown fields";
+    issues.push(`Python cross-check mismatches detected (${pythonMismatches}): ${mismatchFields}.`);
+  }
 
   const summary = [
     `Parser status: ${parseDiagnostics?.isComplete ? "complete" : "incomplete"}`,
@@ -6580,6 +6623,7 @@ function buildDataQualityDiagnostics({ parsedProfile, parseDiagnostics, feedback
     `Expected minimum pages: ${minExpectedPages > 0 ? minExpectedPages : "not set"}`,
     `Sections: ${sections}`,
     `Type scores populated: ${typeScoresPopulated}/${typeScoresTotal}`,
+    `Python verification: ${pythonVerificationSummary}`,
   ].join(" · ");
 
   return {
@@ -6592,6 +6636,10 @@ function buildDataQualityDiagnostics({ parsedProfile, parseDiagnostics, feedback
       sections,
       typeScoresPopulated,
       typeScoresTotal,
+      pythonChecksMatched,
+      pythonChecksTotal,
+      pythonMismatches,
+      pythonVerificationAvailable: Boolean(parserVerification?.available),
     },
   };
 }
@@ -6912,9 +6960,12 @@ function renderReportFromState(isExampleMode) {
   const typeScoresTotal = Number.isFinite(Number(diagnosticsSnapshot?.typeScoresTotal))
     ? Number(diagnosticsSnapshot.typeScoresTotal)
     : 9;
+  const pythonMismatches = Number.isFinite(Number(diagnosticsSnapshot?.pythonMismatches))
+    ? Number(diagnosticsSnapshot.pythonMismatches)
+    : 0;
   setText(
     'extractedVerificationValue',
-    `Detected pages: ${detectedPages > 0 ? detectedPages : "Not available"} · Type scores populated: ${typeScoresPopulated}/${typeScoresTotal}`,
+    `Detected pages: ${detectedPages > 0 ? detectedPages : "Not available"} · Type scores populated: ${typeScoresPopulated}/${typeScoresTotal} · Python mismatches: ${pythonMismatches}`,
   );
   const sectionTags = Array.isArray(REPORT.extractedSectionTitles)
     ? REPORT.extractedSectionTitles.filter(Boolean).slice(0, 10)

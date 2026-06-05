@@ -41,12 +41,22 @@ function computeCompletenessFromParsed(parsed, diagnostics) {
   const centerNonNull = getNonNullCount(parsed?.centerScores);
   const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
   const hasMinPages = pages >= minPages;
-  const isComplete = hasMinPages && hasAllChartScores;
+  const verificationCriticalMismatchCount = Number(diagnostics?.verification?.criticalMismatchCount ?? 0);
+  const verificationCriticalMismatchKeys = Array.isArray(diagnostics?.verification?.criticalMismatchKeys)
+    ? diagnostics.verification.criticalMismatchKeys.filter(Boolean)
+    : [];
+  const hasVerificationConsistency = verificationCriticalMismatchCount <= 0;
+  const isComplete = hasMinPages && hasAllChartScores && hasVerificationConsistency;
   let incompleteReason = null;
   if (!hasMinPages) {
     incompleteReason = `Extracted ${pages} pages, expected at least ${minPages}`;
   } else if (!hasAllChartScores) {
     incompleteReason = "Chart numerics incomplete: one or more type, instinct, or center scores are null";
+  } else if (!hasVerificationConsistency) {
+    const mismatchLabel = verificationCriticalMismatchKeys.length
+      ? verificationCriticalMismatchKeys.join(", ")
+      : "identity fields";
+    incompleteReason = `Python cross-check mismatch detected in ${mismatchLabel}`;
   }
   return {
     isComplete,
@@ -92,6 +102,7 @@ async function main() {
   const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
   const parsed = await parsePdf(pdfBuffer, {
     allowLocalTextFallback: true,
+    enablePythonCrossCheck: true,
   });
   const parseDiagnostics =
     parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"

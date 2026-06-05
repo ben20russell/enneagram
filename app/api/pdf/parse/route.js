@@ -53,6 +53,7 @@ export async function POST(req) {
       imagePrimaryFullDocMaxPages: routeImagePageLimit,
       requireChartScoresForComplete: false,
       allowLocalTextFallback: true,
+      enablePythonCrossCheck: true,
       ...(mode === ADMIN_INLINE_SAFE_MODE
         ? {
             disableImagePipeline: true,

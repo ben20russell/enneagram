@@ -112,9 +112,17 @@ function getIngestionState(resultsData) {
   const pageCount = Number(parseDiagnostics?.extraction?.pages || 0);
   const minPages = Number(parseDiagnostics?.extraction?.minExpectedPages || 20);
   const meetsPageCoverage = pageCount >= minPages;
+  const verificationCriticalMismatchCount = Number(parseDiagnostics?.verification?.criticalMismatchCount ?? 0);
+  const hasVerificationConsistency = verificationCriticalMismatchCount <= 0;
   const reviewApproved = !reviewState || reviewState.status === "auto_approved" || reviewState.status === "approved";
-  const isComplete = status === "ready" && meetsPageCoverage && hasAllChartScores && reviewApproved;
-  return { status, parseDiagnostics, isComplete, review: reviewState };
+  const isComplete = status === "ready" && meetsPageCoverage && hasAllChartScores && reviewApproved && hasVerificationConsistency;
+  return {
+    status,
+    parseDiagnostics,
+    isComplete,
+    review: reviewState,
+    verificationCriticalMismatchCount,
+  };
 }
 
 function toTitleCaseWords(value) {

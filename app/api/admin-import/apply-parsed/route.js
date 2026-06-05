@@ -34,7 +34,13 @@ function computeCompletenessFromParsed(parsed, diagnostics) {
   const criticalHydrated = Number(diagnostics?.sectionCoverage?.criticalHydrated ?? 0);
   const criticalTotal = Number(diagnostics?.sectionCoverage?.criticalTotal ?? 0);
   const hasCriticalSections = criticalTotal > 0 ? criticalHydrated >= criticalTotal : true;
-  const isComplete = hasMinPages && hasAllChartScores && hasCriticalSections;
+  const verificationMismatchCount = Number(diagnostics?.verification?.mismatchCount ?? 0);
+  const verificationCriticalMismatchCount = Number(diagnostics?.verification?.criticalMismatchCount ?? 0);
+  const verificationCriticalMismatchKeys = Array.isArray(diagnostics?.verification?.criticalMismatchKeys)
+    ? diagnostics.verification.criticalMismatchKeys.filter(Boolean)
+    : [];
+  const hasVerificationConsistency = verificationCriticalMismatchCount <= 0;
+  const isComplete = hasMinPages && hasAllChartScores && hasCriticalSections && hasVerificationConsistency;
   let incompleteReason = null;
 
   if (!hasMinPages) {
@@ -43,6 +49,11 @@ function computeCompletenessFromParsed(parsed, diagnostics) {
     incompleteReason = "Chart numerics incomplete: one or more type, instinct, or center scores are null";
   } else if (!hasCriticalSections) {
     incompleteReason = `Critical section hydration incomplete (${criticalHydrated}/${criticalTotal})`;
+  } else if (!hasVerificationConsistency) {
+    const mismatchLabel = verificationCriticalMismatchKeys.length
+      ? verificationCriticalMismatchKeys.join(", ")
+      : "identity fields";
+    incompleteReason = `Python cross-check mismatch detected in ${mismatchLabel}`;
   }
 
   return {
@@ -55,6 +66,9 @@ function computeCompletenessFromParsed(parsed, diagnostics) {
     centerNonNull,
     criticalHydrated,
     criticalTotal,
+    verificationMismatchCount,
+    verificationCriticalMismatchCount,
+    verificationCriticalMismatchKeys,
   };
 }
 
