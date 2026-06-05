@@ -107,6 +107,8 @@ function pickFirstNonNegativeInteger(values) {
 
 function extractParsePageProgress(data) {
   const parsePages = pickFirstNonNegativeInteger([
+    data?.parseCoverage?.parsedPages,
+    data?.data?.parseCoverage?.parsedPages,
     data?.parsePages,
     data?.data?.parsePages,
     data?._parseDiagnostics?.extraction?.pages,
@@ -114,16 +116,26 @@ function extractParsePageProgress(data) {
     data?.parsed?._parseDiagnostics?.extraction?.pages,
   ]);
   const parseDetectedTotalPages = pickFirstNonNegativeInteger([
+    data?.parseCoverage?.detectedTotalPages,
+    data?.data?.parseCoverage?.detectedTotalPages,
     data?.parseDetectedTotalPages,
     data?.data?.parseDetectedTotalPages,
     data?._parseDiagnostics?.extraction?.detectedTotalPages,
     data?.data?._parseDiagnostics?.extraction?.detectedTotalPages,
     data?.parsed?._parseDiagnostics?.extraction?.detectedTotalPages,
   ]);
-  const parseTotalPages = pickFirstNonNegativeInteger([
-    parseDetectedTotalPages,
+  const parseMinExpectedPages = pickFirstNonNegativeInteger([
+    data?.parseCoverage?.minExpectedPages,
+    data?.data?.parseCoverage?.minExpectedPages,
     data?.parseMinExpectedPages,
     data?.data?.parseMinExpectedPages,
+    data?._parseDiagnostics?.extraction?.minExpectedPages,
+    data?.data?._parseDiagnostics?.extraction?.minExpectedPages,
+    data?.parsed?._parseDiagnostics?.extraction?.minExpectedPages,
+  ]);
+  const parseTotalPages = pickFirstNonNegativeInteger([
+    parseDetectedTotalPages,
+    parseMinExpectedPages,
   ]);
   const isPageCoverageComplete =
     parseDetectedTotalPages > 0 && parsePages != null && parsePages >= parseDetectedTotalPages;
@@ -134,6 +146,34 @@ function extractParsePageProgress(data) {
     parseDetectedTotalPages,
     isPageCoverageComplete,
   };
+}
+
+function extractParseState(data) {
+  const value = String(
+    data?.parseState ??
+      data?.data?.parseState ??
+      data?.parseStatus ??
+      data?.data?.parseStatus ??
+      "unknown",
+  )
+    .trim()
+    .toLowerCase();
+  return value || "unknown";
+}
+
+function extractParseReason(data) {
+  const value = String(
+    data?.parseReason ||
+      data?.data?.parseReason ||
+      data?.parseIncompleteReason ||
+      data?.incompleteReason ||
+      data?.data?.parseIncompleteReason ||
+      data?.data?.incompleteReason ||
+      data?.error ||
+      data?.details ||
+      "",
+  ).trim();
+  return value || null;
 }
 
 function formatParsedPagesText(parsePages, parseTotalPages) {
@@ -500,6 +540,29 @@ export default function AdminImportForm() {
           });
 
           if (attemptResponse.ok) {
+            const parseStateFromAttempt = extractParseState(attemptData);
+            const {
+              parsePages: attemptParsePages,
+              parseTotalPages: attemptParseTotalPages,
+            } = extractParsePageProgress(attemptData);
+            const hasAttemptUsableCoverage =
+              attemptParsePages != null &&
+              attemptParsePages > 0 &&
+              !(attemptParseTotalPages != null && attemptParseTotalPages === 0);
+            const shouldRetryIncompleteAttempt =
+              parseStateFromAttempt.includes("incomplete") && !hasAttemptUsableCoverage;
+
+            if (shouldRetryIncompleteAttempt) {
+              console.log("[admin-import-page] Parse attempt returned 200 but unusable incomplete coverage; retrying fallback", {
+                label,
+                endpoint,
+                parseStateFromAttempt,
+                attemptParsePages,
+                attemptParseTotalPages,
+                hasAttemptUsableCoverage,
+              });
+              continue;
+            }
             break;
           }
 
@@ -643,15 +706,9 @@ export default function AdminImportForm() {
       });
 
       if (response?.ok) {
-        const parseStateFromResponse = String(data?.parseStatus || "unknown");
+        const parseStateFromResponse = extractParseState(data);
         const parseState = isPageCoverageComplete ? "complete" : parseStateFromResponse;
-        const parseIncompleteReason = String(
-          data?.parseIncompleteReason ||
-            data?.incompleteReason ||
-            data?.data?.parseIncompleteReason ||
-            data?.data?.incompleteReason ||
-            "",
-        ).trim();
+        const parseIncompleteReason = extractParseReason(data);
         const hasNoParsedCoverage = (parsePages == null || parsePages === 0) && (parseTotalPages == null || parseTotalPages === 0);
 
         if (parseState !== "complete" && hasNoParsedCoverage) {
@@ -663,11 +720,14 @@ export default function AdminImportForm() {
           );
         } else {
           parseOutcome = parseState === "complete" ? "complete" : "incomplete";
-          setParseStatus(`Parsing complete in ${durationText}. Pages parsed: ${parsedPagesText}. Status: ${parseState}.`);
+          setParseStatus(
+            `Parsing complete in ${durationText}. Pages parsed: ${parsedPagesText}. Status: ${parseState}.${parseState !== "complete" && parseIncompleteReason ? ` Reason: ${parseIncompleteReason}` : ""}`,
+          );
         }
       } else {
         parseOutcome = "failed";
-        const parseErrorMessage = [data?.error, data?.details]
+        const normalizedParseReason = extractParseReason(data);
+        const parseErrorMessage = [normalizedParseReason, data?.error, data?.details]
           .filter((value) => typeof value === "string" && value.trim().length > 0)
           .join(": ");
         const parseHttpMessage = response

@@ -50,6 +50,41 @@ function getNonNullCount(obj) {
   return Object.values(obj).filter((v) => v != null).length;
 }
 
+function toPositiveInteger(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.floor(numeric);
+}
+
+function buildParseContract({ diagnostics, parseStatus, parseReason }) {
+  const parsedPages = toPositiveInteger(diagnostics?.extraction?.pages ?? null);
+  const detectedTotalPages = toPositiveInteger(diagnostics?.extraction?.detectedTotalPages ?? null);
+  const minExpectedPages = toPositiveInteger(diagnostics?.extraction?.minExpectedPages ?? null);
+  const coverageTarget = detectedTotalPages || minExpectedPages || null;
+  const parseCoverage = {
+    parsedPages,
+    detectedTotalPages,
+    minExpectedPages,
+    isCoverageComplete: coverageTarget != null
+      ? (parsedPages != null && parsedPages >= coverageTarget)
+      : Boolean(parsedPages != null && parsedPages > 0),
+  };
+  const verificationSummary = {
+    available: Boolean(diagnostics?.verification?.available),
+    mismatchCount: Number(diagnostics?.verification?.mismatchCount ?? 0),
+    criticalMismatchCount: Number(diagnostics?.verification?.criticalMismatchCount ?? 0),
+    criticalMismatchKeys: Array.isArray(diagnostics?.verification?.criticalMismatchKeys)
+      ? diagnostics.verification.criticalMismatchKeys.filter(Boolean)
+      : [],
+  };
+  return {
+    parseCoverage,
+    verificationSummary,
+    parseState: parseStatus === "complete" ? "complete" : "incomplete",
+    parseReason: parseReason || null,
+  };
+}
+
 function computeCompletenessFromParsed(parsed, diagnostics) {
   const pages = Number(diagnostics?.extraction?.pages ?? parsed?.reportContent?.pages?.length ?? 0);
   const minPages = Number(diagnostics?.extraction?.minExpectedPages ?? process.env.PDF_PARSE_MIN_PAGES ?? 20);
@@ -58,6 +93,7 @@ function computeCompletenessFromParsed(parsed, diagnostics) {
   const centerNonNull = getNonNullCount(parsed?.centerScores);
   const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
   const hasMinPages = pages >= minPages;
+  const hasCoreIdentity = Boolean(parsed?.primaryType || parsed?.typeName);
   const criticalHydrated = Number(diagnostics?.sectionCoverage?.criticalHydrated ?? 0);
   const criticalTotal = Number(diagnostics?.sectionCoverage?.criticalTotal ?? 0);
   const hasCriticalSections = criticalTotal > 0 ? criticalHydrated >= criticalTotal : true;
@@ -67,23 +103,29 @@ function computeCompletenessFromParsed(parsed, diagnostics) {
     ? diagnostics.verification.criticalMismatchKeys.filter(Boolean)
     : [];
   const hasVerificationConsistency = verificationCriticalMismatchCount <= 0;
-  const isComplete = hasMinPages && hasAllChartScores && hasCriticalSections && hasVerificationConsistency;
+  const isComplete = hasMinPages && hasCoreIdentity && hasVerificationConsistency;
   let incompleteReason = null;
+  const warnings = [];
   if (!hasMinPages) {
     incompleteReason = `Extracted ${pages} pages, expected at least ${minPages}`;
-  } else if (!hasAllChartScores) {
-    incompleteReason = "Chart numerics incomplete: one or more type, instinct, or center scores are null";
-  } else if (!hasCriticalSections) {
-    incompleteReason = `Critical section hydration incomplete (${criticalHydrated}/${criticalTotal})`;
+  } else if (!hasCoreIdentity) {
+    incompleteReason = "Core identity incomplete: missing primary type and type name";
   } else if (!hasVerificationConsistency) {
     const mismatchLabel = verificationCriticalMismatchKeys.length
       ? verificationCriticalMismatchKeys.join(", ")
       : "identity fields";
     incompleteReason = `Python cross-check mismatch detected in ${mismatchLabel}`;
   }
+  if (!hasAllChartScores) {
+    warnings.push("Chart numerics are partial; keeping parse result usable with warning.");
+  }
+  if (!hasCriticalSections) {
+    warnings.push(`Critical section hydration incomplete (${criticalHydrated}/${criticalTotal}).`);
+  }
   return {
     isComplete,
     incompleteReason,
+    hasCoreIdentity,
     pages,
     minPages,
     typeNonNull,
@@ -94,6 +136,7 @@ function computeCompletenessFromParsed(parsed, diagnostics) {
     verificationMismatchCount,
     verificationCriticalMismatchCount,
     verificationCriticalMismatchKeys,
+    warnings,
   };
 }
 
@@ -180,6 +223,14 @@ function buildParsedResultsData({
       criticalTotal: recomputed.criticalTotal,
     },
     completedAt: new Date().toISOString(),
+    warnings: Array.from(
+      new Set([
+        ...((Array.isArray(parseDiagnostics?.warnings) ? parseDiagnostics.warnings : []).map((entry) =>
+          typeof entry === "string" ? entry : entry?.message
+        ).filter(Boolean)),
+        ...recomputed.warnings,
+      ]),
+    ),
   };
   const parseStatus = recomputed.isComplete ? "complete" : "incomplete";
   const reviewStatus = parseReview?.status || (recomputed.isComplete ? "auto_approved" : "needs_review");
@@ -483,6 +534,14 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
         centerScoresTotal: 3,
       },
       completedAt: new Date().toISOString(),
+      warnings: Array.from(
+        new Set([
+          ...((Array.isArray(parseDiagnostics?.warnings) ? parseDiagnostics.warnings : []).map((entry) =>
+            typeof entry === "string" ? entry : entry?.message
+          ).filter(Boolean)),
+          ...recomputed.warnings,
+        ]),
+      ),
     };
 
     const parseStatus = recomputed.isComplete ? "complete" : "incomplete";
@@ -564,6 +623,17 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
       parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
       parseDetectedTotalPages: nextDiagnostics?.extraction?.detectedTotalPages ?? null,
     });
+    const parseReason = nextDiagnostics?.incompleteReason ?? null;
+    const {
+      parseCoverage,
+      verificationSummary,
+      parseState,
+      parseReason: normalizedParseReason,
+    } = buildParseContract({
+      diagnostics: nextDiagnostics,
+      parseStatus,
+      parseReason,
+    });
 
     return NextResponse.json(
       {
@@ -575,6 +645,10 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
         parsePages: nextDiagnostics?.extraction?.pages ?? null,
         parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
         parseDetectedTotalPages: nextDiagnostics?.extraction?.detectedTotalPages ?? null,
+        parseCoverage,
+        verificationSummary,
+        parseState,
+        parseReason: normalizedParseReason,
       },
       { status: 200 },
     );
@@ -646,7 +720,26 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
     }
 
     return NextResponse.json(
-      { error: "Failed to reparse report", details, reportId: normalizedReportId, reportsTable },
+      {
+        error: "Failed to reparse report",
+        details,
+        reportId: normalizedReportId,
+        reportsTable,
+        parseCoverage: {
+          parsedPages: null,
+          detectedTotalPages: null,
+          minExpectedPages: null,
+          isCoverageComplete: false,
+        },
+        verificationSummary: {
+          available: false,
+          mismatchCount: 0,
+          criticalMismatchCount: 0,
+          criticalMismatchKeys: [],
+        },
+        parseState: "failed",
+        parseReason: details,
+      },
       { status: 500 },
     );
   }

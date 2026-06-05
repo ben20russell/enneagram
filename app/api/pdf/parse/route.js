@@ -11,6 +11,76 @@ function isPdfFile(file) {
   return file instanceof File && file.type === "application/pdf";
 }
 
+function toPositiveInteger(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.floor(numeric);
+}
+
+function buildParseContract(parsed) {
+  const parsedPages = toPositiveInteger(
+    parsed?.parseCoverage?.parsedPages ??
+      parsed?._parseDiagnostics?.extraction?.pages ??
+      parsed?.reportContent?.pages?.length ??
+      null,
+  );
+  const detectedTotalPages = toPositiveInteger(
+    parsed?.parseCoverage?.detectedTotalPages ??
+      parsed?._parseDiagnostics?.extraction?.detectedTotalPages ??
+      null,
+  );
+  const minExpectedPages = toPositiveInteger(
+    parsed?.parseCoverage?.minExpectedPages ??
+      parsed?._parseDiagnostics?.extraction?.minExpectedPages ??
+      null,
+  );
+  const coverageTarget = detectedTotalPages || minExpectedPages || null;
+  const parseCoverage = {
+    parsedPages,
+    detectedTotalPages,
+    minExpectedPages,
+    isCoverageComplete: coverageTarget != null
+      ? (parsedPages != null && parsedPages >= coverageTarget)
+      : Boolean(parsedPages != null && parsedPages > 0),
+  };
+
+  const verificationSummary = {
+    available: Boolean(
+      parsed?.verificationSummary?.available ?? parsed?._parseDiagnostics?.verification?.available,
+    ),
+    mismatchCount: Number(parsed?.verificationSummary?.mismatchCount ?? parsed?._parseDiagnostics?.verification?.mismatchCount ?? 0),
+    criticalMismatchCount: Number(
+      parsed?.verificationSummary?.criticalMismatchCount ??
+        parsed?._parseDiagnostics?.verification?.criticalMismatchCount ??
+        0,
+    ),
+    criticalMismatchKeys: Array.isArray(
+      parsed?.verificationSummary?.criticalMismatchKeys ??
+        parsed?._parseDiagnostics?.verification?.criticalMismatchKeys,
+    )
+      ? (parsed?.verificationSummary?.criticalMismatchKeys ??
+          parsed?._parseDiagnostics?.verification?.criticalMismatchKeys)
+          .filter(Boolean)
+      : [],
+  };
+
+  const parseState = String(
+    parsed?.parseState ??
+      parsed?._parseState ??
+      parsed?._parseStatus ??
+      "unknown",
+  ).toLowerCase();
+  const parseReason = String(
+    parsed?.parseReason ??
+      parsed?._parseReason ??
+      parsed?._parseDiagnostics?.parseReason ??
+      parsed?._parseDiagnostics?.incompleteReason ??
+      "",
+  ).trim() || null;
+
+  return { parseCoverage, verificationSummary, parseState, parseReason };
+}
+
 export async function POST(req) {
   try {
     const formData = await req.formData();
@@ -62,9 +132,14 @@ export async function POST(req) {
         : {}),
     });
     const parseStatus = parsed?._parseStatus || "complete";
+    const { parseCoverage, verificationSummary, parseState, parseReason } = buildParseContract(parsed);
 
     const result = {
       ...parsed,
+      parseCoverage,
+      verificationSummary,
+      parseState,
+      parseReason,
       parsedAt: new Date().toISOString(),
       sourceFile: report.name,
       ...(clientId ? { clientId } : {}),
@@ -73,16 +148,51 @@ export async function POST(req) {
     if (parseStatus !== "complete") {
       const incompleteReason = String(parsed?._parseDiagnostics?.incompleteReason || "PDF parsed but marked incomplete");
       return NextResponse.json(
-        { success: false, error: incompleteReason, data: result },
+        {
+          success: false,
+          error: incompleteReason,
+          data: result,
+          parseCoverage,
+          verificationSummary,
+          parseState: parseState || "incomplete",
+          parseReason: parseReason || incompleteReason,
+        },
         { status: 422 },
       );
     }
 
-    return NextResponse.json({ success: true, data: result }, { status: 200 });
+    return NextResponse.json(
+      {
+        success: true,
+        data: result,
+        parseCoverage,
+        verificationSummary,
+        parseState: parseState || "complete",
+        parseReason,
+      },
+      { status: 200 },
+    );
   } catch (error) {
     console.log("[/api/pdf/parse error]", String(error?.message || error));
+    const parseReason = String(error?.message || "PDF parsing failed");
     return NextResponse.json(
-      { error: String(error?.message || "PDF parsing failed") },
+      {
+        error: parseReason,
+        parseCoverage: {
+          parsedPages: null,
+          detectedTotalPages: null,
+          minExpectedPages: null,
+          isCoverageComplete: false,
+        },
+        verificationSummary: {
+          available: false,
+          mismatchCount: 0,
+          criticalMismatchCount: 0,
+          criticalMismatchKeys: [],
+        },
+        parseState: "failed",
+        parseReason,
+      },
       { status: 500 },
     );
   }
