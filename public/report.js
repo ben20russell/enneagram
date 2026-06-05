@@ -350,6 +350,13 @@ function instinctCodeToLabel(code) {
   return null;
 }
 
+function instinctValueToLabel(value) {
+  const fromCode = instinctCodeToLabel(value);
+  if (fromCode) return fromCode;
+  const normalized = String(value || "").trim();
+  return normalized || null;
+}
+
 function extractInstinctFromPdfText(pdfText) {
   const normalized = normalizeExtractedText(pdfText);
   const codedMatch = normalized.match(/\bwith\s+a\s+(SO|SP|SX)\s+Instinct(?:\b|[A-Z])/i);
@@ -1336,9 +1343,9 @@ async function ingestAssignedReportIntoDashboard(data) {
     );
     let pdfText = "";
     let detectedType =
+      (verificationResolvedFields?.primaryType ? String(verificationResolvedFields.primaryType) : null) ||
       serverContext?.detectedType ||
-      (parsedProfile?.primaryType ? String(parsedProfile.primaryType) : null) ||
-      (verificationResolvedFields?.primaryType ? String(verificationResolvedFields.primaryType) : null);
+      (parsedProfile?.primaryType ? String(parsedProfile.primaryType) : null);
     let detectedTypeSource =
       serverContext?.detectedTypeSource ||
       (parserVerification?.available ? `python-cross-check:${parserVerification.source || "extract_report_pdf"}` : null);
@@ -1346,7 +1353,12 @@ async function ingestAssignedReportIntoDashboard(data) {
     let basicDesire = serverContext?.basicDesire || parsedProfile?.coreDesire || null;
     let passion = serverContext?.passion || parsedProfile?.passion || null;
     let typeName = parsedProfile?.typeName || verificationResolvedFields?.typeName || null;
-    let instinct = instinctCodeToLabel(parsedProfile?.instinctualVariant || verificationResolvedFields?.instinctualVariant) || null;
+    let instinct = instinctValueToLabel(
+      verificationResolvedFields?.instinctualVariant ||
+      serverContext?.instinct ||
+      serverContext?.instinctCode ||
+      parsedProfile?.instinctualVariant,
+    ) || null;
     let subtypeKeyword = parsedProfile?.subtypeKeyword || null;
     let connectedLineA = parsedProfile?.connectedLineA || (parsedProfile?.arrowDynamics?.integration
       ? `Type ${parsedProfile.arrowDynamics.integration}`
@@ -1369,11 +1381,11 @@ async function ingestAssignedReportIntoDashboard(data) {
       : null;
     profileScores = normalizeScoreScale(profileScores);
     let integrationLevel =
+      verificationResolvedFields?.integrationLevel ||
       serverContext?.integrationLevel ||
       serverContext?.integration ||
       parsedProfile?.integrationLevel ||
       parsedProfile?.integration ||
-      verificationResolvedFields?.integrationLevel ||
       null;
     let metaQuote = parsedProfile?.metaMessage || parsedProfile?.selfTalk || null;
     let worldview = parsedProfile?.worldview || null;

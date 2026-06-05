@@ -60,6 +60,80 @@ function inferTypeFromFileName(fileName) {
   return null;
 }
 
+function normalizeTypeNumber(value) {
+  if (value == null) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    const floored = Math.floor(numeric);
+    if (floored >= 1 && floored <= 9) return floored;
+  }
+  const match = String(value).match(/[1-9]/);
+  return match?.[0] ? Number(match[0]) : null;
+}
+
+function normalizeInstinctualVariant(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "sx" || normalized.includes("sexual") || normalized.includes("one-on-one") || normalized.includes("one on one")) {
+    return "sx";
+  }
+  if (normalized === "so" || normalized.includes("social")) return "so";
+  if (normalized === "sp" || normalized.includes("self-preservation") || normalized.includes("self preservation")) {
+    return "sp";
+  }
+  return null;
+}
+
+function normalizeIntegrationLevel(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  const lowered = normalized.toLowerCase();
+  if (lowered === "high") return "High";
+  if (lowered === "moderate" || lowered === "medium") return "Moderate";
+  if (lowered === "low") return "Low";
+  return normalized;
+}
+
+function resolveHydrationIdentityFields({ parsed, diagnostics, fileName }) {
+  const verification = diagnostics?.verification && typeof diagnostics.verification === "object"
+    ? diagnostics.verification
+    : {};
+  const verificationResolvedFields = verification?.resolvedFields && typeof verification.resolvedFields === "object"
+    ? verification.resolvedFields
+    : {};
+  const pythonIdentity = verification?.python && typeof verification.python === "object"
+    ? verification.python
+    : {};
+  const inferredType = normalizeTypeNumber(inferTypeFromFileName(fileName));
+  const primaryTypeValue =
+    normalizeTypeNumber(verificationResolvedFields?.primaryType) ??
+    normalizeTypeNumber(pythonIdentity?.detectedType) ??
+    normalizeTypeNumber(parsed?.primaryType) ??
+    inferredType;
+  const instinctualVariant =
+    normalizeInstinctualVariant(verificationResolvedFields?.instinctualVariant) ??
+    normalizeInstinctualVariant(pythonIdentity?.instinctCode || pythonIdentity?.instinctLabel) ??
+    normalizeInstinctualVariant(parsed?.instinctualVariant) ??
+    null;
+  const integrationLevel =
+    normalizeIntegrationLevel(verificationResolvedFields?.integrationLevel) ??
+    normalizeIntegrationLevel(pythonIdentity?.integrationLevel) ??
+    normalizeIntegrationLevel(parsed?.integrationLevel) ??
+    null;
+  const verificationType = normalizeTypeNumber(verificationResolvedFields?.primaryType);
+  const detectedTypeSource =
+    verificationType != null
+      ? `python-cross-check:${verification?.source || "extract_report_pdf"}`
+      : `azure-openai:${process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini"}`;
+
+  return {
+    primaryType: primaryTypeValue != null ? String(primaryTypeValue) : null,
+    instinctualVariant,
+    integrationLevel,
+    detectedTypeSource,
+  };
+}
+
 function computeCompletenessFromParsed(parsed, diagnostics) {
   const pages = Number(diagnostics?.extraction?.pages ?? parsed?.reportContent?.pages?.length ?? 0);
   const minPages = Number(diagnostics?.extraction?.minExpectedPages ?? process.env.PDF_PARSE_MIN_PAGES ?? 20);
@@ -242,6 +316,11 @@ export async function POST(req) {
       parsed?.sourceFile ||
       priorDashboardContext?.sourceFileName ||
       null;
+    const resolvedIdentity = resolveHydrationIdentityFields({
+      parsed,
+      diagnostics: nextDiagnostics,
+      fileName,
+    });
 
     const nextResultsData = {
       ...priorResults,
@@ -271,14 +350,14 @@ export async function POST(req) {
       },
       dashboardContext: {
         ...priorDashboardContext,
-        detectedType: parsed?.primaryType ? String(parsed.primaryType) : inferTypeFromFileName(fileName),
-        detectedTypeSource: `azure-openai:${process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini"}`,
+        detectedType: resolvedIdentity.primaryType,
+        detectedTypeSource: resolvedIdentity.detectedTypeSource,
         sourceFileName: fileName,
         basicFear: parsed?.coreFear || null,
         basicDesire: parsed?.coreDesire || null,
         passion: priorDashboardContext?.passion || null,
-        integrationLevel: parsed?.integrationLevel || null,
-        instinct: parsed?.instinctualVariant || null,
+        integrationLevel: resolvedIdentity.integrationLevel,
+        instinct: resolvedIdentity.instinctualVariant,
         reportSummary: parsed?.reportSummary || null,
       },
       extractedContent: {
@@ -296,7 +375,7 @@ export async function POST(req) {
       .from(reportsTable)
       .update({
         results_data: nextResultsData,
-        enneagram_type: parsed?.primaryType ? String(parsed.primaryType) : report.enneagram_type,
+        enneagram_type: resolvedIdentity.primaryType || report.enneagram_type,
       })
       .eq("id", report.id);
 

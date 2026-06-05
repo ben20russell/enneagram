@@ -41,23 +41,96 @@ function isLocalhostPreviewRequest(request) {
   return false;
 }
 
+function normalizeTypeNumber(value) {
+  if (value == null) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    const floored = Math.floor(numeric);
+    if (floored >= 1 && floored <= 9) return floored;
+  }
+  const match = String(value).match(/[1-9]/);
+  return match?.[0] ? Number(match[0]) : null;
+}
+
+function normalizeInstinctualVariant(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "sx" || normalized.includes("sexual") || normalized.includes("one-on-one") || normalized.includes("one on one")) {
+    return "sx";
+  }
+  if (normalized === "so" || normalized.includes("social")) return "so";
+  if (normalized === "sp" || normalized.includes("self-preservation") || normalized.includes("self preservation")) {
+    return "sp";
+  }
+  return null;
+}
+
+function normalizeIntegrationLevel(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  const lowered = normalized.toLowerCase();
+  if (lowered === "high") return "High";
+  if (lowered === "moderate" || lowered === "medium") return "Moderate";
+  if (lowered === "low") return "Low";
+  return normalized;
+}
+
+function getVerificationResolvedFields(normalized) {
+  const ingestionVerification = normalized?.ingestion?.parseDiagnostics?.verification;
+  if (ingestionVerification && typeof ingestionVerification === "object") {
+    const resolved = ingestionVerification?.resolvedFields;
+    if (resolved && typeof resolved === "object") return resolved;
+  }
+  const parsedVerification = normalized?.parsedProfile?._parseDiagnostics?.verification;
+  if (parsedVerification && typeof parsedVerification === "object") {
+    const resolved = parsedVerification?.resolvedFields;
+    if (resolved && typeof resolved === "object") return resolved;
+  }
+  return {};
+}
+
 function getIngestedDashboardContext(resultsData) {
   const normalized = normalizeResultsData(resultsData);
   if (!normalized) return null;
+  const parsed = typeof normalized.parsedProfile === "object" && normalized.parsedProfile
+    ? normalized.parsedProfile
+    : null;
+  const verificationResolvedFields = getVerificationResolvedFields(normalized);
+  const resolvedPrimaryType =
+    normalizeTypeNumber(verificationResolvedFields?.primaryType) ??
+    normalizeTypeNumber(parsed?.primaryType);
+  const resolvedInstinctualVariant =
+    normalizeInstinctualVariant(verificationResolvedFields?.instinctualVariant) ??
+    normalizeInstinctualVariant(parsed?.instinctualVariant);
+  const resolvedIntegrationLevel =
+    normalizeIntegrationLevel(verificationResolvedFields?.integrationLevel) ??
+    normalizeIntegrationLevel(parsed?.integrationLevel);
 
   if (typeof normalized.dashboardContext === "object" && normalized.dashboardContext) {
-    return normalized.dashboardContext;
+    return {
+      ...normalized.dashboardContext,
+      detectedType:
+        normalized.dashboardContext?.detectedType ||
+        (resolvedPrimaryType != null ? String(resolvedPrimaryType) : null),
+      instinct:
+        normalizeInstinctualVariant(normalized.dashboardContext?.instinct || normalized.dashboardContext?.instinctCode) ||
+        resolvedInstinctualVariant,
+      integrationLevel:
+        normalizeIntegrationLevel(normalized.dashboardContext?.integrationLevel || normalized.dashboardContext?.integration) ||
+        resolvedIntegrationLevel,
+    };
   }
 
-  if (typeof normalized.parsedProfile === "object" && normalized.parsedProfile) {
-    const parsed = normalized.parsedProfile;
+  if (parsed) {
     return {
-      detectedType: parsed?.primaryType ? String(parsed.primaryType) : null,
+      detectedType: resolvedPrimaryType != null ? String(resolvedPrimaryType) : null,
       detectedTypeSource: "parsedProfile:primaryType",
       sourceFileName: normalized?.file?.fileName || null,
       basicFear: parsed?.coreFear || null,
       basicDesire: parsed?.coreDesire || null,
       passion: null,
+      instinct: resolvedInstinctualVariant,
+      integrationLevel: resolvedIntegrationLevel,
       reportSummary: parsed?.reportSummary || null,
     };
   }
@@ -103,19 +176,14 @@ function getIngestionState(resultsData) {
     ? normalized.parsedProfile
     : null;
   const reviewState = normalized?.review && typeof normalized.review === "object" ? normalized.review : null;
-  const countNonNull = (obj) =>
-    obj && typeof obj === "object" ? Object.values(obj).filter((v) => v != null).length : 0;
-  const typeNonNull = countNonNull(parsedProfile?.typeScores);
-  const instinctNonNull = countNonNull(parsedProfile?.instinctScores);
-  const centerNonNull = countNonNull(parsedProfile?.centerScores);
-  const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
   const pageCount = Number(parseDiagnostics?.extraction?.pages || 0);
   const minPages = Number(parseDiagnostics?.extraction?.minExpectedPages || 20);
   const meetsPageCoverage = pageCount >= minPages;
+  const hasCoreIdentity = Boolean(parsedProfile?.primaryType || parsedProfile?.typeName);
   const verificationCriticalMismatchCount = Number(parseDiagnostics?.verification?.criticalMismatchCount ?? 0);
   const hasVerificationConsistency = verificationCriticalMismatchCount <= 0;
   const reviewApproved = !reviewState || reviewState.status === "auto_approved" || reviewState.status === "approved";
-  const isComplete = status === "ready" && meetsPageCoverage && hasAllChartScores && reviewApproved && hasVerificationConsistency;
+  const isComplete = status === "ready" && meetsPageCoverage && hasCoreIdentity && reviewApproved && hasVerificationConsistency;
   return {
     status,
     parseDiagnostics,
