@@ -645,8 +645,26 @@ export default function AdminImportForm() {
       if (response?.ok) {
         const parseStateFromResponse = String(data?.parseStatus || "unknown");
         const parseState = isPageCoverageComplete ? "complete" : parseStateFromResponse;
-        parseOutcome = parseState === "complete" ? "complete" : "incomplete";
-        setParseStatus(`Parsing complete in ${durationText}. Pages parsed: ${parsedPagesText}. Status: ${parseState}.`);
+        const parseIncompleteReason = String(
+          data?.parseIncompleteReason ||
+            data?.incompleteReason ||
+            data?.data?.parseIncompleteReason ||
+            data?.data?.incompleteReason ||
+            "",
+        ).trim();
+        const hasNoParsedCoverage = (parsePages == null || parsePages === 0) && (parseTotalPages == null || parseTotalPages === 0);
+
+        if (parseState !== "complete" && hasNoParsedCoverage) {
+          parseOutcome = "failed";
+          setParseStatus(
+            parseIncompleteReason
+              ? `Parsing failed in ${durationText}: ${parseIncompleteReason}`
+              : `Parsing failed in ${durationText}: no pages were parsed.`,
+          );
+        } else {
+          parseOutcome = parseState === "complete" ? "complete" : "incomplete";
+          setParseStatus(`Parsing complete in ${durationText}. Pages parsed: ${parsedPagesText}. Status: ${parseState}.`);
+        }
       } else {
         parseOutcome = "failed";
         const parseErrorMessage = [data?.error, data?.details]

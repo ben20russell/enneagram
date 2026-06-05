@@ -555,6 +555,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
         reportId: report.id,
         parseStatus,
         reviewStatus,
+        parseIncompleteReason: nextDiagnostics?.incompleteReason ?? null,
         parsePages: nextDiagnostics?.extraction?.pages ?? null,
         parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
         parseDetectedTotalPages: nextDiagnostics?.extraction?.detectedTotalPages ?? null,
