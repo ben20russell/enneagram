@@ -357,6 +357,21 @@ function instinctValueToLabel(value) {
   return normalized || null;
 }
 
+function normalizeAssignedIdentityValue(value) {
+  const normalized = sanitizeSnippet(value || "", "").trim();
+  if (!normalized) return null;
+  if (isMissingExtractedText(normalized)) return null;
+  if (normalized.toLowerCase() === "unknown") return null;
+  return normalized;
+}
+
+function normalizeDetectedTypeCandidate(value) {
+  const normalized = normalizeAssignedIdentityValue(value);
+  if (!normalized) return null;
+  const match = normalized.match(/[1-9]/);
+  return match?.[0] || null;
+}
+
 function extractInstinctFromPdfText(pdfText) {
   const normalized = normalizeExtractedText(pdfText);
   const codedMatch = normalized.match(/\bwith\s+a\s+(SO|SP|SX)\s+Instinct(?:\b|[A-Z])/i);
@@ -1343,22 +1358,36 @@ async function ingestAssignedReportIntoDashboard(data) {
     );
     let pdfText = "";
     let detectedType =
-      (verificationResolvedFields?.primaryType ? String(verificationResolvedFields.primaryType) : null) ||
-      serverContext?.detectedType ||
-      (parsedProfile?.primaryType ? String(parsedProfile.primaryType) : null);
+      normalizeDetectedTypeCandidate(verificationResolvedFields?.primaryType) ||
+      normalizeDetectedTypeCandidate(parsedProfile?.primaryType) ||
+      normalizeDetectedTypeCandidate(serverContext?.detectedType);
     let detectedTypeSource =
-      serverContext?.detectedTypeSource ||
-      (parserVerification?.available ? `python-cross-check:${parserVerification.source || "extract_report_pdf"}` : null);
-    let basicFear = serverContext?.basicFear || parsedProfile?.coreFear || null;
-    let basicDesire = serverContext?.basicDesire || parsedProfile?.coreDesire || null;
-    let passion = serverContext?.passion || parsedProfile?.passion || null;
-    let typeName = parsedProfile?.typeName || verificationResolvedFields?.typeName || null;
-    let instinct = instinctValueToLabel(
-      verificationResolvedFields?.instinctualVariant ||
-      serverContext?.instinct ||
-      serverContext?.instinctCode ||
-      parsedProfile?.instinctualVariant,
-    ) || null;
+      (parserVerification?.available ? `python-cross-check:${parserVerification.source || "extract_report_pdf"}` : null) ||
+      normalizeAssignedIdentityValue(serverContext?.detectedTypeSource) ||
+      null;
+    let basicFear =
+      normalizeAssignedIdentityValue(serverContext?.basicFear) ||
+      normalizeAssignedIdentityValue(parsedProfile?.coreFear) ||
+      null;
+    let basicDesire =
+      normalizeAssignedIdentityValue(serverContext?.basicDesire) ||
+      normalizeAssignedIdentityValue(parsedProfile?.coreDesire) ||
+      null;
+    let passion =
+      normalizeAssignedIdentityValue(serverContext?.passion) ||
+      normalizeAssignedIdentityValue(parsedProfile?.passion) ||
+      null;
+    let typeName =
+      normalizeAssignedIdentityValue(parsedProfile?.typeName) ||
+      normalizeAssignedIdentityValue(verificationResolvedFields?.typeName) ||
+      null;
+    let instinct = instinctValueToLabel(normalizeAssignedIdentityValue(verificationResolvedFields?.instinctualVariant)) ||
+      instinctValueToLabel(normalizeAssignedIdentityValue(parsedProfile?.instinctualVariant)) ||
+      instinctValueToLabel(
+        normalizeAssignedIdentityValue(serverContext?.instinct) ||
+        normalizeAssignedIdentityValue(serverContext?.instinctCode),
+      ) ||
+      null;
     let subtypeKeyword = parsedProfile?.subtypeKeyword || null;
     let connectedLineA = parsedProfile?.connectedLineA || (parsedProfile?.arrowDynamics?.integration
       ? `Type ${parsedProfile.arrowDynamics.integration}`
@@ -1381,11 +1410,9 @@ async function ingestAssignedReportIntoDashboard(data) {
       : null;
     profileScores = normalizeScoreScale(profileScores);
     let integrationLevel =
-      verificationResolvedFields?.integrationLevel ||
-      serverContext?.integrationLevel ||
-      serverContext?.integration ||
-      parsedProfile?.integrationLevel ||
-      parsedProfile?.integration ||
+      normalizeAssignedIdentityValue(verificationResolvedFields?.integrationLevel) ||
+      normalizeAssignedIdentityValue(parsedProfile?.integrationLevel || parsedProfile?.integration) ||
+      normalizeAssignedIdentityValue(serverContext?.integrationLevel || serverContext?.integration) ||
       null;
     let metaQuote = parsedProfile?.metaMessage || parsedProfile?.selfTalk || null;
     let worldview = parsedProfile?.worldview || null;

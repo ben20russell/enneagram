@@ -75,6 +75,21 @@ function normalizeIntegrationLevel(value) {
   return normalized;
 }
 
+function normalizeIdentityContextValue(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  const lowered = normalized.toLowerCase();
+  if (
+    lowered === "not detected" ||
+    lowered.startsWith("not detected in assigned pdf") ||
+    lowered.startsWith("not detected in parsed pdf text") ||
+    lowered === "unknown"
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
 function getVerificationResolvedFields(normalized) {
   const ingestionVerification = normalized?.ingestion?.parseDiagnostics?.verification;
   if (ingestionVerification && typeof ingestionVerification === "object") {
@@ -107,17 +122,37 @@ function getIngestedDashboardContext(resultsData) {
     normalizeIntegrationLevel(parsed?.integrationLevel);
 
   if (typeof normalized.dashboardContext === "object" && normalized.dashboardContext) {
+    const dashboardDetectedType = normalizeTypeNumber(normalized.dashboardContext?.detectedType);
+    const dashboardInstinctualVariant = normalizeInstinctualVariant(
+      normalizeIdentityContextValue(
+        normalized.dashboardContext?.instinct || normalized.dashboardContext?.instinctCode,
+      ),
+    );
+    const dashboardIntegrationLevel = normalizeIntegrationLevel(
+      normalizeIdentityContextValue(
+        normalized.dashboardContext?.integrationLevel || normalized.dashboardContext?.integration,
+      ),
+    );
+
     return {
       ...normalized.dashboardContext,
       detectedType:
-        normalized.dashboardContext?.detectedType ||
-        (resolvedPrimaryType != null ? String(resolvedPrimaryType) : null),
-      instinct:
-        normalizeInstinctualVariant(normalized.dashboardContext?.instinct || normalized.dashboardContext?.instinctCode) ||
-        resolvedInstinctualVariant,
-      integrationLevel:
-        normalizeIntegrationLevel(normalized.dashboardContext?.integrationLevel || normalized.dashboardContext?.integration) ||
-        resolvedIntegrationLevel,
+        (resolvedPrimaryType != null ? String(resolvedPrimaryType) : null) ||
+        (dashboardDetectedType != null ? String(dashboardDetectedType) : null),
+      instinct: resolvedInstinctualVariant || dashboardInstinctualVariant,
+      integrationLevel: resolvedIntegrationLevel || dashboardIntegrationLevel,
+      basicFear:
+        normalizeIdentityContextValue(normalized.dashboardContext?.basicFear) ||
+        parsed?.coreFear ||
+        null,
+      basicDesire:
+        normalizeIdentityContextValue(normalized.dashboardContext?.basicDesire) ||
+        parsed?.coreDesire ||
+        null,
+      passion:
+        normalizeIdentityContextValue(normalized.dashboardContext?.passion) ||
+        parsed?.passion ||
+        null,
     };
   }
 

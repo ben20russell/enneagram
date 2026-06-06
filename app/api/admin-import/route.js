@@ -32,14 +32,15 @@ function splitStoragePath(storagePath) {
 
 function inferTypeFromFileName(fileName) {
   const normalized = String(fileName || "");
-  const ieqMatch = normalized.match(/iEQ\s*([1-9])\b/i);
-  if (ieqMatch?.[1]) {
-    return { detectedType: ieqMatch[1], detectionSource: "fileName:iEQ" };
-  }
-
-  const typeMatch = normalized.match(/Type[\s_-]*([1-9])\b/i);
+  const withoutProductToken = normalized.replace(/\biEQ\s*9\b/gi, " ");
+  const typeMatch = withoutProductToken.match(/\b(?:enneagram[\s_-]*)?type[\s_-]*([1-9])\b/i);
   if (typeMatch?.[1]) {
     return { detectedType: typeMatch[1], detectionSource: "fileName:type" };
+  }
+
+  const enneaMatch = withoutProductToken.match(/\bennea[\s_-]*([1-9])\b/i);
+  if (enneaMatch?.[1]) {
+    return { detectedType: enneaMatch[1], detectionSource: "fileName:ennea" };
   }
 
   return { detectedType: null, detectionSource: "none" };

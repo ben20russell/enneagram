@@ -51,11 +51,12 @@ function buildParseContract({ diagnostics, parseStatus, parseReason }) {
 
 function inferTypeFromFileName(fileName) {
   const normalized = String(fileName || "");
-  const ieqMatch = normalized.match(/iEQ\s*([1-9])\b/i);
-  if (ieqMatch?.[1]) return ieqMatch[1];
-
-  const typeMatch = normalized.match(/Type[\s_-]*([1-9])\b/i);
+  const withoutProductToken = normalized.replace(/\biEQ\s*9\b/gi, " ");
+  const typeMatch = withoutProductToken.match(/\b(?:enneagram[\s_-]*)?type[\s_-]*([1-9])\b/i);
   if (typeMatch?.[1]) return typeMatch[1];
+
+  const enneaMatch = withoutProductToken.match(/\bennea[\s_-]*([1-9])\b/i);
+  if (enneaMatch?.[1]) return enneaMatch[1];
 
   return null;
 }
