@@ -238,6 +238,13 @@ function stripPdfFooterNoiseFragments(rawText) {
       return marked.replace(/[ \t]+/g, "").replace(/\u0000/g, " ");
     })
     .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b/gi, " ")
+    .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\b/gi, " ")
+    .replace(/\b\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b(?=\s*(?:$|STRICTLY|CONFIDENTIAL|COPYRIGHT|Integrative|Enneagram|Ben\s*Russell))/gi, " ")
+    .replace(/\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)\s*20\d{2}\s*\[\s*ENGLISH\s*\]/gi, " ")
+    .replace(/\bSTRICTLY\s*CONFIDENTIAL(?:\s+INDIVIDUAL)?(?:\s+PROFESSIONAL)?(?:\s+Enneagram\s*Report)?\b/gi, " ")
+    .replace(/\bCopyright\s*\d{2,4}\s*[-–]\s*\d{2,4}\b/gi, " ")
+    .replace(/\bIntegrative\s*Enneagram(?:\s*Solutions)?(?:\s*Ben\s*Russell)?\b/gi, " ")
     .replace(/Copyright\s*\d{4}\s*[-–]\s*\d{4}[\s\S]*?\d+\s*of\s*\d+/gis, " ")
     .replace(
       /Integrative\s*Enneagram(?:\s*Solutions)?\s*Ben\s*Russell[\s\S]{0,120}?\d+\s*of\s*\d+/gis,
@@ -383,6 +390,292 @@ function normalizeAssignedIdentityValue(value) {
   return normalized;
 }
 
+const HYDRATION_SOURCE_PRIORITY = Object.freeze([
+  "verification_python",
+  "targeted_sections",
+  "js_deterministic",
+  "parsed_profile_llm",
+  "dashboard_context_default",
+]);
+
+const HYDRATION_DETERMINISTIC_SOURCES = new Set([
+  "verification_python",
+  "targeted_sections",
+  "js_deterministic",
+]);
+
+const ASSIGNED_HYDRATION_REQUIRED_SLOTS = Object.freeze([
+  "worldviewValue",
+  "focusValue",
+  "coreFearValue",
+  "selfTalkValue",
+  "giftsValue",
+  "vicesValue",
+  "feedbackGuideMatrixBody",
+  "devExercisePaths",
+  "teamStageForming",
+  "teamStageStorming",
+  "teamStageNorming",
+  "teamStagePerforming",
+  "motivationSummary",
+  "conflictResponseCopy",
+  "decisionImpactCopy",
+  "coachingRelationshipCopy",
+  "strainWriteupCards",
+]);
+
+function hydrationSourcePriorityRank(source) {
+  const normalizedSource = String(source || "").trim();
+  const index = HYDRATION_SOURCE_PRIORITY.indexOf(normalizedSource);
+  return index >= 0 ? index : HYDRATION_SOURCE_PRIORITY.length + 1;
+}
+
+function collectHydrationInformativeStrings(value, out = [], depth = 0) {
+  if (depth > 6 || value == null) return out;
+
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    const normalized = normalizeAssignedIdentityValue(String(value));
+    if (normalized) out.push(normalized);
+    return out;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectHydrationInformativeStrings(entry, out, depth + 1));
+    return out;
+  }
+
+  if (typeof value === "object") {
+    Object.entries(value).forEach(([key, entryValue]) => {
+      if (/^(type|label|title|key|category|tone|symbol|id)$/i.test(String(key || ""))) return;
+      collectHydrationInformativeStrings(entryValue, out, depth + 1);
+    });
+  }
+  return out;
+}
+
+function hasInformativeHydrationValue(value) {
+  return collectHydrationInformativeStrings(value, []).length > 0;
+}
+
+function summarizeHydrationCandidatePreview(value) {
+  const joined = collectHydrationInformativeStrings(value, [])
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean)
+    .join(" | ");
+  if (!joined) return "";
+  return joined.length > 180 ? `${joined.slice(0, 180).trim()}...` : joined;
+}
+
+function createHydrationAuditTracker() {
+  const hydrationSourceAudit = {};
+  const duplicateCandidates = [];
+  const seenDuplicateSlots = new Set();
+  let deterministicHitCount = 0;
+  let llmFallbackCount = 0;
+
+  const buildCandidateList = (candidates) =>
+    (Array.isArray(candidates) ? candidates : [])
+      .filter((candidate) => candidate && typeof candidate === "object")
+      .map((candidate, index) => ({
+        source: String(candidate.source || "").trim() || "dashboard_context_default",
+        value: candidate.value,
+        index,
+      }));
+
+  const selectSource = (candidates, fallbackValue) => {
+    const ranked = buildCandidateList(candidates).sort((left, right) => {
+      const rankDelta = hydrationSourcePriorityRank(left.source) - hydrationSourcePriorityRank(right.source);
+      if (rankDelta !== 0) return rankDelta;
+      return left.index - right.index;
+    });
+    const chosen = ranked.find((candidate) => hasInformativeHydrationValue(candidate.value));
+    if (chosen) return chosen;
+    return {
+      source: "dashboard_context_default",
+      value: fallbackValue,
+      index: Number.MAX_SAFE_INTEGER,
+    };
+  };
+
+  const captureDuplicateCandidates = (slotKey, candidates) => {
+    const informativeRows = buildCandidateList(candidates)
+      .filter((candidate) => hasInformativeHydrationValue(candidate.value))
+      .map((candidate) => ({
+        source: candidate.source,
+        preview: summarizeHydrationCandidatePreview(candidate.value),
+      }))
+      .filter((candidate) => Boolean(candidate.preview));
+
+    const uniquePreviews = Array.from(new Set(informativeRows.map((row) => row.preview)));
+    if (uniquePreviews.length <= 1 || seenDuplicateSlots.has(slotKey)) return;
+    seenDuplicateSlots.add(slotKey);
+    duplicateCandidates.push({
+      kind: "source_conflict",
+      slotKey,
+      candidates: informativeRows,
+    });
+  };
+
+  const updateCounters = (source) => {
+    if (HYDRATION_DETERMINISTIC_SOURCES.has(source)) deterministicHitCount += 1;
+    if (source === "parsed_profile_llm") llmFallbackCount += 1;
+  };
+
+  const setAuditSource = (slotKey, source) => {
+    if (!slotKey) return;
+    const normalizedSource = String(source || "dashboard_context_default").trim() || "dashboard_context_default";
+    const previousSource = hydrationSourceAudit[slotKey];
+    if (previousSource) return;
+    hydrationSourceAudit[slotKey] = normalizedSource;
+    updateCounters(normalizedSource);
+  };
+
+  return {
+    resolve(slotKey, candidates, options = {}) {
+      const fallbackValue = options?.fallbackValue;
+      const selected = selectSource(candidates, fallbackValue);
+      captureDuplicateCandidates(slotKey, candidates);
+      setAuditSource(slotKey, selected.source);
+      return selected.value;
+    },
+    record(slotKey, candidates, fallbackValue) {
+      const selected = selectSource(candidates, fallbackValue);
+      captureDuplicateCandidates(slotKey, candidates);
+      setAuditSource(slotKey, selected.source);
+      return selected.source;
+    },
+    summarize(requiredSlots = ASSIGNED_HYDRATION_REQUIRED_SLOTS) {
+      const required = Array.isArray(requiredSlots) ? requiredSlots.slice() : [];
+      const hydratedSlots = Object.keys(hydrationSourceAudit);
+      const missingSlots = required.filter((slotKey) => !hydrationSourceAudit[slotKey]);
+      return {
+        requiredSlots: required,
+        hydratedSlots,
+        missingSlots,
+        duplicateCandidates: duplicateCandidates.slice(),
+        deterministicHitCount,
+        llmFallbackCount,
+        hydrationSourceAudit: { ...hydrationSourceAudit },
+      };
+    },
+    sourceAudit() {
+      return { ...hydrationSourceAudit };
+    },
+  };
+}
+
+function collectAssignedHydrationDomCoverage(requiredSlots) {
+  const required = Array.isArray(requiredSlots) ? requiredSlots : [];
+  const hydratedSlots = [];
+  const missingSlots = [];
+  const valueToSlots = new Map();
+
+  required.forEach((slotKey) => {
+    const node = document.getElementById(slotKey);
+    if (!node) {
+      missingSlots.push(slotKey);
+      return;
+    }
+
+    const nodeText = normalizeExtractedText(
+      node.textContent ||
+        node.innerText ||
+        "",
+    );
+    if (!nodeText) {
+      missingSlots.push(slotKey);
+      return;
+    }
+
+    hydratedSlots.push(slotKey);
+    if (isMissingExtractedText(nodeText)) return;
+    if (nodeText.length < 16) return;
+
+    const key = nodeText.toLowerCase();
+    const slots = valueToSlots.get(key) || [];
+    slots.push(slotKey);
+    valueToSlots.set(key, slots);
+  });
+
+  const duplicateFilledSlots = Array.from(valueToSlots.entries())
+    .filter(([, slots]) => Array.isArray(slots) && slots.length > 1)
+    .map(([normalizedValue, slots]) => ({
+      kind: "dom_duplicate_fill",
+      slots,
+      valuePreview: normalizedValue.length > 180 ? `${normalizedValue.slice(0, 180).trim()}...` : normalizedValue,
+    }));
+
+  return {
+    hydratedSlots,
+    missingSlots,
+    duplicateFilledSlots,
+  };
+}
+
+function applyAssignedHydrationContractDiagnostics(report) {
+  if (!report || typeof report !== "object") return;
+  const currentDiagnostics =
+    report?.dataQualityDiagnostics && typeof report.dataQualityDiagnostics === "object"
+      ? report.dataQualityDiagnostics
+      : {
+          summary: "No diagnostics loaded yet.",
+          issues: [],
+          verification: {},
+        };
+  const currentHydration =
+    currentDiagnostics?.hydration && typeof currentDiagnostics.hydration === "object"
+      ? currentDiagnostics.hydration
+      : {};
+  const requiredSlots = Array.isArray(currentHydration.requiredSlots)
+    ? currentHydration.requiredSlots
+    : ASSIGNED_HYDRATION_REQUIRED_SLOTS;
+  const sourceAudit =
+    report?.hydrationSourceAudit && typeof report.hydrationSourceAudit === "object"
+      ? report.hydrationSourceAudit
+      : (currentHydration?.hydrationSourceAudit && typeof currentHydration.hydrationSourceAudit === "object"
+          ? currentHydration.hydrationSourceAudit
+          : {});
+  const domCoverage = collectAssignedHydrationDomCoverage(requiredSlots);
+  const mergedDuplicateCandidates = [
+    ...(Array.isArray(currentHydration.duplicateCandidates) ? currentHydration.duplicateCandidates : []),
+    ...domCoverage.duplicateFilledSlots,
+  ];
+  const duplicateCandidates = Array.from(
+    new Map(
+      mergedDuplicateCandidates.map((entry) => [JSON.stringify(entry), entry]),
+    ).values(),
+  );
+  const hydration = {
+    requiredSlots: Array.isArray(requiredSlots) ? requiredSlots.slice() : [],
+    hydratedSlots: domCoverage.hydratedSlots,
+    missingSlots: domCoverage.missingSlots,
+    duplicateCandidates,
+    deterministicHitCount: Number.isFinite(Number(currentHydration.deterministicHitCount))
+      ? Number(currentHydration.deterministicHitCount)
+      : 0,
+    llmFallbackCount: Number.isFinite(Number(currentHydration.llmFallbackCount))
+      ? Number(currentHydration.llmFallbackCount)
+      : 0,
+    hydrationSourceAudit: sourceAudit,
+  };
+
+  report.hydrationSourceAudit = sourceAudit;
+  report.dataQualityDiagnostics = {
+    ...currentDiagnostics,
+    hydration,
+  };
+
+  console.log("[hydration-contract] assigned/client slot coverage", {
+    requiredSlots: hydration.requiredSlots.length,
+    hydratedSlots: hydration.hydratedSlots.length,
+    missingSlots: hydration.missingSlots,
+    duplicateCandidates: hydration.duplicateCandidates,
+    deterministicHitCount: hydration.deterministicHitCount,
+    llmFallbackCount: hydration.llmFallbackCount,
+    hydrationSourceAudit: sourceAudit,
+  });
+}
+
 function normalizeDetectedTypeCandidate(value) {
   const normalized = normalizeAssignedIdentityValue(value);
   if (!normalized) return null;
@@ -439,7 +732,7 @@ function extractLabeledSectionValue(pdfText, label, nextLabels) {
 function cleanPdfExtractedValue(value) {
   return sanitizeSnippet(
     stripPdfFooterNoiseFragments(String(value || ""))
-      .replace(/\u0000/g, "")
+      .replace(/\u0000/g, " ")
       .replace(/([a-z])([A-Z])/g, "$1 $2")
       .replace(/\s+([.,;:!?])/g, "$1"),
     null,
@@ -1180,7 +1473,9 @@ function extractIntegrationFromPdfText(pdfText) {
 }
 
 function sanitizeSnippet(value, fallback) {
+  const wordGapMarker = "\u0000";
   let cleaned = String(value || "")
+    .replace(/[ \t\u00A0\u2000-\u200B\u202F\u205F\u3000]{2,}/g, wordGapMarker)
     .replace(/\s+/g, " ")
     // OCR occasionally injects a bogus "C'" token ahead of sentence starts.
     .replace(/(^|[.!?]\s+)\s*C['’`´]\s*(?=[A-Z])/g, "$1")
@@ -1217,6 +1512,9 @@ function sanitizeSnippet(value, fallback) {
     return parts.join("");
   });
 
+  // Repair 2-letter OCR splits such as "o f" -> "of".
+  cleaned = cleaned.replace(/\b([A-Za-z])\s+([A-Za-z])\b/g, "$1$2");
+
   // Repair 3-part OCR splits such as "sur v ive" and "di ff erence".
   cleaned = cleaned.replace(/\b([A-Za-z]{1,3})\s+([A-Za-z]{1,2})\s+([A-Za-z]{3,})\b/g, (match, partA, partB, partC) => {
     const lowerA = String(partA || "").toLowerCase();
@@ -1235,6 +1533,23 @@ function sanitizeSnippet(value, fallback) {
   // Repair frequent OCR fragment "G i s" -> "G is".
   cleaned = cleaned.replace(/\b([A-Za-z])\s+i\s+s\b/g, "$1 is");
 
+  cleaned = cleaned
+    .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b/gi, " ")
+    .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\b/gi, " ")
+    .replace(/\b\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b(?=\s*(?:$|STRICTLY|CONFIDENTIAL|COPYRIGHT|Integrative|Enneagram|Ben\s*Russell))/gi, " ")
+    .replace(/\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)\s*20\d{2}\s*\[\s*ENGLISH\s*\]/gi, " ")
+    .replace(/\bSTRICTLY\s*CONFIDENTIAL(?:\s+INDIVIDUAL)?(?:\s+PROFESSIONAL)?(?:\s+Enneagram\s*Report)?\b/gi, " ")
+    .replace(/\bCopyright\s*\d{2,4}\s*[-–]\s*\d{2,4}\b/gi, " ")
+    .replace(/\bIntegrative\s*Enneagram(?:\s*Solutions)?(?:\s*Ben\s*Russell)?\b/gi, " ")
+    .replace(/\u0000/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([0-9])([A-Za-z])/g, "$1 $2")
+    .replace(/([A-Za-z])([0-9])/g, "$1 $2")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) return fallback;
   return cleaned;
 }
 
@@ -1402,6 +1717,7 @@ async function ingestAssignedReportIntoDashboard(data) {
   try {
     const serverContext = data?.ingestedDashboardContext || null;
     const parsedProfile = data?.ingestedParsedProfile || null;
+    const hydrationAudit = createHydrationAuditTracker();
     const parseDiagnostics = data?.parseDiagnostics && typeof data.parseDiagnostics === "object"
       ? data.parseDiagnostics
       : null;
@@ -1432,16 +1748,16 @@ async function ingestAssignedReportIntoDashboard(data) {
       normalizeAssignedIdentityValue(serverContext?.detectedTypeSource) ||
       null;
     let basicFear =
-      normalizeAssignedIdentityValue(serverContext?.basicFear) ||
       normalizeAssignedIdentityValue(parsedProfile?.coreFear) ||
+      normalizeAssignedIdentityValue(serverContext?.basicFear) ||
       null;
     let basicDesire =
-      normalizeAssignedIdentityValue(serverContext?.basicDesire) ||
       normalizeAssignedIdentityValue(parsedProfile?.coreDesire) ||
+      normalizeAssignedIdentityValue(serverContext?.basicDesire) ||
       null;
     let passion =
-      normalizeAssignedIdentityValue(serverContext?.passion) ||
       normalizeAssignedIdentityValue(parsedProfile?.passion) ||
+      normalizeAssignedIdentityValue(serverContext?.passion) ||
       null;
     let typeName =
       normalizeAssignedIdentityValue(parsedProfile?.typeName) ||
@@ -1480,9 +1796,9 @@ async function ingestAssignedReportIntoDashboard(data) {
       normalizeAssignedIdentityValue(parsedProfile?.integrationLevel || parsedProfile?.integration) ||
       normalizeAssignedIdentityValue(serverContext?.integrationLevel || serverContext?.integration) ||
       null;
-    let metaQuote = parsedProfile?.metaMessage || parsedProfile?.selfTalk || null;
-    let worldview = parsedProfile?.worldview || null;
-    let focus = parsedProfile?.focusOfAttention || null;
+    let metaQuote = null;
+    let worldview = null;
+    let focus = null;
     let corePatternTitle = sanitizeSnippet(parsedProfile?.corePattern?.title, null);
     let corePatternLines = Array.isArray(parsedProfile?.corePattern?.lines)
       ? parsedProfile.corePattern.lines
@@ -1686,7 +2002,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractBetweenMarkers(pdfText, "Self-Talk", "Vices") ||
       extractBetweenMarkers(pdfText, "Self Talk", "Vices");
 
-    basicFear =
+    let jsBasicFear =
       fearFromCoreBlock ||
       extractLabeledSectionValue(pdfText, "Core Fear", [
         "Self-Talk",
@@ -1695,20 +2011,17 @@ async function ingestAssignedReportIntoDashboard(data) {
         "Vices",
         "DEVELOPMENT EXERCISE",
       ]) ||
-      basicFear ||
       extractSnippet(pdfText, "Basic Fear");
-    basicDesire =
+    let jsBasicDesire =
       giftsFromCoreBlock ||
       extractLabeledSectionValue(pdfText, "Gifts", ["Vices", "DEVELOPMENT EXERCISE", "Strengths"]) ||
-      basicDesire ||
       extractSnippet(pdfText, "Basic Desire");
-    passion =
+    let jsPassion =
       vicesFromCoreBlock ||
       extractLabeledSectionValue(pdfText, "Vices", ["DEVELOPMENT EXERCISE", "Strengths", "This section helps"]) ||
-      passion ||
       extractSnippet(pdfText, "Passion");
     const reportContentMetaMessage = extractMetaMessageFromReportContent(parsedProfile);
-    metaQuote =
+    let jsMetaQuote =
       selfTalkFromCoreBlock ||
       reportContentMetaMessage ||
       cleanupMetaQuote(
@@ -1717,9 +2030,8 @@ async function ingestAssignedReportIntoDashboard(data) {
           "The ability to communicate",
         ]) || extractSnippetFromLabels(pdfText, ["Meta message", "Meta Message", "Self Talk"]),
       ) ||
-      metaQuote ||
       extractLabeledSectionValue(pdfText, "Self-Talk", ["Gifts", "Vices", "DEVELOPMENT EXERCISE"]);
-    worldview =
+    let jsWorldview =
       worldviewFromCoreBlock ||
       extractLabeledSectionValue(pdfText, "Worldview", [
         "Focus of Attention",
@@ -1727,9 +2039,8 @@ async function ingestAssignedReportIntoDashboard(data) {
         "Self-Talk",
         "Self Talk",
       ]) ||
-      worldview ||
       extractSnippetFromLabels(pdfText, ["Worldview", "Core Belief"]);
-    focus =
+    let jsFocus =
       focusFromCoreBlock ||
       extractLabeledSectionValue(pdfText, "Focus of Attention", [
         "Core Fear",
@@ -1737,7 +2048,6 @@ async function ingestAssignedReportIntoDashboard(data) {
         "Self Talk",
         "Gifts",
       ]) ||
-      focus ||
       extractSnippetFromLabels(pdfText, ["Focus of Attention", "Focus"]);
     const benRussellProContext = isBenRussellProContext({
       reportFileName: data?.reportFileName,
@@ -1745,14 +2055,80 @@ async function ingestAssignedReportIntoDashboard(data) {
       serverContext,
     });
     if (benRussellProContext && String(detectedType || "") === "8") {
-      worldview = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.worldview;
-      focus = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.focus;
-      basicFear = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.coreFear;
-      metaQuote = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.selfTalk;
-      basicDesire = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.gifts;
-      passion = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.vices;
+      jsWorldview = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.worldview;
+      jsFocus = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.focus;
+      jsBasicFear = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.coreFear;
+      jsMetaQuote = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.selfTalk;
+      jsBasicDesire = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.gifts;
+      jsPassion = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.vices;
       console.log("[report-ingest] locked Core Belief & Attention Pattern to Ben Russell PRO page 7 Type 8 source text");
     }
+    basicFear = hydrationAudit.resolve(
+      "coreFearValue",
+      [
+        { source: "verification_python", value: verificationResolvedFields?.coreFear || verificationResolvedFields?.basicFear },
+        { source: "targeted_sections", value: null },
+        { source: "js_deterministic", value: jsBasicFear },
+        { source: "parsed_profile_llm", value: parsedProfile?.coreFear },
+        { source: "dashboard_context_default", value: serverContext?.basicFear },
+      ],
+      { fallbackValue: basicFear },
+    );
+    basicDesire = hydrationAudit.resolve(
+      "giftsValue",
+      [
+        { source: "verification_python", value: verificationResolvedFields?.basicDesire || verificationResolvedFields?.gifts },
+        { source: "targeted_sections", value: null },
+        { source: "js_deterministic", value: jsBasicDesire },
+        { source: "parsed_profile_llm", value: parsedProfile?.coreDesire },
+        { source: "dashboard_context_default", value: serverContext?.basicDesire },
+      ],
+      { fallbackValue: basicDesire },
+    );
+    passion = hydrationAudit.resolve(
+      "vicesValue",
+      [
+        { source: "verification_python", value: verificationResolvedFields?.passion || verificationResolvedFields?.vices },
+        { source: "targeted_sections", value: null },
+        { source: "js_deterministic", value: jsPassion },
+        { source: "parsed_profile_llm", value: parsedProfile?.passion },
+        { source: "dashboard_context_default", value: serverContext?.passion },
+      ],
+      { fallbackValue: passion },
+    );
+    metaQuote = hydrationAudit.resolve(
+      "selfTalkValue",
+      [
+        { source: "verification_python", value: verificationResolvedFields?.metaMessage || verificationResolvedFields?.selfTalk },
+        { source: "targeted_sections", value: null },
+        { source: "js_deterministic", value: jsMetaQuote },
+        { source: "parsed_profile_llm", value: parsedProfile?.metaMessage || parsedProfile?.selfTalk },
+        { source: "dashboard_context_default", value: serverContext?.metaMessage || serverContext?.selfTalk },
+      ],
+      { fallbackValue: parsedProfile?.metaMessage || parsedProfile?.selfTalk || null },
+    );
+    worldview = hydrationAudit.resolve(
+      "worldviewValue",
+      [
+        { source: "verification_python", value: verificationResolvedFields?.worldview },
+        { source: "targeted_sections", value: null },
+        { source: "js_deterministic", value: jsWorldview },
+        { source: "parsed_profile_llm", value: parsedProfile?.worldview },
+        { source: "dashboard_context_default", value: serverContext?.worldview },
+      ],
+      { fallbackValue: parsedProfile?.worldview || serverContext?.worldview || null },
+    );
+    focus = hydrationAudit.resolve(
+      "focusValue",
+      [
+        { source: "verification_python", value: verificationResolvedFields?.focus || verificationResolvedFields?.focusOfAttention },
+        { source: "targeted_sections", value: null },
+        { source: "js_deterministic", value: jsFocus },
+        { source: "parsed_profile_llm", value: parsedProfile?.focusOfAttention || parsedProfile?.focus },
+        { source: "dashboard_context_default", value: serverContext?.focus },
+      ],
+      { fallbackValue: parsedProfile?.focusOfAttention || parsedProfile?.focus || serverContext?.focus || null },
+    );
     const corePatternBulletsFromReportContent = extractCorePatternBulletsFromReportContent(parsedProfile);
     corePatternBullets = mergeCorePatternBullets(corePatternBullets, corePatternBulletsFromReportContent);
 
@@ -1798,66 +2174,207 @@ async function ingestAssignedReportIntoDashboard(data) {
           .filter((row) => Boolean(row.text))
       : [];
     const targetedDevelopmentExercises = extractDevelopmentExercisesFromTargetedSections(parsedProfile);
+    const strainCategories = ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"];
+    const targetedStrainRows = extractStrainQualitativeFromTargetedSections(parsedProfile);
 
-    const feedbackGuideMatrix = mergeFeedbackGuideRows(
-      mergeFeedbackGuideRows(
-        mergeFeedbackGuideRows(
-          parsedProfileFeedbackRows,
-          targetedFeedbackRows,
-        ),
-        extractFeedbackGuideFromReportContent(parsedProfile),
-      ),
+    const jsFeedbackGuideRows = mergeFeedbackGuideRows(
+      extractFeedbackGuideFromReportContent(parsedProfile),
       extractFeedbackGuideMatrix(pdfText),
     );
-    const strainQualitativeWriteups = mergeCategoryWriteups(
-      mergeCategoryWriteups(
-        parsedProfileStrainRows,
-        extractStrainQualitativeFromReportContent(parsedProfile),
-        ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"],
-      ),
-      extractStrainQualitativeWriteups(pdfText),
-      ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"],
+    const feedbackGuideDeterministicRows = mergeFeedbackGuideRows(targetedFeedbackRows, jsFeedbackGuideRows);
+    const feedbackGuideMatrix = mergeFeedbackGuideRows(feedbackGuideDeterministicRows, parsedProfileFeedbackRows);
+    hydrationAudit.record(
+      "feedbackGuideMatrixBody",
+      [
+        { source: "targeted_sections", value: targetedFeedbackRows },
+        { source: "js_deterministic", value: jsFeedbackGuideRows },
+        { source: "parsed_profile_llm", value: parsedProfileFeedbackRows },
+      ],
+      feedbackGuideMatrix,
     );
-    const overallStrainSummary =
-      extractOverallStrainSummaryFromReportContent(parsedProfile) ||
-      extractOverallStrainSummaryFromPdfText(pdfText);
-    const developmentExercises = mergeDevelopmentExercises(
-      mergeDevelopmentExercises(
-        mergeDevelopmentExercises(
-          parsedProfileDevelopmentExercises,
-          targetedDevelopmentExercises,
-        ),
-        extractDevelopmentExercisesFromReportContent(parsedProfile),
-      ),
+
+    const jsStrainRows = mergeCategoryWriteups(
+      extractStrainQualitativeFromReportContent(parsedProfile),
+      extractStrainQualitativeWriteups(pdfText),
+      strainCategories,
+    );
+    const strainDeterministicRows = mergeCategoryWriteups(
+      targetedStrainRows,
+      jsStrainRows,
+      strainCategories,
+    );
+    const strainQualitativeWriteups = mergeCategoryWriteups(
+      strainDeterministicRows,
+      parsedProfileStrainRows,
+      strainCategories,
+    );
+    hydrationAudit.record(
+      "strainWriteupCards",
+      [
+        { source: "targeted_sections", value: targetedStrainRows },
+        { source: "js_deterministic", value: jsStrainRows },
+        { source: "parsed_profile_llm", value: parsedProfileStrainRows },
+      ],
+      strainQualitativeWriteups,
+    );
+
+    const targetedOverallStrainSummary = extractOverallStrainSummaryFromTargetedSections(parsedProfile);
+    const overallStrainSummary = hydrationAudit.resolve(
+      "strainWriteupCards",
+      [
+        { source: "targeted_sections", value: targetedOverallStrainSummary },
+        {
+          source: "js_deterministic",
+          value:
+            extractOverallStrainSummaryFromReportContent(parsedProfile) ||
+            extractOverallStrainSummaryFromPdfText(pdfText),
+        },
+        { source: "parsed_profile_llm", value: parsedProfile?.overallStrainSummary },
+      ],
+      { fallbackValue: extractOverallStrainSummaryFromPdfText(pdfText) || null },
+    );
+
+    const jsDevelopmentExercises = mergeDevelopmentExercises(
+      extractDevelopmentExercisesFromReportContent(parsedProfile),
       extractDevelopmentExercises(pdfText),
     );
-    const spreadsheetFocuses = mergeSpreadsheetSectionFocuses(
-      mergeSpreadsheetSectionFocuses(
-        mergeSpreadsheetSectionFocuses(
-          parsedProfile?.spreadsheetFocuses,
-          extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile),
-        ),
-        extractSpreadsheetSectionFocusesFromReportContent(parsedProfile),
-      ),
+    const developmentExercisesDeterministic = mergeDevelopmentExercises(
+      targetedDevelopmentExercises,
+      jsDevelopmentExercises,
+    );
+    const developmentExercises = mergeDevelopmentExercises(
+      developmentExercisesDeterministic,
+      parsedProfileDevelopmentExercises,
+    );
+    hydrationAudit.record(
+      "devExercisePaths",
+      [
+        { source: "targeted_sections", value: targetedDevelopmentExercises },
+        { source: "js_deterministic", value: jsDevelopmentExercises },
+        { source: "parsed_profile_llm", value: parsedProfileDevelopmentExercises },
+      ],
+      developmentExercises,
+    );
+
+    const targetedSpreadsheetFocuses = extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile);
+    const jsSpreadsheetFocuses = mergeSpreadsheetSectionFocuses(
+      extractSpreadsheetSectionFocusesFromReportContent(parsedProfile),
       extractSpreadsheetSectionFocusesFromPdfText(pdfText),
     );
-    const teamStageBreakdown = mergeTeamStageBreakdown(
-      mergeTeamStageBreakdown(
-        mergeTeamStageBreakdown(
-          parsedProfile?.teamStageBreakdown,
-          extractTeamStageBreakdownFromTargetedSections(parsedProfile),
-        ),
-        extractTeamStageBreakdownFromReportContent(parsedProfile),
-      ),
+    const spreadsheetFocusesDeterministic = mergeSpreadsheetSectionFocuses(
+      targetedSpreadsheetFocuses,
+      jsSpreadsheetFocuses,
+    );
+    const spreadsheetFocuses = mergeSpreadsheetSectionFocuses(
+      spreadsheetFocusesDeterministic,
+      parsedProfile?.spreadsheetFocuses,
+    );
+    hydrationAudit.record(
+      "motivationSummary",
+      [
+        { source: "targeted_sections", value: targetedSpreadsheetFocuses?.motivationSummary },
+        { source: "js_deterministic", value: jsSpreadsheetFocuses?.motivationSummary },
+        { source: "parsed_profile_llm", value: parsedProfile?.spreadsheetFocuses?.motivationSummary },
+      ],
+      spreadsheetFocuses?.motivationSummary,
+    );
+    hydrationAudit.record(
+      "conflictResponseCopy",
+      [
+        { source: "targeted_sections", value: targetedSpreadsheetFocuses?.conflictResponseCopy },
+        { source: "js_deterministic", value: jsSpreadsheetFocuses?.conflictResponseCopy },
+        { source: "parsed_profile_llm", value: parsedProfile?.spreadsheetFocuses?.conflictResponseCopy },
+      ],
+      spreadsheetFocuses?.conflictResponseCopy,
+    );
+    hydrationAudit.record(
+      "decisionImpactCopy",
+      [
+        { source: "targeted_sections", value: targetedSpreadsheetFocuses?.decisionImpactCopy },
+        { source: "js_deterministic", value: jsSpreadsheetFocuses?.decisionImpactCopy },
+        { source: "parsed_profile_llm", value: parsedProfile?.spreadsheetFocuses?.decisionImpactCopy },
+      ],
+      spreadsheetFocuses?.decisionImpactCopy,
+    );
+    hydrationAudit.record(
+      "coachingRelationshipCopy",
+      [
+        { source: "targeted_sections", value: targetedSpreadsheetFocuses?.coachingRelationshipCopy },
+        { source: "js_deterministic", value: jsSpreadsheetFocuses?.coachingRelationshipCopy },
+        { source: "parsed_profile_llm", value: parsedProfile?.spreadsheetFocuses?.coachingRelationshipCopy },
+      ],
+      spreadsheetFocuses?.coachingRelationshipCopy,
+    );
+
+    const targetedTeamStageBreakdown = extractTeamStageBreakdownFromTargetedSections(parsedProfile);
+    const jsTeamStageBreakdown = mergeTeamStageBreakdown(
+      extractTeamStageBreakdownFromReportContent(parsedProfile),
       extractTeamStageBreakdownFromPdfText(pdfText),
     );
-    const dataQualityDiagnostics = buildDataQualityDiagnostics({
+    const teamStageDeterministicBreakdown = mergeTeamStageBreakdown(
+      targetedTeamStageBreakdown,
+      jsTeamStageBreakdown,
+    );
+    const teamStageBreakdown = mergeTeamStageBreakdown(
+      teamStageDeterministicBreakdown,
+      parsedProfile?.teamStageBreakdown,
+    );
+    hydrationAudit.record(
+      "teamStageForming",
+      [
+        { source: "targeted_sections", value: targetedTeamStageBreakdown?.forming },
+        { source: "js_deterministic", value: jsTeamStageBreakdown?.forming },
+        { source: "parsed_profile_llm", value: parsedProfile?.teamStageBreakdown?.forming },
+      ],
+      teamStageBreakdown?.forming,
+    );
+    hydrationAudit.record(
+      "teamStageStorming",
+      [
+        { source: "targeted_sections", value: targetedTeamStageBreakdown?.storming },
+        { source: "js_deterministic", value: jsTeamStageBreakdown?.storming },
+        { source: "parsed_profile_llm", value: parsedProfile?.teamStageBreakdown?.storming },
+      ],
+      teamStageBreakdown?.storming,
+    );
+    hydrationAudit.record(
+      "teamStageNorming",
+      [
+        { source: "targeted_sections", value: targetedTeamStageBreakdown?.norming },
+        { source: "js_deterministic", value: jsTeamStageBreakdown?.norming },
+        { source: "parsed_profile_llm", value: parsedProfile?.teamStageBreakdown?.norming },
+      ],
+      teamStageBreakdown?.norming,
+    );
+    hydrationAudit.record(
+      "teamStagePerforming",
+      [
+        { source: "targeted_sections", value: targetedTeamStageBreakdown?.performing },
+        { source: "js_deterministic", value: jsTeamStageBreakdown?.performing },
+        { source: "parsed_profile_llm", value: parsedProfile?.teamStageBreakdown?.performing },
+      ],
+      teamStageBreakdown?.performing,
+    );
+
+    const baseDataQualityDiagnostics = buildDataQualityDiagnostics({
       parsedProfile,
       parseDiagnostics,
       feedbackGuideMatrix,
       strainQualitativeWriteups,
       developmentExercises,
     });
+    const hydrationSnapshot = hydrationAudit.summarize(ASSIGNED_HYDRATION_REQUIRED_SLOTS);
+    const dataQualityDiagnostics = {
+      ...baseDataQualityDiagnostics,
+      hydration: {
+        requiredSlots: hydrationSnapshot.requiredSlots,
+        hydratedSlots: hydrationSnapshot.hydratedSlots,
+        missingSlots: hydrationSnapshot.missingSlots,
+        duplicateCandidates: hydrationSnapshot.duplicateCandidates,
+        deterministicHitCount: hydrationSnapshot.deterministicHitCount,
+        llmFallbackCount: hydrationSnapshot.llmFallbackCount,
+      },
+    };
 
     applyAssignedPdfReport({
       typeNumber: detectedType,
@@ -1909,6 +2426,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       strainScoresRaw,
       interactionScores,
       dataQualityDiagnostics,
+      hydrationSourceAudit: hydrationSnapshot.hydrationSourceAudit,
     });
     console.log("[report-ingest] Applied PDF-only assigned report context", {
       detectedType,
@@ -5800,6 +6318,48 @@ function extractFeedbackGuideFromTargetedSections(parsedProfile) {
   return rows;
 }
 
+function extractStrainQualitativeFromTargetedSections(parsedProfile) {
+  const targetedStrain =
+    getTargetedSections(parsedProfile)?.strain_interpretation &&
+    typeof getTargetedSections(parsedProfile)?.strain_interpretation === "object"
+      ? getTargetedSections(parsedProfile).strain_interpretation
+      : null;
+  if (!targetedStrain) return [];
+
+  const categoryKeyMap = {
+    Happiness: "happiness",
+    Vocational: "vocational",
+    Interpersonal: "interpersonal",
+    Physical: "physical",
+    Environmental: "environmental",
+    Psychological: "psychological",
+  };
+  const categories = ["Happiness", "Vocational", "Interpersonal", "Physical", "Environmental", "Psychological"];
+  const rows = categories.map((category) => ({
+    category,
+    text:
+      compactTargetedSectionText(targetedStrain?.[categoryKeyMap[category]], {
+        maxItems: 8,
+        maxLength: 420,
+      }) || "Not detected in structured report content.",
+  }));
+
+  console.log("[strain] targeted-section extraction", {
+    populatedRows: rows.filter((row) => !isMissingExtractedText(row?.text)).length,
+  });
+  return rows;
+}
+
+function extractOverallStrainSummaryFromTargetedSections(parsedProfile) {
+  const targetedStrain =
+    getTargetedSections(parsedProfile)?.strain_interpretation &&
+    typeof getTargetedSections(parsedProfile)?.strain_interpretation === "object"
+      ? getTargetedSections(parsedProfile).strain_interpretation
+      : null;
+  if (!targetedStrain) return null;
+  return compactTargetedSectionText(targetedStrain?.overall, { maxItems: 4, maxLength: 420 });
+}
+
 function extractDevelopmentExercisesFromTargetedSections(parsedProfile) {
   const development = getTargetedSections(parsedProfile)?.development_exercises;
   if (!development || typeof development !== "object") return [];
@@ -6999,6 +7559,10 @@ function buildPdfOnlyReport(payload) {
         }
       : null,
     dataQualityDiagnostics: payload?.dataQualityDiagnostics || null,
+    hydrationSourceAudit:
+      payload?.hydrationSourceAudit && typeof payload.hydrationSourceAudit === "object"
+        ? payload.hydrationSourceAudit
+        : {},
     profile,
     strain,
     mainValue: mainIndex >= 0 ? toFiniteScoreOrNull(profile[mainIndex]) : null,
@@ -7428,6 +7992,10 @@ function renderReportFromState(isExampleMode) {
     traitChips.innerHTML = resolvedTraitChips
       .map((trait) => `<span class="chip cgn">${escapeHtml(trait)}</span>`)
       .join('');
+  }
+
+  if (!isExampleMode) {
+    applyAssignedHydrationContractDiagnostics(REPORT);
   }
 
   updateCharts();

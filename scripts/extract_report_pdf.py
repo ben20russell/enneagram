@@ -15,25 +15,42 @@ from pathlib import Path
 from PyPDF2 import PdfReader
 
 
-OCR_INLINE_SPACING = r"(?:[ \t\u00A0\u2000-\u200B\u202F\u205F\u3000]+)"
+OCR_WHITESPACE = r"[ \t\u00A0\u2000-\u200B\u202F\u205F\u3000]"
+OCR_INLINE_SPACING = rf"(?:{OCR_WHITESPACE}+)"
+OCR_MULTI_SPACING = rf"(?:{OCR_WHITESPACE}{{2,}})"
+OCR_WORD_GAP_MARKER = "\u0000"
 
 
 def collapse_ocr_word_fragments(text: str) -> str:
     source = str(text or "")
 
+    def collapse_letter_match(match: re.Match[str]) -> str:
+        candidate = str(match.group(0) or "")
+        marked = re.sub(OCR_MULTI_SPACING, OCR_WORD_GAP_MARKER, candidate)
+        collapsed = re.sub(OCR_INLINE_SPACING, "", marked)
+        if OCR_WORD_GAP_MARKER not in collapsed and len(collapsed) >= 24:
+            return re.sub(OCR_INLINE_SPACING, " ", candidate).strip()
+        return collapsed.replace(OCR_WORD_GAP_MARKER, " ")
+
     # Repair OCR splits like "M A I N  T Y P E" -> "MAIN TYPE" and "S X" -> "SX".
     source = re.sub(
         rf"\b(?:[A-Za-z]{OCR_INLINE_SPACING}){{2,}}[A-Za-z]\b",
-        lambda match: re.sub(OCR_INLINE_SPACING, "", match.group(0)),
+        collapse_letter_match,
         source,
     )
 
     # Repair OCR splits like "2 0 2 6" -> "2026".
     source = re.sub(
         rf"\b(?:\d{OCR_INLINE_SPACING}){{2,}}\d\b",
-        lambda match: re.sub(OCR_INLINE_SPACING, "", match.group(0)),
+        lambda match: re.sub(OCR_INLINE_SPACING, "", str(match.group(0) or "")),
         source,
     )
+    source = source.replace(OCR_WORD_GAP_MARKER, " ")
+
+    # Repair merged OCR boundaries such as "BenRussellReportDate".
+    source = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", source)
+    source = re.sub(r"(?<=\d)(?=[A-Za-z])", " ", source)
+    source = re.sub(r"(?<=[A-Za-z])(?=\d)", " ", source)
 
     return source
 
@@ -48,11 +65,13 @@ def clean_metadata_value(value: str | None) -> str | None:
     cleaned = normalize(value)
     cleaned = re.sub(r"^[\s:=\-–—,]+", "", cleaned).strip()
     cleaned = re.sub(
-        r"\s+(?:Main\s*Type|Type\s*Profile|Report\s*Date|Date\s*of\s*Report|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence)\b.*$",
+        r"\s*(?:Main\s*Type|MainType|Type\s*Profile|TypeProfile|Report\s*Date|ReportDate|Date\s*of\s*Report|DateofReport|Trifix|Level\s*of\s*Development|LevelofDevelopment|Wing|Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence)\b.*$",
         "",
         cleaned,
         flags=re.I,
     ).strip()
+    cleaned = re.sub(r"(?<=\d)\s*(?:[/.\-])\s*(?=\d)", lambda m: str(m.group(0)).strip().replace(" ", ""), cleaned)
+    cleaned = re.sub(r"(?<=\d)\s+(?=\d)", "", cleaned)
     lowered = cleaned.lower()
     if lowered in {"", "not detected", "unknown", "n/a", "na", "none", "null"}:
         return None
@@ -220,43 +239,43 @@ def main() -> int:
     client_name = extract_first(
         text,
         [
-            r"\bClient\s*Name\s*[:\-]?\s*([^:]{2,80}?)(?=\s+(?:Report\s*Date|Date\s*of\s*Report|Main\s*Type|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
-            r"\bName\s*[:\-]?\s*([^:]{2,80}?)(?=\s+(?:Report\s*Date|Main\s*Type|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
+            r"\bClient\s*Name\s*[:\-]?\s*([^:]{2,80}?)(?=\s*(?:Report\s*Date|ReportDate|Date\s*of\s*Report|DateofReport|Main\s*Type|MainType|Trifix|Level\s*of\s*Development|LevelofDevelopment|Wing|Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence|$))",
+            r"\bName\s*[:\-]?\s*([^:]{2,80}?)(?=\s*(?:Report\s*Date|ReportDate|Main\s*Type|MainType|Trifix|Level\s*of\s*Development|LevelofDevelopment|Wing|Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence|$))",
         ],
     )
     report_date = extract_first(
         text,
         [
-            r"\bReport\s*Date\s*[:\-]?\s*([^:]{3,60}?)(?=\s+(?:Client\s*Name|Main\s*Type|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
-            r"\bDate\s*of\s*Report\s*[:\-]?\s*([^:]{3,60}?)(?=\s+(?:Client\s*Name|Main\s*Type|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
-            r"\bDate\s*[:\-]?\s*([^:]{3,60}?)(?=\s+(?:Client\s*Name|Main\s*Type|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
+            r"\bReport\s*Date\s*[:\-]?\s*([^:]{3,60}?)(?=\s*(?:Client\s*Name|ClientName|Main\s*Type|MainType|Trifix|Level\s*of\s*Development|LevelofDevelopment|Wing|Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence|$))",
+            r"\bDate\s*of\s*Report\s*[:\-]?\s*([^:]{3,60}?)(?=\s*(?:Client\s*Name|ClientName|Main\s*Type|MainType|Trifix|Level\s*of\s*Development|LevelofDevelopment|Wing|Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence|$))",
+            r"\bDate\s*[:\-]?\s*([^:]{3,60}?)(?=\s*(?:Client\s*Name|ClientName|Main\s*Type|MainType|Trifix|Level\s*of\s*Development|LevelofDevelopment|Wing|Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence|$))",
         ],
     )
     wing = extract_first(
         text,
         [
-            r"\bWing\s*[:\-]?\s*([^:]{2,40}?)(?=\s+(?:Trifix|Level\s*of\s*Development|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
+            r"\bWing\s*[:\-]?\s*([^:]{2,40}?)(?=\s*(?:Trifix|Level\s*of\s*Development|LevelofDevelopment|Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence|$))",
         ],
     )
     trifix = normalize_trifix(
         extract_first(
             text,
             [
-                r"\bTrifix\s*[:\-]?\s*([^:]{2,40}?)(?=\s+(?:Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
+                r"\bTrifix\s*[:\-]?\s*([^:]{2,40}?)(?=\s*(?:Level\s*of\s*Development|LevelofDevelopment|Wing|Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence|$))",
             ],
         )
     )
     level_of_development = extract_first(
         text,
         [
-            r"\bLevel\s*of\s*Development\s*[:\-]?\s*([^:]{2,50}?)(?=\s+(?:Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|Wing|Trifix|$))",
-            r"\bDevelopment\s*Level\s*[:\-]?\s*([^:]{2,50}?)(?=\s+(?:Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|Wing|Trifix|$))",
+            r"\bLevel\s*of\s*Development\s*[:\-]?\s*([^:]{2,50}?)(?=\s*(?:Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence|Wing|Trifix|$))",
+            r"\bDevelopment\s*Level\s*[:\-]?\s*([^:]{2,50}?)(?=\s*(?:Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence|Wing|Trifix|$))",
         ],
     )
     centre_of_intelligence = extract_first(
         text,
         [
-            r"\b(?:Centre|Center)\s*of\s*Intelligence\s*[:\-]?\s*([^:]{2,50}?)(?=\s+(?:Level\s*of\s*Development|Wing|Trifix|$))",
+            r"\b(?:Centre|Center)\s*of\s*Intelligence\s*[:\-]?\s*([^:]{2,50}?)(?=\s*(?:Level\s*of\s*Development|LevelofDevelopment|Wing|Trifix|$))",
         ],
     )
     integration_level = extract_first(
