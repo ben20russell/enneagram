@@ -172,6 +172,10 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .brow{display:flex;align-items:center;gap:10px;margin-bottom:10px}.brow:last-child{margin-bottom:0}.blbl{font-size:13px;color:var(--text2);min-width:130px;flex-shrink:0}.btrk{flex:1;height:4px;background:var(--surface3);border-radius:100px;overflow:hidden}.bfil{height:100%;border-radius:100px}.bval{font-size:12px;font-weight:500;color:var(--text);min-width:36px;text-align:right}
 .chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:500;line-height:1.4}.cr{background:var(--red-lt);color:var(--red)}.cg{background:var(--gold-lt);color:var(--gold)}.cgn{background:var(--green-lt);color:var(--green)}.cb{background:var(--blue-lt);color:var(--blue)}.cx{background:var(--surface2);color:var(--text3)}
 .tlist{display:flex;flex-direction:column;gap:11px}.ti{display:flex;gap:11px;align-items:flex-start}.tic{width:26px;height:26px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;margin-top:-2px}.tic.pos{background:var(--green-lt);color:var(--green)}.tic.neg{background:var(--red-lt);color:var(--red)}.tic.neu{background:var(--gold-lt);color:var(--gold)}.tic.inf{background:var(--blue-lt);color:var(--blue)}.tt{font-size:13px;color:var(--text2);line-height:1.65}.tt strong{color:var(--text);font-weight:600}
+.core-pattern-row-marker{width:20px;height:20px;font-size:9px}
+.core-pattern-inline-list{display:flex;flex-direction:column;gap:6px;margin:6px 0 0;padding:0;list-style:none}
+.core-pattern-inline-item{position:relative;line-height:1.58;padding-left:12px}
+.core-pattern-inline-item::before{content:"•";position:absolute;left:0;top:.22em;font-size:9px;color:var(--text3);line-height:1}
 .sh{font-size:20px;font-weight:700;margin-bottom:14px}.subh{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:16px 0 8px}
 .tg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.tg-item{background:var(--red-lt);border-left:3px solid var(--red);border-radius:var(--r-sm);padding:12px}.tg-title{font-size:12px;font-weight:600;color:var(--red);margin-bottom:3px}.tg-desc{font-size:12px;color:var(--text3);line-height:1.5}
 .ibox{background:var(--blue-lt);border-left:3px solid var(--blue);border-radius:var(--r-sm);padding:13px 15px}.ibox p{font-size:13px;color:var(--blue);line-height:1.6}
@@ -520,9 +524,9 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           <div class="card" id="deepSummaryCard">
             <div class="ct" id="deepTitle">A Deeper Understanding of the SX — 8</div>
             <div class="tlist" id="corePatternBulletsList" data-testid="core-pattern-bullets-list">
-              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Typical Action Patterns:</strong> Not detected in assigned PDF.</div></div>
-              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Typical Thinking Patterns:</strong> Not detected in assigned PDF.</div></div>
-              <div class="ti"><div class="tic neu">•</div><div class="tt"><strong>Typical Feeling Patterns:</strong> Not detected in assigned PDF.</div></div>
+              <div class="ti"><div class="tic neu core-pattern-row-marker">•</div><div class="tt"><strong>Typical Action Patterns:</strong> Not detected in assigned PDF.</div></div>
+              <div class="ti"><div class="tic neu core-pattern-row-marker">•</div><div class="tt"><strong>Typical Thinking Patterns:</strong> Not detected in assigned PDF.</div></div>
+              <div class="ti"><div class="tic neu core-pattern-row-marker">•</div><div class="tt"><strong>Typical Feeling Patterns:</strong> Not detected in assigned PDF.</div></div>
             </div>
           </div>
         </div>

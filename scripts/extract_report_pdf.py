@@ -19,29 +19,61 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+def clean_metadata_value(value: str | None) -> str | None:
+    if not value:
+        return None
+    cleaned = normalize(value)
+    cleaned = re.sub(r"^[\s:=\-–—,]+", "", cleaned).strip()
+    cleaned = re.sub(
+        r"\s+(?:Main\s*Type|Type\s*Profile|Report\s*Date|Date\s*of\s*Report|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence)\b.*$",
+        "",
+        cleaned,
+        flags=re.I,
+    ).strip()
+    lowered = cleaned.lower()
+    if lowered in {"", "not detected", "unknown", "n/a", "na", "none", "null"}:
+        return None
+    if "copyright" in lowered:
+        return None
+    return cleaned or None
+
+
+def normalize_type_number(value: str | None) -> str | None:
+    if not value:
+        return None
+    match = re.search(r"[1-9]", value)
+    return match.group(0) if match else None
+
+
 def extract_type(text: str) -> tuple[str | None, str]:
     score = {str(i): 0 for i in range(1, 10)}
     patterns = [
-        (r"Main\s*Type\s*[:\-]?\s*Type\s*([1-9])\b", 18, "mainType"),
-        (r"you\s+resonate\s+with\s+the\s+Enneagram\s+type\s*([1-9])\b", 16, "resonanceSentence"),
-        (r"main\s+type\s+as\s+an\s+Ennea\s*([1-9])\b", 14, "mainTypeAsEnnea"),
-        (r"Enneagram\s+type\s*([1-9])\b", 10, "enneagramType"),
-        (r"type\s*([1-9])\s+which\s+is\s+also\s+known\s+as", 10, "typeKnownAs"),
-        (r"\bEnnea\s*([1-9])\b", 3, "ennea"),
+        (r"Main\s*Type\s*[:\-]?\s*Type\s*([1-9])\b", 24, "mainType", 1),
+        (r"\bMain\s*Type\b[^0-9]{0,24}([1-9])\b", 18, "mainTypeLoose", 1),
+        (r"\bA\s+deeper\s+understanding\s+of\s+the\s+(?:SX|SO|SP)\s*[—-]\s*([1-9])\b", 22, "deeperUnderstanding", 1),
+        (r"you\s+resonate\s+with\s+the\s+Enneagram\s+type\s*([1-9])\b", 16, "resonanceSentence", 1),
+        (r"main\s+type\s+as\s+an\s+Ennea\s*([1-9])\b", 14, "mainTypeAsEnnea", 1),
+        (r"type\s*([1-9])\s+which\s+is\s+also\s+known\s+as", 12, "typeKnownAs", 1),
+        (r"\bType\s*([1-9])\s*[·•|]\s*(?:SX|SO|SP)\b", 10, "typeWithInstinctTag", 1),
+        (r"Enneagram\s+type\s*([1-9])\b", 10, "enneagramType", 1),
+        (r"\bEnnea\s*([1-9])\b", 3, "ennea", 1),
     ]
     blacklisted_context = re.compile(r"(all\s+9\s+types?|9\s+Enneagram\s+styles?)", re.I)
+    score_table_context = re.compile(r"(type\s*1\b.*type\s*2\b.*type\s*3\b)|(type\s*7\b.*type\s*8\b.*type\s*9\b)", re.I)
     strongest_source = "none"
     strongest_weight = 0
 
-    for pattern, weight, source in patterns:
+    for pattern, weight, source, group_index in patterns:
         for match in re.finditer(pattern, text, re.I):
-            type_num = match.group(1)
+            type_num = normalize_type_number(match.group(group_index))
             if type_num not in score:
                 continue
             start = max(0, match.start() - 36)
             end = min(len(text), match.end() + 54)
             ctx = text[start:end]
             if blacklisted_context.search(ctx):
+                continue
+            if score_table_context.search(ctx):
                 continue
             score[type_num] += weight
             if weight > strongest_weight:
@@ -52,6 +84,24 @@ def extract_type(text: str) -> tuple[str | None, str]:
     if winner[1] <= 0:
         return None, "none"
     return winner[0], strongest_source
+
+
+def extract_type_from_filename(file_name: str) -> tuple[str | None, str]:
+    normalized_name = normalize(file_name)
+    if not normalized_name:
+        return None, "none"
+    patterns = [
+        r"\btype[\s._-]*([1-9])\b",
+        r"\bennea[\s._-]*([1-9])\b",
+        r"\bieq9[\s._-]*([1-9])\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, normalized_name, re.I)
+        if match:
+            detected = normalize_type_number(match.group(1))
+            if detected:
+                return detected, "fileNameTypePattern"
+    return None, "none"
 
 
 def instinct_label(code: str | None) -> str | None:
@@ -69,7 +119,9 @@ def extract_first(text: str, patterns: list[str]) -> str | None:
     for pattern in patterns:
         match = re.search(pattern, text, re.I)
         if match and match.group(1):
-            return normalize(match.group(1))
+            candidate = clean_metadata_value(match.group(1))
+            if candidate:
+                return candidate
     return None
 
 
@@ -89,7 +141,23 @@ def cleanup_type_name(value: str | None) -> str | None:
         normalize(value),
         flags=re.I,
     ).strip()
-    return cleaned or None
+    cleaned = re.sub(r"^[^A-Za-z]+", "", cleaned).strip()
+    if not cleaned:
+        return None
+    lowered = cleaned.lower()
+    if "copyright" in lowered:
+        return None
+    return cleaned
+
+
+def normalize_trifix(value: str | None) -> str | None:
+    cleaned = clean_metadata_value(value)
+    if not cleaned:
+        return None
+    digits = re.findall(r"[1-9]", cleaned)
+    if len(digits) >= 3:
+        return "-".join(digits[:3])
+    return cleaned
 
 
 def main() -> int:
@@ -105,6 +173,8 @@ def main() -> int:
     reader = PdfReader(str(pdf_path))
     text = normalize("\n".join((page.extract_text() or "") for page in reader.pages))
     detected_type, detected_type_source = extract_type(text)
+    if not detected_type:
+        detected_type, detected_type_source = extract_type_from_filename(pdf_path.name)
 
     instinct_code = extract_first(text, [r"\bwith\s+a\s+(SO|SP|SX)\s+Instinct(?:\b|[A-Z])"])
     instinct = instinct_label(instinct_code) or extract_first(
@@ -121,6 +191,49 @@ def main() -> int:
     if type_name:
         type_name = re.sub(r"([a-z])([A-Z])", r"\1 \2", type_name)
         type_name = cleanup_type_name(type_name)
+
+    client_name = extract_first(
+        text,
+        [
+            r"\bClient\s*Name\s*[:\-]?\s*([^:]{2,80}?)(?=\s+(?:Report\s*Date|Date\s*of\s*Report|Main\s*Type|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
+            r"\bName\s*[:\-]?\s*([^:]{2,80}?)(?=\s+(?:Report\s*Date|Main\s*Type|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
+        ],
+    )
+    report_date = extract_first(
+        text,
+        [
+            r"\bReport\s*Date\s*[:\-]?\s*([^:]{3,60}?)(?=\s+(?:Client\s*Name|Main\s*Type|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
+            r"\bDate\s*of\s*Report\s*[:\-]?\s*([^:]{3,60}?)(?=\s+(?:Client\s*Name|Main\s*Type|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
+            r"\bDate\s*[:\-]?\s*([^:]{3,60}?)(?=\s+(?:Client\s*Name|Main\s*Type|Trifix|Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
+        ],
+    )
+    wing = extract_first(
+        text,
+        [
+            r"\bWing\s*[:\-]?\s*([^:]{2,40}?)(?=\s+(?:Trifix|Level\s*of\s*Development|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
+        ],
+    )
+    trifix = normalize_trifix(
+        extract_first(
+            text,
+            [
+                r"\bTrifix\s*[:\-]?\s*([^:]{2,40}?)(?=\s+(?:Level\s*of\s*Development|Wing|Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|$))",
+            ],
+        )
+    )
+    level_of_development = extract_first(
+        text,
+        [
+            r"\bLevel\s*of\s*Development\s*[:\-]?\s*([^:]{2,50}?)(?=\s+(?:Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|Wing|Trifix|$))",
+            r"\bDevelopment\s*Level\s*[:\-]?\s*([^:]{2,50}?)(?=\s+(?:Center\s*of\s*Intelligence|Centre\s*of\s*Intelligence|Wing|Trifix|$))",
+        ],
+    )
+    centre_of_intelligence = extract_first(
+        text,
+        [
+            r"\b(?:Centre|Center)\s*of\s*Intelligence\s*[:\-]?\s*([^:]{2,50}?)(?=\s+(?:Level\s*of\s*Development|Wing|Trifix|$))",
+        ],
+    )
     integration_level = extract_first(
         text,
         [
@@ -129,8 +242,10 @@ def main() -> int:
         ],
     )
     integration_level = title_case_level(integration_level)
+    level_of_development = clean_metadata_value(level_of_development)
 
     payload = {
+        "source": "python_extract_report_pdf",
         "fileName": pdf_path.name,
         "pageCount": len(reader.pages),
         "detectedType": detected_type,
@@ -138,12 +253,22 @@ def main() -> int:
         "typeName": type_name,
         "instinct": instinct,
         "integrationLevel": integration_level,
+        "clientName": client_name,
+        "reportDate": report_date,
+        "wing": wing,
+        "trifix": trifix,
+        "levelOfDevelopment": level_of_development,
+        "centreOfIntelligence": centre_of_intelligence,
         "containsMarkers": {
             "resonanceSentence": bool(
                 re.search(r"you\s+resonate\s+with\s+the\s+Enneagram\s+type\s*[1-9]\b", text, re.I)
             ),
             "mainTypeAsEnnea": bool(re.search(r"main\s+type\s+as\s+an\s+Ennea\s*[1-9]\b", text, re.I)),
             "instinctSentence": bool(re.search(r"\bwith\s+a\s+(SO|SP|SX)\s+Instinct(?:\b|[A-Z])", text, re.I)),
+            "clientName": bool(client_name),
+            "reportDate": bool(report_date),
+            "trifix": bool(trifix),
+            "levelOfDevelopment": bool(level_of_development),
         },
     }
     print(json.dumps(payload, indent=2))

@@ -1162,13 +1162,61 @@ function extractIntegrationFromPdfText(pdfText) {
 }
 
 function sanitizeSnippet(value, fallback) {
-  const cleaned = String(value || "")
+  let cleaned = String(value || "")
     .replace(/\s+/g, " ")
     // OCR occasionally injects a bogus "C'" token ahead of sentence starts.
     .replace(/(^|[.!?]\s+)\s*C['’`´]\s*(?=[A-Z])/g, "$1")
     .replace(/^C['’`´]\s*(?=[A-Z])/, "")
     .trim();
   if (!cleaned) return fallback;
+
+  const shortWords = new Set([
+    "a", "am", "an", "as", "at",
+    "be", "by",
+    "do",
+    "go",
+    "he", "her", "his",
+    "i", "if", "in", "is", "it",
+    "me", "my",
+    "no", "not",
+    "of", "on", "or", "our",
+    "so",
+    "the", "to", "too",
+    "up", "us",
+    "we",
+    "you",
+  ]);
+
+  // Repair hard OCR splits such as "d i f f e r e n c e".
+  cleaned = cleaned.replace(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g, (match) => {
+    const parts = String(match || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return match;
+    const first = String(parts[0] || "");
+    const firstLower = first.toLowerCase();
+    if (parts.length >= 4 && first === firstLower && shortWords.has(firstLower)) {
+      return `${first} ${parts.slice(1).join("")}`;
+    }
+    return parts.join("");
+  });
+
+  // Repair 3-part OCR splits such as "sur v ive" and "di ff erence".
+  cleaned = cleaned.replace(/\b([A-Za-z]{1,3})\s+([A-Za-z]{1,2})\s+([A-Za-z]{3,})\b/g, (match, partA, partB, partC) => {
+    const lowerA = String(partA || "").toLowerCase();
+    const lowerB = String(partB || "").toLowerCase();
+    if (shortWords.has(lowerA) || shortWords.has(lowerB)) return match;
+    return `${partA}${partB}${partC}`;
+  });
+
+  // Repair 2-part OCR splits such as "di fficult" while preserving short-word phrases.
+  cleaned = cleaned.replace(/(^|[^A-Za-z'’`´-])([A-Za-z]{1,2})\s+([A-Za-z]{4,})\b/g, (match, lead, prefix, suffix) => {
+    const lowerPrefix = String(prefix || "").toLowerCase();
+    if (shortWords.has(lowerPrefix)) return match;
+    return `${lead}${prefix}${suffix}`;
+  });
+
+  // Repair frequent OCR fragment "G i s" -> "G is".
+  cleaned = cleaned.replace(/\b([A-Za-z])\s+i\s+s\b/g, "$1 is");
+
   return cleaned;
 }
 
@@ -3599,13 +3647,44 @@ function buildAdaptiveBulletListHtml(items) {
     .join("");
 }
 
+function extractInlineCorePatternBulletItems(text, maxItems = 10) {
+  const normalized = sanitizeCorePatternBulletText(text);
+  if (!normalized) return [];
+  if (!/[•●▪◦·]/.test(normalized)) return [];
+
+  const fromSplit = normalized
+    .split(/[•●▪◦·]/g)
+    .map((row) => ensureSentenceStartsCapitalized(cleanPdfExtractedValue(row)))
+    .filter(Boolean)
+    .filter((row) => row.length >= 12);
+  if (fromSplit.length >= 2) {
+    return Array.from(new Set(fromSplit)).slice(0, maxItems);
+  }
+
+  const fromSymbols = extractBulletItemsFromText(normalized, maxItems)
+    .map((row) => ensureSentenceStartsCapitalized(cleanPdfExtractedValue(row)))
+    .filter(Boolean);
+  if (fromSymbols.length) {
+    return Array.from(new Set(fromSymbols)).slice(0, maxItems);
+  }
+
+  return [];
+}
+
 function renderCorePatternBulletList(bullets) {
   const rows = normalizeCorePatternBullets(bullets);
   return rows
     .map((row) => {
       const label = formatOptionalText(row?.label, "Typical Pattern");
       const text = sanitizeCorePatternBulletText(row?.text) || "Not detected in assigned PDF.";
-      return `<div class="ti"><div class="tic neu">•</div><div class="tt"><strong>${escapeHtml(label)}:</strong>&nbsp;${escapeHtml(text)}</div></div>`;
+      const inlineBulletItems = extractInlineCorePatternBulletItems(text, 10);
+      if (!inlineBulletItems.length) {
+        return `<div class="ti"><div class="tic neu core-pattern-row-marker">•</div><div class="tt"><strong>${escapeHtml(label)}:</strong>&nbsp;${escapeHtml(text)}</div></div>`;
+      }
+      const inlineBulletListItems = inlineBulletItems
+        .map((item) => `<li class="core-pattern-inline-item">${escapeHtml(item)}</li>`)
+        .join("");
+      return `<div class="ti"><div class="tic neu core-pattern-row-marker">•</div><div class="tt"><strong>${escapeHtml(label)}:</strong><ul class="core-pattern-inline-list">${inlineBulletListItems}</ul></div></div>`;
     })
     .join("");
 }
@@ -6730,23 +6809,15 @@ function applyReport(typeId) {
 
 function buildPdfOnlyProfile(typeNumber, extractedScores) {
   const order = ["8", "9", "1", "2", "3", "4", "5", "6", "7"];
-  const fallback = order.map(() => 40);
-  const hasExtractedScores =
-    extractedScores &&
-    order.filter((type) => {
-      const score = toFiniteScoreOrNull(extractedScores[type]);
-      return Number.isFinite(score) && score > 0;
-    }).length >= 3;
-  if (hasExtractedScores) {
-    return order.map((type) => {
-      const value = toFiniteScoreOrNull(extractedScores[type]);
-      if (!Number.isFinite(value) || value < 0 || value > 100) return 40;
-      return value;
-    });
+  const normalized = order.map((type) => {
+    const value = toFiniteScoreOrNull(extractedScores?.[type]);
+    if (!Number.isFinite(value) || value < 0 || value > 100) return null;
+    return value;
+  });
+  if (normalized.some((value) => Number.isFinite(value))) {
+    return normalized;
   }
-  const idx = order.indexOf(String(typeNumber || ""));
-  if (idx >= 0) fallback[idx] = 78;
-  return fallback;
+  return order.map(() => null);
 }
 
 function buildPdfOnlyReport(payload) {
@@ -6755,13 +6826,8 @@ function buildPdfOnlyReport(payload) {
   const typeName = sanitizeSnippet(payload?.typeName, fallbackText);
   const instinct = sanitizeSnippet(payload?.instinct, fallbackText);
   const keyword = sanitizeSnippet(payload?.subtypeKeyword, fallbackText);
-  let release = formatTypeLine(sanitizeSnippet(payload?.connectedLineA, "Type ?"));
-  let stretch = formatTypeLine(sanitizeSnippet(payload?.connectedLineB, "Type ?"));
-  const canonicalPoints = CANONICAL_POINTS_BY_TYPE[typeNumber];
-  if (canonicalPoints) {
-    release = formatTypeLine(canonicalPoints.release);
-    stretch = formatTypeLine(canonicalPoints.stretch);
-  }
+  const release = formatTypeLine(sanitizeSnippet(payload?.connectedLineA, "Not detected"));
+  const stretch = formatTypeLine(sanitizeSnippet(payload?.connectedLineB, "Not detected"));
   const integration = sanitizeSnippet(payload?.integrationLevel || payload?.integration, fallbackText);
   const profile = buildPdfOnlyProfile(typeNumber, payload?.profileScores);
   const strainScoresRaw = getParsedProfileStrainScores({ strainScores: payload?.strainScoresRaw });
@@ -6902,9 +6968,9 @@ function buildPdfOnlyReport(payload) {
     dataQualityDiagnostics: payload?.dataQualityDiagnostics || null,
     profile,
     strain,
-    mainValue: mainIndex >= 0 ? profile[mainIndex] : 0,
-    releaseValue: releaseIndex >= 0 ? profile[releaseIndex] : 0,
-    stretchValue: stretchIndex >= 0 ? profile[stretchIndex] : 0,
+    mainValue: mainIndex >= 0 ? toFiniteScoreOrNull(profile[mainIndex]) : null,
+    releaseValue: releaseIndex >= 0 ? toFiniteScoreOrNull(profile[releaseIndex]) : null,
+    stretchValue: stretchIndex >= 0 ? toFiniteScoreOrNull(profile[stretchIndex]) : null,
   };
 }
 
