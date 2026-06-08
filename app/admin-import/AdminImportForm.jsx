@@ -953,9 +953,17 @@ export default function AdminImportForm() {
         const isNextErrorHtml =
           finalizeRawBody.includes("__next_error__") ||
           finalizeRawBody.toLowerCase().startsWith("<!doctype html");
+        const shouldRetryLiteFinalize = isNextErrorHtml || finalizeRes.status >= 500;
 
-        if (isNextErrorHtml) {
-          console.log("[admin-import-page] Primary finalize returned Next.js html error page; retrying lite route");
+        if (shouldRetryLiteFinalize) {
+          if (isNextErrorHtml) {
+            console.log("[admin-import-page] Primary finalize returned Next.js html error page; retrying lite route");
+          } else {
+            console.log("[admin-import-page] Primary finalize returned 5xx; retrying lite route", {
+              status: finalizeRes.status,
+              statusText: finalizeRes.statusText,
+            });
+          }
           const liteTimeout = createTimeoutController(FINALIZE_REQUEST_TIMEOUT_MS);
           let liteRes;
           let liteData = {};
