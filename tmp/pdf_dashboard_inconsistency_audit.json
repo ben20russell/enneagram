@@ -1,0 +1,231 @@
+{
+  "totalStringFields": 112,
+  "issueCount": 43,
+  "issueTypeCounts": {
+    "control_chars": 7,
+    "page_marker_leak": 5,
+    "missing": 12,
+    "truncated": 6,
+    "letter_spaced": 6,
+    "section_duplication": 2,
+    "section_bleed": 1,
+    "missed_extraction": 4
+  },
+  "issues": [
+    {
+      "type": "control_chars",
+      "path": "strain_interpretation.vocational",
+      "value": "reality. \u0004 * + 4 - $ \" # / \u0001  } ~ } ¦  }   \u0001 ) / \" - \u001c / $ 1 \u0001 \u0006 ) ) \u001c \" - \u001c ( \u0001 \u0014 * ' 0 / $ * ). \u0003 ) \u0001 \u0013 0.. ' '  } \u0001 *! \u0001   Page 20 Page 20 Ben your perceived level o f"
+    },
+    {
+      "type": "page_marker_leak",
+      "path": "strain_interpretation.vocational",
+      "value": "reality. \u0004 * + 4 - $ \" # / \u0001  } ~ } ¦  }   \u0001 ) / \" - \u001c / $ 1 \u0001 \u0006 ) ) \u001c \" - \u001c ( \u0001 \u0014 * ' 0 / $ * ). \u0003 ) \u0001 \u0013 0.. ' '  } \u0001 *! \u0001   Page 20 Page 20 Ben your perceived level o f"
+    },
+    {
+      "type": "missing",
+      "path": "strain_interpretation.environmental",
+      "value": "Not detected in structured report content."
+    },
+    {
+      "type": "missing",
+      "path": "strain_interpretation.physical",
+      "value": "Not detected in structured report content."
+    },
+    {
+      "type": "missing",
+      "path": "strain_interpretation.interpersonal",
+      "value": "Not detected in structured report content."
+    },
+    {
+      "type": "missing",
+      "path": "strain_interpretation.psychological",
+      "value": "Not detected in structured report content."
+    },
+    {
+      "type": "missing",
+      "path": "strain_interpretation.happiness",
+      "value": "Not detected in structured report content."
+    },
+    {
+      "type": "missing",
+      "path": "feedback_guide.type_1.0",
+      "value": "Not detected in assigned PDF."
+    },
+    {
+      "type": "missing",
+      "path": "feedback_guide.type_2.0",
+      "value": "Not detected in assigned PDF."
+    },
+    {
+      "type": "missing",
+      "path": "feedback_guide.type_3.0",
+      "value": "Not detected in assigned PDF."
+    },
+    {
+      "type": "missing",
+      "path": "feedback_guide.type_4.0",
+      "value": "Not detected in assigned PDF."
+    },
+    {
+      "type": "missing",
+      "path": "feedback_guide.type_7.0",
+      "value": "Not detected in assigned PDF."
+    },
+    {
+      "type": "missing",
+      "path": "feedback_guide.type_8.0",
+      "value": "Not detected in assigned PDF."
+    },
+    {
+      "type": "missing",
+      "path": "feedback_guide.type_9.0",
+      "value": "Not detected in assigned PDF."
+    },
+    {
+      "type": "page_marker_leak",
+      "path": "decision_framework.dominant_center_impact.0",
+      "value": "Page 32 Page 32 Your decision s t yl e i s not only strongly impacted b y your dominant Center o f Intelligence but also b y your main Ennea t yp e and the amount o f strain you are experiencing a t present."
+    },
+    {
+      "type": "truncated",
+      "path": "decision_framework.dominant_center_impact.3",
+      "value": "The more you are able t o consider and positio..."
+    },
+    {
+      "type": "page_marker_leak",
+      "path": "decision_framework.making_decisions.0",
+      "value": "Page 32 Page 32 Your decision s t yl e i s not only strongly impacted b y your dominant Center o f Intelligence but also b y your main Ennea t yp e and the amount o f strain you are experiencing a t present."
+    },
+    {
+      "type": "truncated",
+      "path": "decision_framework.making_decisions.3",
+      "value": "The more you are able t o consider and positio..."
+    },
+    {
+      "type": "page_marker_leak",
+      "path": "decision_framework.receiving_decisions.0",
+      "value": "Page 32 Page 32 Your decision s t yl e i s not only strongly impacted b y your dominant Center o f Intelligence but also b y your main Ennea t yp e and the amount o f strain you are experiencing a t present."
+    },
+    {
+      "type": "truncated",
+      "path": "decision_framework.receiving_decisions.3",
+      "value": "The more you are able t o consider and positio..."
+    },
+    {
+      "type": "control_chars",
+      "path": "decision_framework.strain_impact.4",
+      "value": "A s your strain level decreases , b e aware o f complacency , deadlines and your capacity t o act o n priorities with urgency \u0004"
+    },
+    {
+      "type": "control_chars",
+      "path": "decision_framework.strain_impact.5",
+      "value": "+ 4 - $ \" # / \u0001  } ~ } ¦  }   \u0001 ) / \" - \u001c / $ 1 \u0001 \u0006 ) ) \u001c \" - \u001c ( \u0001 \u0014"
+    },
+    {
+      "type": "control_chars",
+      "path": "decision_framework.strain_impact.7",
+      "value": ") . \u0003 ) \u0001 \u0013 0 . . ' '   \u0001"
+    },
+    {
+      "type": "control_chars",
+      "path": "decision_framework.strain_impact.8",
+      "value": "! \u0001  "
+    },
+    {
+      "type": "letter_spaced",
+      "path": "strategic_leadership.visioning",
+      "value": "A t Ennea 8 you have the potential t o access the capacity for visionary leadership , but run the risk o f becoming attached t o outcome and h a vi n g things your way . You are naturally more inclined towards the big picture but may tend t o develop the vi sion intuitively , assuming that others know what you are thinking . You may rely quite hea vi l y o n your “ gut ” when developing the vision and deciding o n the direction o f the company o r team . You may not alwa ys share the vi sion with others explicitly . This may b e because you expect others t o know the vi sion o r believe that i t i s not necessary for others t o know the vision a s long a s they understand what i s expected o f them . You are also likely t o emphasise action towards the vision once i t has been set . When developing the vi sion , you may a t times b e tempted t o d o s o alone . This being said , you are likely t o also know how t o leverage the inputs and gain the support o f key stakeholders and influencers i n the team and business . Your challenge i s t o learn how t o truly collaborate a t the point o f vision development , rather than collaborating with the end product already clearly i n mind . Strate gi c T hi nking You should enjoy the art o f strategy . When dealing with strategic issues , your interest and e ff ort i s likely t o directly relate t o the challenge and potential impact"
+    },
+    {
+      "type": "truncated",
+      "path": "strategic_leadership.strategic_thinking",
+      "value": "Visioning A t Ennea 8 you have the potential t o access the capacity for visionary leadership, but run the risk o f becoming attached t o outcome and h a vi n g things your way. You are naturally more inclined towards the big picture but may tend t o develop the vi sion intuitively, assuming that others know what you are thinking. You may rely quite hea vi l y o n your “ gut ” when developing the vision and deciding..."
+    },
+    {
+      "type": "control_chars",
+      "path": "strategic_leadership.alignment",
+      "value": "o r relying o n others t o a ff ect alignment , rather than putting excessive e ff orts into creating alignment . Once strategic goals have been set , your expectation that others will execute and implement may lead t o insu ff icient attention being paid t o getting their acceptance and showing flexibility . You are therefore likely t o present alignment a s a n imperative . When you encounter challenges i n this regard , you are likely t o exert influence and consider what levers need t o b e pushed t o create the necessary alignment . You may however also b e tempted t o simply forge ahead , believing that the organisation o r team will eventually catch u p . You may need t o pay more attention t o the smaller details o f alignment that have the potential for creating major shi \u0000 s within the team o r organisation . C ha nge Management You are likely t o enjoy being given the responsibility for large change e ff orts . I n fact , the bigger the responsibility the better ! When tackling change projects , your impatience may drive you t o expedite plans and push for immediate implementation . I n doing s o you may run the risk o f running with changes a t a pace that others struggle t o keep u p with . I t may also lead you t o overlook some o f the people aspects involved i n the change process , especially around issues o f loss and closure . You may b e quite attuned t o re"
+    },
+    {
+      "type": "truncated",
+      "path": "strategic_leadership.change_management",
+      "value": "Visioning A t Ennea 8 you have the potential t o access the capacity for visionary leadership, but run the risk o f becoming attached t o outcome and h a vi n g things your way. You are naturally more inclined towards the big picture but may tend t o develop the vi sion intuitively, assuming that others know what you are thinking. You may rely quite hea vi l y o n your “ gut ” when developing the vision and deciding..."
+    },
+    {
+      "type": "page_marker_leak",
+      "path": "team_dynamics.interdependence_and_role",
+      "value": "Page 39 Page 39 A s a n Ennea 8, you prefer goals that are: ● Clearly aligned t o strategic priorities and the big picture ● Set b y you rather than enforced b y others ● Aligned with what you see a s critical given the task a t hand ● Not restrictive and allow for opportunities t o exert influence and make things happen ● Designed t o move the team o r organisation forward Interdependence and Team Role Ben, you are..."
+    },
+    {
+      "type": "truncated",
+      "path": "team_dynamics.interdependence_and_role",
+      "value": "Page 39 Page 39 A s a n Ennea 8, you prefer goals that are: ● Clearly aligned t o strategic priorities and the big picture ● Set b y you rather than enforced b y others ● Aligned with what you see a s critical given the task a t hand ● Not restrictive and allow for opportunities t o exert influence and make things happen ● Designed t o move the team o r organisation forward Interdependence and Team Role Ben, you are..."
+    },
+    {
+      "type": "letter_spaced",
+      "path": "team_dynamics.forming.0",
+      "value": "Storming - Norming - Performing, illustrate the process through which teams g o a s i t becomes more e ff ective over time."
+    },
+    {
+      "type": "letter_spaced",
+      "path": "team_dynamics.storming.0",
+      "value": "Norming - Performing, illustrate the process through which teams g o a s i t becomes more e ff ective over time."
+    },
+    {
+      "type": "letter_spaced",
+      "path": "team_dynamics.norming.0",
+      "value": "Performing, illustrate the process through which teams g o a s i t becomes more e ff ective over time."
+    },
+    {
+      "type": "letter_spaced",
+      "path": "development_exercises.centers.1",
+      "value": "Tune into your body a s a regular practice b y noticing and paying attention t o the sensations o f the body you are experiencing i n the moment. You can use deliberate relaxation and breath - based exercises t o d o s o."
+    },
+    {
+      "type": "letter_spaced",
+      "path": "development_exercises.strain.4",
+      "value": "you are a t i f i t isn ’ t working for you."
+    },
+    {
+      "type": "control_chars",
+      "path": "development_exercises.conflict.4",
+      "value": "B e honest about whether you may not a t times utilise over - assertiveness a s a conscious way o f ensuring that you get your way \u0004 * + 4 - $ \" # / \u0001  } ~ } ¦  }   \u0001 ) / \" - \u001c / $ 1 \u0001 \u0006 ) ) \u001c \" - \u001c ( \u0001 \u0014 * ' 0 / $ * ). \u0003 ) \u0001 \u0013 0.. ' '  ~ \u0001 *! \u0001  "
+    },
+    {
+      "type": "section_duplication",
+      "path": "decision_framework.making_decisions vs receiving_decisions",
+      "value": "prefix signature equal"
+    },
+    {
+      "type": "section_duplication",
+      "path": "decision_framework.dominant_center_impact vs making_decisions",
+      "value": "prefix signature equal"
+    },
+    {
+      "type": "section_bleed",
+      "path": "team_dynamics.forming.0",
+      "value": "Storming - Norming - Performing, illustrate the process through which teams g o a s i t becomes more e ff ective over time."
+    },
+    {
+      "type": "missed_extraction",
+      "path": "strain_interpretation.happiness",
+      "value": "source contains category but structured output is Not detected"
+    },
+    {
+      "type": "missed_extraction",
+      "path": "strain_interpretation.interpersonal",
+      "value": "source contains category but structured output is Not detected"
+    },
+    {
+      "type": "missed_extraction",
+      "path": "strain_interpretation.physical",
+      "value": "source contains category but structured output is Not detected"
+    },
+    {
+      "type": "missed_extraction",
+      "path": "strain_interpretation.environmental",
+      "value": "source contains category but structured output is Not detected"
+    }
+  ]
+}

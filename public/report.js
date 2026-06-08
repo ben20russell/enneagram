@@ -220,8 +220,43 @@ function isAssignedReportAvailable(data) {
   return hasAssignedReport && isPdfRenderable;
 }
 
+function stripControlNoiseCharacters(rawText) {
+  return String(rawText || "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\uFFFD/g, " ");
+}
+
+function hasExcessiveSymbolNoise(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return false;
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return false;
+  const noisyTokens = tokens.filter((token) => {
+    const cleanedToken = String(token || "").replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+    if (/[A-Za-z]/.test(cleanedToken)) return false;
+    if (/^\d{1,4}$/.test(cleanedToken)) return false;
+    if (/^[•●▪◦·\-–—.,;:!?'"()]+$/.test(token)) return false;
+    if (/[^A-Za-z0-9.,;:!?'"()\-–—•●▪◦]/.test(token)) return true;
+    return token.length <= 3;
+  });
+  return noisyTokens.length >= 8 && noisyTokens.length / tokens.length >= 0.28;
+}
+
+function isCorruptedExtractedSnippet(value) {
+  const raw = String(value || "");
+  if (!raw.trim()) return true;
+  if (/[\u0000-\u001F\u007F-\u009F]/.test(raw)) return true;
+  const normalized = normalizeExtractedText(raw);
+  if (!normalized) return true;
+  if (/(?:\bPage\s*\d{1,3}\b\s*){2,}/i.test(normalized)) return true;
+  if (hasExcessiveSymbolNoise(normalized)) return true;
+  return false;
+}
+
 function stripPdfFooterNoiseFragments(rawText) {
   return String(rawText || "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\uFFFD/g, " ")
     .replace(/\b(?:[A-Za-z](?:[ \t]+)){2,}[A-Za-z]\b/g, (match) => {
       const source = String(match || "");
       const marked = source.replace(/[ \t]{2,}/g, "\u0000");
@@ -240,6 +275,8 @@ function stripPdfFooterNoiseFragments(rawText) {
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b/gi, " ")
     .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\b/gi, " ")
+    .replace(/\[\s*Page\s*\d{1,3}\s*\]/gi, " ")
+    .replace(/\bPage\s*\d{1,3}\s+Page\s*\d{1,3}\b/gi, " ")
     .replace(/\b\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b(?=\s*(?:$|STRICTLY|CONFIDENTIAL|COPYRIGHT|Integrative|Enneagram|Ben\s*Russell))/gi, " ")
     .replace(/\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)\s*20\d{2}\s*\[\s*ENGLISH\s*\]/gi, " ")
     .replace(/\bSTRICTLY\s*CONFIDENTIAL(?:\s+INDIVIDUAL)?(?:\s+PROFESSIONAL)?(?:\s+Enneagram\s*Report)?\b/gi, " ")
@@ -257,11 +294,13 @@ function stripPdfFooterNoiseFragments(rawText) {
     .replace(
       /\bSTRICTLY\s*CONFIDENTIAL\b[\s\S]{0,220}?\bINDIVIDUAL\b[\s\S]{0,220}?\bPROFESSIONAL\b[\s\S]{0,220}?\bCOPYRIGHT\s*\d{2,4}\s*[-–]\s*\d{2,4}\b/gis,
       " ",
-    );
+    )
+    .replace(/(?:[^\w\s.,;:!?'"()\-–—•●▪◦]{1,2}\s*){8,}/g, " ");
 }
 
 function normalizeExtractedText(rawText) {
   return stripPdfFooterNoiseFragments(rawText)
+    .replace(/\[\s*Page\s*\d{1,3}\s*\]/gi, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/\s+/g, " ")
     .trim();
@@ -271,6 +310,11 @@ function inferTypeFromPdfText(pdfText) {
   const normalized = normalizeExtractedText(pdfText);
   const score = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0 };
   const weightedPatterns = [
+    {
+      regex: /\bM\s*A\s*I\s*N\s*T\s*Y\s*P\s*E\s*(?:#|No\.?|Number)?\s*[:\-]?\s*(?:T\s*Y\s*P\s*E\s*)?([1-9])\b/gi,
+      weight: 28,
+      source: "mainTypeLetterSpaced",
+    },
     {
       regex: /Main\s*Type\s*(?:#|No\.?|Number)?\s*[:\-]?\s*(?:Type\s*)?([1-9])\b/gi,
       weight: 26,
@@ -1490,6 +1534,8 @@ function extractIntegrationFromPdfText(pdfText) {
 function sanitizeSnippet(value, fallback) {
   const wordGapMarker = "\u0000";
   let cleaned = String(value || "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\uFFFD/g, " ")
     .replace(/[ \t\u00A0\u2000-\u200B\u202F\u205F\u3000]{2,}/g, wordGapMarker)
     .replace(/\s+/g, " ")
     // OCR occasionally injects a bogus "C'" token ahead of sentence starts.
@@ -1551,11 +1597,14 @@ function sanitizeSnippet(value, fallback) {
   cleaned = cleaned
     .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b/gi, " ")
     .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\b/gi, " ")
+    .replace(/\[\s*Page\s*\d{1,3}\s*\]/gi, " ")
+    .replace(/\bPage\s*\d{1,3}\s+Page\s*\d{1,3}\b/gi, " ")
     .replace(/\b\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b(?=\s*(?:$|STRICTLY|CONFIDENTIAL|COPYRIGHT|Integrative|Enneagram|Ben\s*Russell))/gi, " ")
     .replace(/\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)\s*20\d{2}\s*\[\s*ENGLISH\s*\]/gi, " ")
     .replace(/\bSTRICTLY\s*CONFIDENTIAL(?:\s+INDIVIDUAL)?(?:\s+PROFESSIONAL)?(?:\s+Enneagram\s*Report)?\b/gi, " ")
     .replace(/\bCopyright\s*\d{2,4}\s*[-–]\s*\d{2,4}\b/gi, " ")
     .replace(/\bIntegrative\s*Enneagram(?:\s*Solutions)?(?:\s*Ben\s*Russell)?\b/gi, " ")
+    .replace(/(?:[^\w\s.,;:!?'"()\-–—•●▪◦]{1,2}\s*){8,}/g, " ")
     .replace(/\u0000/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/([0-9])([A-Za-z])/g, "$1 $2")
@@ -1565,6 +1614,23 @@ function sanitizeSnippet(value, fallback) {
     .trim();
 
   if (!cleaned) return fallback;
+  const normalizedForNoise = String(cleaned || "").replace(/\s+/g, " ").trim();
+  const noiseTokens = normalizedForNoise
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((token) => {
+      const cleanedToken = String(token || "").replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+      if (/[A-Za-z]/.test(cleanedToken)) return false;
+      if (/^\d{1,4}$/.test(cleanedToken)) return false;
+      if (/^[•●▪◦·\-–—.,;:!?'"()]+$/.test(token)) return false;
+      if (/[^A-Za-z0-9.,;:!?'"()\-–—•●▪◦]/.test(token)) return true;
+      return token.length <= 3;
+    });
+  const hasSymbolNoise = noiseTokens.length >= 8 && noiseTokens.length / Math.max(1, normalizedForNoise.split(/\s+/).filter(Boolean).length) >= 0.28;
+  const hasRepeatedPageMarkers = /(?:\bPage\s*\d{1,3}\b\s*){2,}/i.test(normalizedForNoise);
+  if (hasSymbolNoise || hasRepeatedPageMarkers) {
+    return fallback == null ? "" : fallback;
+  }
   return cleaned;
 }
 
@@ -1698,6 +1764,64 @@ function hideAssignedIngestCard() {
   if (card) card.style.display = "none";
 }
 
+function extractPdfPageTextFromItems(items) {
+  const tokens = (Array.isArray(items) ? items : [])
+    .map((item, index) => {
+      const value = String(item?.str || "").trim();
+      if (!value) return null;
+      const transform = Array.isArray(item?.transform) ? item.transform : [];
+      const x = Number(transform?.[4]);
+      const y = Number(transform?.[5]);
+      return {
+        index,
+        text: value,
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0,
+      };
+    })
+    .filter(Boolean);
+
+  if (!tokens.length) return "";
+
+  tokens.sort((left, right) => {
+    const yDelta = right.y - left.y;
+    if (Math.abs(yDelta) > 2.8) return yDelta;
+    if (Math.abs(left.x - right.x) > 1) return left.x - right.x;
+    return left.index - right.index;
+  });
+
+  const lines = [];
+  const lineTolerance = 3.2;
+  let currentLine = [];
+  let currentY = null;
+  tokens.forEach((token) => {
+    if (currentY == null || Math.abs(token.y - currentY) <= lineTolerance) {
+      currentLine.push(token);
+      currentY = currentY == null ? token.y : (currentY + token.y) / 2;
+      return;
+    }
+    lines.push(currentLine.slice());
+    currentLine = [token];
+    currentY = token.y;
+  });
+  if (currentLine.length) lines.push(currentLine.slice());
+
+  return lines
+    .map((line) =>
+      line
+        .sort((left, right) => left.x - right.x || left.index - right.index)
+        .map((token) => token.text)
+        .join(" ")
+        .replace(/\s+([.,;:!?])/g, "$1")
+        .replace(/\(\s+/g, "(")
+        .replace(/\s+\)/g, ")")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter(Boolean)
+    .join("\n");
+}
+
 async function extractPdfTextFromSignedUrl(signedUrl) {
   if (!signedUrl || !window.pdfjsLib) return "";
 
@@ -1718,7 +1842,12 @@ async function extractPdfTextFromSignedUrl(signedUrl) {
   for (let page = 1; page <= pageLimit; page += 1) {
     const pageDoc = await pdfDoc.getPage(page);
     const content = await pageDoc.getTextContent();
-    const pageText = content.items.map(item => item.str).join(" ");
+    const pageText = extractPdfPageTextFromItems(content.items);
+    console.log("[report-ingest] Extracted assigned PDF page text", {
+      page,
+      chars: String(pageText || "").length,
+      itemCount: Array.isArray(content?.items) ? content.items.length : 0,
+    });
     chunks.push(pageText);
   }
 
@@ -5401,7 +5530,7 @@ function extractStrainQualitativeWriteups(pdfText) {
       category,
       nextCategories: categories.slice(index + 1),
     });
-    if (bulletNarrative) {
+    if (bulletNarrative && !isLowQualityStrainNarrative(bulletNarrative, category)) {
       return { category, text: bulletNarrative };
     }
 
@@ -5409,22 +5538,28 @@ function extractStrainQualitativeWriteups(pdfText) {
       `perceived\\s+level\\s+of\\s+${escapeRegex(category)}\\s+strain\\s+is\\s+(LOW|MEDIUM|HIGH)\\.?([\\s\\S]{0,520}?)(?=Ben\\s+your\\s+perceived\\s+level\\s+of\\s+|The\\s+lines\\s+connecting|$)`,
       "i",
     );
-    const levelMatch = normalized.match(levelPattern);
+    const levelMatch = strainBlock.match(levelPattern);
     if (levelMatch) {
       const prefix = `${category} strain is ${String(levelMatch[1] || "").toUpperCase()}.`;
       const detail = cleanPdfExtractedValue(levelMatch[2] || "");
       const combined = cleanPdfExtractedValue(`${prefix} ${detail}`) || prefix;
-      return { category, text: combined };
+      if (!isLowQualityStrainNarrative(combined, category)) {
+        return { category, text: combined };
+      }
     }
 
     const nextLabels = categories.slice(index + 1);
     const nextBoundary = nextLabels.length ? `(?:${nextLabels.map(escapeRegex).join("|")})\\b` : "$";
     const pattern = new RegExp(`${escapeRegex(category)}\\s*[:\\-]?\\s*([\\s\\S]{10,280}?)(?=\\s*${nextBoundary})`, "i");
     const match = strainBlock.match(pattern);
-    const text =
+    const textCandidate =
       cleanPdfExtractedValue(match?.[1] || "") ||
-      extractSnippetFromLabels(pdfText, [category, `${category} Strain`]) ||
-      "Not detected in assigned PDF.";
+      extractSnippetFromLabels(strainBlock, [category, `${category} Strain`]) ||
+      extractSnippetFromLabels(pdfText, [category, `${category} Strain`]);
+    const text =
+      textCandidate && !isLowQualityStrainNarrative(textCandidate, category)
+        ? textCandidate
+        : "Not detected in assigned PDF.";
     return { category, text };
   });
 }
@@ -6238,20 +6373,39 @@ function extractTeamStageSnippet(text, stage, nextStages = []) {
   if (!normalized || !stage) return null;
 
   const boundaryStages = Array.isArray(nextStages) ? nextStages.filter(Boolean) : [];
+  const boundaryStagePattern = boundaryStages.map((value) => buildFlexiblePhrasePattern(value)).join("|");
   const boundaryPattern = boundaryStages.length
-    ? `${boundaryStages.map((value) => buildFlexiblePhrasePattern(value)).join("|")}|coaching\\s*relationship|strategic\\s*leadership|decision\\s*making|$`
+    ? `${boundaryStagePattern}|coaching\\s*relationship|strategic\\s*leadership|decision\\s*making|$`
     : "coaching\\s*relationship|strategic\\s*leadership|decision\\s*making|$";
+  const disallowedStageLead = boundaryStagePattern ? `[-–—\\s]*(?:${boundaryStagePattern})\\b` : "";
+
+  const stripOverviewPreamble = (value) => {
+    let candidate = cleanPdfExtractedValue(value || "");
+    if (!candidate) return null;
+    if (boundaryStages.length) {
+      const escapedBoundary = boundaryStages.map((nextStage) => escapeRegex(nextStage)).join("|");
+      const overviewPattern = new RegExp(
+        `^(?:${escapedBoundary})(?:\\s*[-–—/]\\s*(?:${escapedBoundary})){1,4}\\s*,?\\s*(?:illustrate|illustrates|show|shows|describe|describes|represent|represents)?[^.?!]{0,240}[.?!]?\\s*`,
+        "i",
+      );
+      candidate = candidate.replace(overviewPattern, "").trim();
+    }
+    candidate = candidate
+      .replace(new RegExp(`^${escapeRegex(stage)}\\s*[:\\-]?\\s*`, "i"), "")
+      .trim();
+    return candidate || null;
+  };
 
   const blockPattern = new RegExp(
-    `${buildFlexiblePhrasePattern(stage)}\\s*[:\\-]?\\s*([\\s\\S]{22,840}?)(?=\\s*(?:${boundaryPattern}))`,
+    `${buildFlexiblePhrasePattern(stage)}\\s*[:\\-]?\\s*${disallowedStageLead ? `(?!${disallowedStageLead})` : ""}([\\s\\S]{22,840}?)(?=\\s*(?:${boundaryPattern}))`,
     "i",
   );
   const blockMatch = normalized.match(blockPattern);
-  const direct = cleanPdfExtractedValue(blockMatch?.[1] || "");
+  const direct = stripOverviewPreamble(blockMatch?.[1] || "");
   if (direct) return direct;
 
   const fallback = extractSnippetFromLabels(normalized, [stage]);
-  return cleanPdfExtractedValue(fallback || "") || null;
+  return stripOverviewPreamble(fallback || "") || null;
 }
 
 function getTargetedSections(parsedProfile) {

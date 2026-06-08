@@ -1,0 +1,25 @@
+{
+  "source": "python_extract_report_pdf",
+  "fileName": "iEQ9-Ben-Russell-PRO.pdf",
+  "pageCount": 42,
+  "detectedType": "8",
+  "detectedTypeSource": "deeperUnderstanding",
+  "typeName": "Active Controller",
+  "instinct": "SX \u2014 One-on-One",
+  "integrationLevel": "High",
+  "clientName": "ly Feeling and Thinking. This entails slo",
+  "reportDate": null,
+  "wing": null,
+  "trifix": null,
+  "levelOfDevelopment": null,
+  "centreOfIntelligence": null,
+  "containsMarkers": {
+    "resonanceSentence": true,
+    "mainTypeAsEnnea": true,
+    "instinctSentence": true,
+    "clientName": true,
+    "reportDate": false,
+    "trifix": false,
+    "levelOfDevelopment": false
+  }
+}

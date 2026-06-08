@@ -21,6 +21,10 @@ OCR_MULTI_SPACING = rf"(?:{OCR_WHITESPACE}{{2,}})"
 OCR_WORD_GAP_MARKER = "\u0000"
 
 
+def strip_control_noise_characters(text: str) -> str:
+    return re.sub(r"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uFFFD]", " ", str(text or ""))
+
+
 def collapse_ocr_word_fragments(text: str) -> str:
     source = str(text or "")
 
@@ -56,7 +60,8 @@ def collapse_ocr_word_fragments(text: str) -> str:
 
 
 def normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", collapse_ocr_word_fragments(text)).strip()
+    cleaned = strip_control_noise_characters(text)
+    return re.sub(r"\s+", " ", collapse_ocr_word_fragments(cleaned)).strip()
 
 
 def clean_metadata_value(value: str | None) -> str | None:
@@ -64,12 +69,15 @@ def clean_metadata_value(value: str | None) -> str | None:
         return None
     cleaned = normalize(value)
     cleaned = re.sub(r"^[\s:=\-–—,]+", "", cleaned).strip()
+    cleaned = re.sub(r"\[\s*Page\s*\d{1,3}\s*\]", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\bPage\s*\d{1,3}(?:\s*(?:of|/)\s*\d{1,3})?\b", " ", cleaned, flags=re.I)
     cleaned = re.sub(
         r"\s*(?:Main\s*Type|MainType|Type\s*Profile|TypeProfile|Report\s*Date|ReportDate|Date\s*of\s*Report|DateofReport|Trifix|Level\s*of\s*Development|LevelofDevelopment|Wing|Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence)\b.*$",
         "",
         cleaned,
         flags=re.I,
     ).strip()
+    cleaned = normalize(cleaned)
     cleaned = re.sub(r"(?<=\d)\s*(?:[/.\-])\s*(?=\d)", lambda m: str(m.group(0)).strip().replace(" ", ""), cleaned)
     cleaned = re.sub(r"(?<=\d)\s+(?=\d)", "", cleaned)
     lowered = cleaned.lower()
@@ -78,6 +86,29 @@ def clean_metadata_value(value: str | None) -> str | None:
     if "copyright" in lowered:
         return None
     return cleaned or None
+
+
+def clean_client_name(value: str | None) -> str | None:
+    cleaned = clean_metadata_value(value)
+    if not cleaned:
+        return None
+    if len(cleaned) > 60:
+        return None
+    words = [token for token in re.split(r"\s+", cleaned) if token]
+    if len(words) == 0 or len(words) > 4:
+        return None
+    if re.search(r"[.!?/:;@#\d]", cleaned):
+        return None
+    lowered = cleaned.lower()
+    if re.search(
+        r"\b(feeling|thinking|strain|integration|ennea|type|level|report|center|centre|intelligence|copyright|page)\b",
+        lowered,
+        flags=re.I,
+    ):
+        return None
+    if not re.search(r"[A-Za-z]{2,}", cleaned):
+        return None
+    return cleaned
 
 
 def normalize_type_number(value: str | None) -> str | None:
@@ -90,6 +121,12 @@ def normalize_type_number(value: str | None) -> str | None:
 def extract_type(text: str) -> tuple[str | None, str]:
     score = {str(i): 0 for i in range(1, 10)}
     patterns = [
+        (
+            r"\bM\s*A\s*I\s*N\s*T\s*Y\s*P\s*E\s*(?:#|No\.?|Number)?\s*[:\-]?\s*(?:T\s*Y\s*P\s*E\s*)?([1-9])\b",
+            28,
+            "mainTypeLetterSpaced",
+            1,
+        ),
         (r"Main\s*Type\s*(?:#|No\.?|Number)?\s*[:\-]?\s*(?:Type\s*)?([1-9])\b", 26, "mainTypeHash", 1),
         (r"Main\s*Type\s*[:\-]?\s*Type\s*([1-9])\b", 24, "mainType", 1),
         (r"\bMain\s*Type\b[^0-9]{0,24}([1-9])\b", 18, "mainTypeLoose", 1),
@@ -236,12 +273,14 @@ def main() -> int:
         type_name = re.sub(r"([a-z])([A-Z])", r"\1 \2", type_name)
         type_name = cleanup_type_name(type_name)
 
-    client_name = extract_first(
+    client_name = clean_client_name(
+        extract_first(
         text,
         [
             r"\bClient\s*Name\s*[:\-]?\s*([^:]{2,80}?)(?=\s*(?:Report\s*Date|ReportDate|Date\s*of\s*Report|DateofReport|Main\s*Type|MainType|Trifix|Level\s*of\s*Development|LevelofDevelopment|Wing|Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence|$))",
             r"\bName\s*[:\-]?\s*([^:]{2,80}?)(?=\s*(?:Report\s*Date|ReportDate|Main\s*Type|MainType|Trifix|Level\s*of\s*Development|LevelofDevelopment|Wing|Center\s*of\s*Intelligence|CenterofIntelligence|Centre\s*of\s*Intelligence|CentreofIntelligence|$))",
         ],
+        )
     )
     report_date = extract_first(
         text,
