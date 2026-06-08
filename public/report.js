@@ -321,6 +321,24 @@ function inferTypeFromPdfText(pdfText) {
   return { type: winningType, confidence, source: strongestSource || "scoredPdfText" };
 }
 
+function typeConfidenceRank(confidence) {
+  const normalized = String(confidence || "").toLowerCase();
+  if (normalized === "high") return 3;
+  if (normalized === "medium") return 2;
+  if (normalized === "low") return 1;
+  return 0;
+}
+
+function selectPreferredTypeDetectionResult(results) {
+  const candidates = Array.isArray(results)
+    ? results.filter((entry) => entry && typeof entry === "object" && entry.type)
+    : [];
+  if (!candidates.length) return { type: null, confidence: "none", source: "none" };
+
+  candidates.sort((a, b) => typeConfidenceRank(b.confidence) - typeConfidenceRank(a.confidence));
+  return candidates[0];
+}
+
 function extractTypeNameFromPdfText(pdfText, detectedType) {
   const normalized = normalizeExtractedText(pdfText);
   const typeHint = detectedType ? String(detectedType) : "[1-9]";
@@ -1493,7 +1511,22 @@ async function ingestAssignedReportIntoDashboard(data) {
     }
 
     if (!detectedType || !basicFear || !basicDesire || !passion || !instinct || !hasInformativeScoreMap(profileScores, 3)) {
-      const detectedTypeResult = inferTypeFromPdfText(pdfText);
+      const detectedTypeResult = selectPreferredTypeDetectionResult([
+        (() => {
+          const pdfCandidate = inferTypeFromPdfText(pdfText);
+          return {
+            ...pdfCandidate,
+            source: pdfCandidate?.source ? `pdfText:${pdfCandidate.source}` : "pdfText:none",
+          };
+        })(),
+        (() => {
+          const contentCandidate = inferTypeFromPdfText(reportContentText);
+          return {
+            ...contentCandidate,
+            source: contentCandidate?.source ? `reportContent:${contentCandidate.source}` : "reportContent:none",
+          };
+        })(),
+      ]);
       const shouldOverrideTypeFromPdf =
         Boolean(detectedTypeResult?.type) &&
         (detectedTypeResult.confidence === "high" ||

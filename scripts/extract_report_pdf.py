@@ -15,8 +15,31 @@ from pathlib import Path
 from PyPDF2 import PdfReader
 
 
+OCR_INLINE_SPACING = r"(?:[ \t\u00A0\u2000-\u200B\u202F\u205F\u3000]+)"
+
+
+def collapse_ocr_word_fragments(text: str) -> str:
+    source = str(text or "")
+
+    # Repair OCR splits like "M A I N  T Y P E" -> "MAIN TYPE" and "S X" -> "SX".
+    source = re.sub(
+        rf"\b(?:[A-Za-z]{OCR_INLINE_SPACING}){{2,}}[A-Za-z]\b",
+        lambda match: re.sub(OCR_INLINE_SPACING, "", match.group(0)),
+        source,
+    )
+
+    # Repair OCR splits like "2 0 2 6" -> "2026".
+    source = re.sub(
+        rf"\b(?:\d{OCR_INLINE_SPACING}){{2,}}\d\b",
+        lambda match: re.sub(OCR_INLINE_SPACING, "", match.group(0)),
+        source,
+    )
+
+    return source
+
+
 def normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", text or "").strip()
+    return re.sub(r"\s+", " ", collapse_ocr_word_fragments(text)).strip()
 
 
 def clean_metadata_value(value: str | None) -> str | None:
@@ -48,12 +71,14 @@ def normalize_type_number(value: str | None) -> str | None:
 def extract_type(text: str) -> tuple[str | None, str]:
     score = {str(i): 0 for i in range(1, 10)}
     patterns = [
+        (r"Main\s*Type\s*(?:#|No\.?|Number)?\s*[:\-]?\s*(?:Type\s*)?([1-9])\b", 26, "mainTypeHash", 1),
         (r"Main\s*Type\s*[:\-]?\s*Type\s*([1-9])\b", 24, "mainType", 1),
         (r"\bMain\s*Type\b[^0-9]{0,24}([1-9])\b", 18, "mainTypeLoose", 1),
         (r"\bA\s+deeper\s+understanding\s+of\s+the\s+(?:SX|SO|SP)\s*[—-]\s*([1-9])\b", 22, "deeperUnderstanding", 1),
         (r"you\s+resonate\s+with\s+the\s+Enneagram\s+type\s*([1-9])\b", 16, "resonanceSentence", 1),
         (r"main\s+type\s+as\s+an\s+Ennea\s*([1-9])\b", 14, "mainTypeAsEnnea", 1),
         (r"type\s*([1-9])\s+which\s+is\s+also\s+known\s+as", 12, "typeKnownAs", 1),
+        (r"Your\s*Type\s*[:\-#]?\s*([1-9])\b", 12, "yourType", 1),
         (r"\bType\s*([1-9])\s*[·•|]\s*(?:SX|SO|SP)\b", 10, "typeWithInstinctTag", 1),
         (r"Enneagram\s+type\s*([1-9])\b", 10, "enneagramType", 1),
         (r"\bEnnea\s*([1-9])\b", 3, "ennea", 1),
