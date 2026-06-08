@@ -271,7 +271,18 @@ function inferTypeFromPdfText(pdfText) {
   const normalized = normalizeExtractedText(pdfText);
   const score = { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0 };
   const weightedPatterns = [
-    { regex: /Main\s*Type\s*[:\-]?\s*Type\s*([1-9])\b/gi, weight: 18, source: "mainType" },
+    {
+      regex: /Main\s*Type\s*(?:#|No\.?|Number)?\s*[:\-]?\s*(?:Type\s*)?([1-9])\b/gi,
+      weight: 26,
+      source: "mainTypeHash",
+    },
+    { regex: /Main\s*Type\s*[:\-]?\s*Type\s*([1-9])\b/gi, weight: 24, source: "mainType" },
+    { regex: /\bMain\s*Type\b[^0-9]{0,24}([1-9])\b/gi, weight: 18, source: "mainTypeLoose" },
+    {
+      regex: /\bA\s+deeper\s+understanding\s+of\s+the\s+(?:SX|SO|SP)\s*[—-]\s*([1-9])\b/gi,
+      weight: 22,
+      source: "deeperUnderstanding",
+    },
     {
       regex: /you\s+resonate\s+with\s+the\s+Enneagram\s+type\s*([1-9])\b/gi,
       weight: 16,
@@ -282,9 +293,10 @@ function inferTypeFromPdfText(pdfText) {
       weight: 14,
       source: "mainTypeAsEnnea",
     },
+    { regex: /type\s*([1-9])\s+which\s+is\s+also\s+known\s+as/gi, weight: 12, source: "typeKnownAs" },
+    { regex: /Your\s*Type\s*[:\-#]?\s*([1-9])\b/gi, weight: 12, source: "yourType" },
+    { regex: /\bType\s*([1-9])\s*[·•|]\s*(?:SX|SO|SP)\b/gi, weight: 10, source: "typeWithInstinctTag" },
     { regex: /Enneagram\s+type\s*([1-9])\b/gi, weight: 10, source: "enneagramType" },
-    { regex: /type\s*([1-9])\s+which\s+is\s+also\s+known\s+as/gi, weight: 10, source: "typeKnownAs" },
-    { regex: /Your\s*Type\s*[:\-]?\s*([1-9])\b/gi, weight: 8, source: "yourType" },
     { regex: /\bTYPE\s*([1-9])\s*(?:\||[—-])/gi, weight: 6, source: "headerType" },
     { regex: /\bEnnea\s*([1-9])\b/gi, weight: 3, source: "ennea" },
     { regex: /Type\s*([1-9])\b/gi, weight: 1, source: "genericType" },
@@ -293,6 +305,7 @@ function inferTypeFromPdfText(pdfText) {
   let strongestSource = "none";
   let strongestWeight = 0;
   const blacklistedContext = /(all\s+9\s+types?|9\s+Enneagram\s+styles?)/i;
+  const scoreTableContext = /(type\s*1\b.*type\s*2\b.*type\s*3\b)|(type\s*7\b.*type\s*8\b.*type\s*9\b)/i;
 
   for (const entry of weightedPatterns) {
     let match;
@@ -303,6 +316,7 @@ function inferTypeFromPdfText(pdfText) {
       const contextEnd = Math.min(normalized.length, match.index + 54);
       const contextWindow = normalized.slice(contextStart, contextEnd);
       if (blacklistedContext.test(contextWindow)) continue;
+      if (scoreTableContext.test(contextWindow)) continue;
       score[type] += entry.weight;
       if (entry.weight > strongestWeight) {
         strongestWeight = entry.weight;
@@ -351,6 +365,7 @@ function extractTypeNameFromPdfText(pdfText, detectedType) {
   const typeHint = detectedType ? String(detectedType) : "[1-9]";
   const patterns = [
     new RegExp(`you\\s+resonate\\s+with\\s+the\\s+Enneagram\\s+type\\s*${typeHint}\\s+which\\s+is\\s+also\\s+known\\s+as\\s*the\\s*([A-Za-z][A-Za-z\\s-]{2,40})`, "i"),
+    new RegExp(`Main\\s*Type\\s*(?:#|No\\.?|Number)?\\s*[:\\-]?\\s*(?:Type\\s*)?${typeHint}\\s*[—-]\\s*([^\\.;\\n]{3,80})`, "i"),
     new RegExp(`Main\\s*Type\\s*[:\\-]?\\s*Type\\s*${typeHint}\\s*[—-]\\s*([^\\.;\\n]{3,80})`, "i"),
     new RegExp(`Type\\s*${typeHint}\\s*[—-]\\s*([^\\.;\\n]{3,80})`, "i"),
     new RegExp(`([A-Z][A-Z\\s]{6,40})\\s+[^\\n]{0,120}Enneagram\\s+type\\s*${typeHint}\\b`, "i"),
@@ -3251,6 +3266,7 @@ function decorateInterfaceIcons() {
     'Delegation': 'users',
     'Decision Making': 'leadership',
     'Type Communication Pattern': 'communication',
+    'Communication Pattern': 'communication',
     'Verbal & Written Communication': 'communication',
     'Listening': 'users',
     'Giving & Receiving Feedback': 'pulse',
@@ -7831,7 +7847,7 @@ function renderReportFromState(isExampleMode) {
     const isAssignedPdfSummary = /assigned\s+pdf\s+summary/i.test(String(REPORT.deepTitle || ""));
     deepSummaryCard.style.display = isAssignedPdfSummary ? "none" : "block";
   }
-  document.getElementById('languageTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('communication', 12, 'var(--blue)')}</span></span>Type ${REPORT.typeNumber} Communication Pattern`;
+  document.getElementById('languageTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('communication', 12, 'var(--blue)')}</span></span>Type ${REPORT.typeNumber} Communication Style`;
   setText('languageMeta', REPORT.meta);
   setText('refTypeTag', `Type ${REPORT.typeNumber} · ${String(REPORT.instinct || "").split(' — ')[0]}`);
   renderAdaptiveSectionCopy(REPORT);
