@@ -1636,6 +1636,165 @@ function sanitizeSnippet(value, fallback) {
   // Repair frequent OCR fragment "G i s" -> "G is".
   cleaned = cleaned.replace(/\b([A-Za-z])\s+i\s+s\b/g, "$1 is");
 
+  const wordBoundaryLexicon =
+    sanitizeSnippet.__wordBoundaryLexicon ||
+    (sanitizeSnippet.__wordBoundaryLexicon = new Set([
+      "a", "about", "action", "active", "adaptability", "alignment", "aliveness", "ambiguous", "am", "an", "and", "anxiety",
+      "are", "as", "assertive", "at", "attention", "authenticity", "awareness",
+      "balance", "balanced", "be", "because", "been", "being", "belonging", "best", "blind", "body", "boundaries", "breakdown",
+      "by",
+      "calm", "can", "care", "center", "centered", "centre", "challenge", "charisma", "clarity", "close", "coaching", "collaboration",
+      "collaborative", "communication", "compassion", "conflict", "connection", "control", "cope", "core", "courage", "creative",
+      "creativity",
+      "decision", "decisive", "depth", "development", "did", "difficult", "direction", "discipline", "do", "does", "drain", "drive",
+      "driven", "dynamic", "dynamics",
+      "emotional", "empathy", "encouraging", "energy", "enneagram", "environment", "environmental", "example", "expression",
+      "failure", "fear", "feeling", "field", "focus", "for", "forming", "framework", "free", "from",
+      "gifts", "go", "goal", "goals", "good", "grounded", "growth", "guidance",
+      "happen", "happiness", "hard", "has", "have", "he", "heart", "help", "helper", "her", "high", "him", "his", "how",
+      "i", "if", "impact", "in", "influence", "insight", "instinct", "integration", "intelligence", "interdependence", "interpersonal",
+      "into", "is", "it", "its",
+      "just", "justice",
+      "kind", "know",
+      "leadership", "level", "life", "line", "low",
+      "make", "main", "may", "me", "medium", "meta", "moderate", "moment", "momentum", "more", "most", "motivation", "my",
+      "need", "needs", "no", "norming", "not",
+      "of", "on", "one", "only", "or", "our", "out", "overall", "own",
+      "pace", "pattern", "patterns", "people", "performing", "personal", "physical", "place", "point", "points", "possession", "power",
+      "pressure", "profile", "protective",
+      "quality",
+      "reactive", "reflection", "regulation", "relationship", "relationships", "release", "reliable", "report", "results", "risk", "role",
+      "self", "selftalk", "so", "social", "solutions", "some", "stage", "stages", "steady", "strategic", "strength", "strengths",
+      "stretch", "strong", "style", "subtype", "support", "survive",
+      "take", "team", "than", "that", "the", "their", "them", "then", "there", "these", "they", "things", "this", "those", "thinking",
+      "through", "to", "tough", "trait", "traits", "trigger", "triggers", "true", "type", "types",
+      "under", "understanding", "unjust", "up", "us",
+      "vice", "vices", "vocational", "vulnerability",
+      "we", "weakness", "wellbeing", "what", "when", "which", "who", "with", "without", "wing", "world", "worldview",
+      "you", "your", "yourself", "myself", "ourselves", "themselves", "himself", "herself", "itself",
+    ]));
+
+  function toLexiconSegments(token, options = {}) {
+    const sourceToken = String(token || "");
+    if (!/^[A-Za-z]+$/.test(sourceToken)) return null;
+    const lowerToken = sourceToken.toLowerCase();
+    if (wordBoundaryLexicon.has(lowerToken)) return null;
+    const tokenLength = lowerToken.length;
+    const fromMergedWords = Boolean(options.fromMergedWords);
+    if (!fromMergedWords && tokenLength < 6) return null;
+    const allowShortStarter = /^(a|i)[a-z]{4,}$/.test(lowerToken);
+    if (!fromMergedWords && tokenLength < 9 && !allowShortStarter) return null;
+
+    const maxPieceLength = Math.min(20, tokenLength);
+    const dp = Array(tokenLength + 1).fill(null);
+    dp[0] = [];
+    for (let index = 0; index < tokenLength; index += 1) {
+      const existing = dp[index];
+      if (!existing) continue;
+      for (let end = index + 1; end <= Math.min(tokenLength, index + maxPieceLength); end += 1) {
+        const piece = lowerToken.slice(index, end);
+        if (!wordBoundaryLexicon.has(piece)) continue;
+        if (piece.length === 1 && piece !== "a" && piece !== "i") continue;
+        const candidate = existing.concat(piece);
+        const current = dp[end];
+        if (!current || candidate.length < current.length) {
+          dp[end] = candidate;
+          continue;
+        }
+        if (candidate.length === current.length) {
+          const candidateLongPieces = candidate.filter((part) => part.length >= 4).length;
+          const currentLongPieces = current.filter((part) => part.length >= 4).length;
+          if (candidateLongPieces > currentLongPieces) {
+            dp[end] = candidate;
+          }
+        }
+      }
+    }
+
+    const parts = dp[tokenLength];
+    if (!parts || parts.length < 2) return null;
+    if (!parts.some((part) => part.length >= 4)) return null;
+    if (!fromMergedWords && tokenLength < 9) {
+      if (!(parts.length === 2 && (parts[0] === "a" || parts[0] === "i") && parts[1].length >= 4)) {
+        return null;
+      }
+    }
+    if (parts.some((part) => part.length === 1 && part !== "a" && part !== "i")) {
+      return null;
+    }
+    return parts.join(" ");
+  }
+
+  function applyCasingFromSource(sourceToken, segmentedValue) {
+    const normalized = String(segmentedValue || "").toLowerCase();
+    if (!normalized) return sourceToken;
+    if (/^[A-Z]+$/.test(sourceToken)) return normalized.toUpperCase();
+    if (/^[A-Z][a-z]+$/.test(sourceToken)) {
+      return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+    }
+    if (/^[A-Z]/.test(sourceToken) && sourceToken.slice(1) === sourceToken.slice(1).toLowerCase()) {
+      return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+    }
+    return normalized;
+  }
+
+  function repairWordBoundaryGaps(value) {
+    const parts = String(value || "").match(/[A-Za-z]+|[^A-Za-z]+/g) || [];
+    const repaired = [];
+    let cursor = 0;
+
+    while (cursor < parts.length) {
+      const current = parts[cursor];
+      if (!/^[A-Za-z]+$/.test(current)) {
+        repaired.push(current);
+        cursor += 1;
+        continue;
+      }
+
+      let mergedApplied = false;
+      for (let windowSize = 4; windowSize >= 2; windowSize -= 1) {
+        let endIndex = cursor;
+        const words = [current];
+        let validWindow = true;
+        for (let offset = 1; offset < windowSize; offset += 1) {
+          const separator = parts[endIndex + 1];
+          const nextWord = parts[endIndex + 2];
+          if (separator !== " " || !/^[A-Za-z]+$/.test(nextWord || "")) {
+            validWindow = false;
+            break;
+          }
+          words.push(nextWord);
+          endIndex += 2;
+        }
+        if (!validWindow) continue;
+        const joined = words.join("");
+        const unknownWordCount = words.filter((word) => !wordBoundaryLexicon.has(String(word || "").toLowerCase())).length;
+        if (!unknownWordCount) continue;
+        const hasSuspiciousSplit = words.some((word) => word.length <= 2) || joined.length >= 16;
+        if (!hasSuspiciousSplit) continue;
+        const merged = toLexiconSegments(joined, { fromMergedWords: true });
+        if (!merged) continue;
+        repaired.push(applyCasingFromSource(joined, merged));
+        cursor = endIndex + 1;
+        mergedApplied = true;
+        break;
+      }
+      if (mergedApplied) continue;
+
+      const singleTokenRepair = toLexiconSegments(current, { fromMergedWords: false });
+      if (singleTokenRepair) {
+        repaired.push(applyCasingFromSource(current, singleTokenRepair));
+      } else {
+        repaired.push(current);
+      }
+      cursor += 1;
+    }
+
+    return repaired.join("");
+  }
+
+  cleaned = repairWordBoundaryGaps(cleaned);
+
   cleaned = cleaned
     .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b/gi, " ")
     .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\b/gi, " ")

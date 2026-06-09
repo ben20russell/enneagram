@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -590,7 +591,7 @@ export default function AdminImportForm() {
         console.log("[admin-import-page] Server parse attempts failed; trying PDF parse fallback", {
           reportId: normalizedReportId,
           sourceFileName: fallbackSourcePdf.name,
-          sourceFileSize: fallbackSourcePdf.size,
+          sourceFileSize: fallbackSourXTcePdf.size,
           sourceFileType: fallbackSourcePdf.type,
         });
 
@@ -1110,6 +1111,22 @@ export default function AdminImportForm() {
       <p data-testid="admin-import-description" style={{ color: "#475569", marginTop: "8px" }}>
         Use this hidden page to upload a PDF report and assign it to a specific user email.
       </p>
+      <Link
+        data-testid="admin-import-review-link"
+        href="/admin-review"
+        onClick={() => {
+          console.log("[admin-import-page] Admin review link clicked");
+        }}
+        style={{
+          display: "inline-block",
+          marginTop: "10px",
+          color: "#0a66d8",
+          fontWeight: 600,
+          textDecoration: "underline",
+        }}
+      >
+        Open Admin Review
+      </Link>
       {missingPublicEnvVars.length ? (
         <p
           data-testid="admin-import-env-status"
