@@ -10,9 +10,55 @@ import {
 } from "../../../lib/mlScoreLearning";
 import { resolveMinExpectedPagesByReportType } from "../../../lib/reportTypePageThresholds";
 
+const TYPE_SCORE_KEYS = [
+  "type1",
+  "type2",
+  "type3",
+  "type4",
+  "type5",
+  "type6",
+  "type7",
+  "type8",
+  "type9",
+];
+
 function countNonNull(obj) {
   if (!obj || typeof obj !== "object") return 0;
   return Object.values(obj).filter((v) => v != null).length;
+}
+
+function normalizeTypeNumber(value) {
+  if (value == null) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    const floored = Math.floor(numeric);
+    if (floored >= 1 && floored <= 9) return floored;
+  }
+  const match = String(value).match(/[1-9]/);
+  return match?.[0] ? Number(match[0]) : null;
+}
+
+function resolvePrimaryTypeFromTypeScores(typeScores, fallbackPrimaryType = null) {
+  const fallback = normalizeTypeNumber(fallbackPrimaryType);
+  if (!typeScores || typeof typeScores !== "object") {
+    return fallback != null ? String(fallback) : null;
+  }
+
+  let bestType = fallback;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  TYPE_SCORE_KEYS.forEach((key) => {
+    const score = Number(typeScores?.[key]);
+    if (!Number.isFinite(score)) return;
+    const typeNumber = normalizeTypeNumber(key);
+    if (typeNumber == null) return;
+    if (score > bestScore) {
+      bestScore = score;
+      bestType = typeNumber;
+    }
+  });
+
+  return bestType != null ? String(bestType) : null;
 }
 
 function toScore(value) {
@@ -176,7 +222,7 @@ export async function POST(req) {
   const supabase = getSupabaseAdmin();
   const { data: row, error: fetchErr } = await supabase
     .from(table)
-    .select("id,results_data,report_pdf")
+    .select("id,enneagram_type,results_data,report_pdf")
     .eq("id", reportId)
     .maybeSingle();
 
@@ -191,7 +237,15 @@ export async function POST(req) {
   const profile = results?.parsedProfile && typeof results.parsedProfile === "object" ? results.parsedProfile : {};
   const scoreUpdates = normalizeScores(body?.scores || {});
   const nextProfile = mergeScores(profile, scoreUpdates);
-  const normalizedGroundTruthScores = normalizeScorePayload(nextProfile);
+  const resolvedPrimaryType = resolvePrimaryTypeFromTypeScores(
+    nextProfile?.typeScores,
+    nextProfile?.primaryType || row?.enneagram_type || results?.dashboardContext?.detectedType || null,
+  );
+  const nextProfileWithResolvedType = {
+    ...nextProfile,
+    primaryType: resolvedPrimaryType || nextProfile?.primaryType || null,
+  };
+  const normalizedGroundTruthScores = normalizeScorePayload(nextProfileWithResolvedType);
   const parserVsGroundTruth = buildScoreComparisonMetrics({
     candidateScores: normalizeScorePayload(profile),
     groundTruthScores: normalizedGroundTruthScores,
@@ -223,9 +277,9 @@ export async function POST(req) {
       : null,
   };
 
-  const typeNonNull = countNonNull(nextProfile?.typeScores);
-  const instinctNonNull = countNonNull(nextProfile?.instinctScores);
-  const centerNonNull = countNonNull(nextProfile?.centerScores);
+  const typeNonNull = countNonNull(nextProfileWithResolvedType?.typeScores);
+  const instinctNonNull = countNonNull(nextProfileWithResolvedType?.instinctScores);
+  const centerNonNull = countNonNull(nextProfileWithResolvedType?.centerScores);
   const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
   const diagnostics = results?.ingestion?.parseDiagnostics || {};
   const fileName =
@@ -247,7 +301,14 @@ export async function POST(req) {
 
   const nextResults = {
     ...results,
-    parsedProfile: nextProfile,
+    parsedProfile: nextProfileWithResolvedType,
+    dashboardContext: {
+      ...(results?.dashboardContext || {}),
+      detectedType: resolvedPrimaryType || results?.dashboardContext?.detectedType || null,
+      detectedTypeSource: resolvedPrimaryType
+        ? "admin-review:graded-type-scores"
+        : (results?.dashboardContext?.detectedTypeSource || null),
+    },
     review: {
       ...(results?.review || {}),
       status: parseComplete ? "approved" : "needs_review",
@@ -265,6 +326,13 @@ export async function POST(req) {
         incompleteReason: parseComplete
           ? null
           : incompleteReason,
+        verification: {
+          ...(diagnostics?.verification || {}),
+          resolvedFields: {
+            ...(diagnostics?.verification?.resolvedFields || {}),
+            primaryType: resolvedPrimaryType || diagnostics?.verification?.resolvedFields?.primaryType || null,
+          },
+        },
         extraction: {
           ...(diagnostics?.extraction || {}),
           pages: pageCount,
@@ -297,7 +365,10 @@ export async function POST(req) {
 
   const { error: updateErr } = await supabase
     .from(table)
-    .update({ results_data: nextResults })
+    .update({
+      results_data: nextResults,
+      enneagram_type: resolvedPrimaryType || row?.enneagram_type || null,
+    })
     .eq("id", reportId);
 
   if (updateErr) {
@@ -307,6 +378,7 @@ export async function POST(req) {
   console.log("[admin-review] Saved review with ML feedback snapshot", {
     reportId,
     reviewedBy: admin.email,
+    resolvedPrimaryType,
     parseComplete,
     parserMae: mlEvaluation?.parserVsGroundTruth?.meanAbsoluteError ?? null,
     modelMae: mlEvaluation?.modelVsGroundTruth?.meanAbsoluteError ?? null,
@@ -319,6 +391,7 @@ export async function POST(req) {
       reportId,
       reviewStatus: nextResults.review.status,
       ingestionStatus: nextResults.ingestion.status,
+      enneagramType: resolvedPrimaryType || row?.enneagram_type || null,
       mlEvaluation,
       scoreCoverage: {
         typeNonNull,
