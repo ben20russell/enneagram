@@ -2,29 +2,29 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+const TYPE_KEYS = [
+  "type1",
+  "type2",
+  "type3",
+  "type4",
+  "type5",
+  "type6",
+  "type7",
+  "type8",
+  "type9",
+];
+const INSTINCT_KEYS = ["selfPreservation", "sexual", "social"];
+const CENTER_KEYS = ["head", "heart", "body"];
+
+function emptyGroup(keys) {
+  return Object.fromEntries(keys.map((key) => [key, ""]));
+}
+
 function emptyScores() {
   return {
-    typeScores: {
-      type1: "",
-      type2: "",
-      type3: "",
-      type4: "",
-      type5: "",
-      type6: "",
-      type7: "",
-      type8: "",
-      type9: "",
-    },
-    instinctScores: {
-      selfPreservation: "",
-      sexual: "",
-      social: "",
-    },
-    centerScores: {
-      head: "",
-      heart: "",
-      body: "",
-    },
+    typeScores: emptyGroup(TYPE_KEYS),
+    instinctScores: emptyGroup(INSTINCT_KEYS),
+    centerScores: emptyGroup(CENTER_KEYS),
   };
 }
 
@@ -42,6 +42,20 @@ function formatMetric(value, digits = 2) {
   return numeric.toFixed(digits);
 }
 
+function resolveHighestScoreKey(values, keys) {
+  let winningKey = "";
+  let winningValue = Number.NEGATIVE_INFINITY;
+  keys.forEach((key) => {
+    const currentValue = Number(values?.[key]);
+    if (!Number.isFinite(currentValue)) return;
+    if (currentValue > winningValue) {
+      winningValue = currentValue;
+      winningKey = key;
+    }
+  });
+  return winningKey;
+}
+
 export default function AdminReviewPanel() {
   const [queue, setQueue] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,6 +64,9 @@ export default function AdminReviewPanel() {
   const [selectedId, setSelectedId] = useState("");
   const [notes, setNotes] = useState("");
   const [scores, setScores] = useState(emptyScores());
+  const [primaryTypePreset, setPrimaryTypePreset] = useState("");
+  const [dominantInstinctPreset, setDominantInstinctPreset] = useState("");
+  const [dominantCenterPreset, setDominantCenterPreset] = useState("");
 
   async function loadQueue() {
     setIsLoading(true);
@@ -94,19 +111,25 @@ export default function AdminReviewPanel() {
   useEffect(() => {
     if (!selected) return;
     const next = emptyScores();
-    Object.keys(next.typeScores).forEach((k) => {
+    TYPE_KEYS.forEach((k) => {
       const value = selected?.typeScores?.[k];
       next.typeScores[k] = value == null ? "" : String(value);
     });
-    Object.keys(next.instinctScores).forEach((k) => {
+    INSTINCT_KEYS.forEach((k) => {
       const value = selected?.instinctScores?.[k];
       next.instinctScores[k] = value == null ? "" : String(value);
     });
-    Object.keys(next.centerScores).forEach((k) => {
+    CENTER_KEYS.forEach((k) => {
       const value = selected?.centerScores?.[k];
       next.centerScores[k] = value == null ? "" : String(value);
     });
+    const strongestType = resolveHighestScoreKey(next.typeScores, TYPE_KEYS);
+    const strongestInstinct = resolveHighestScoreKey(next.instinctScores, INSTINCT_KEYS);
+    const strongestCenter = resolveHighestScoreKey(next.centerScores, CENTER_KEYS);
     setScores(next);
+    setPrimaryTypePreset(strongestType ? strongestType.replace("type", "") : "");
+    setDominantInstinctPreset(strongestInstinct || "");
+    setDominantCenterPreset(strongestCenter || "");
     setNotes("");
   }, [selected?.id]);
 
@@ -118,6 +141,39 @@ export default function AdminReviewPanel() {
         [key]: value,
       },
     }));
+  }
+
+  function applyPrimaryTypePreset() {
+    if (!primaryTypePreset) {
+      setStatus("Pick a primary type before applying preset values.");
+      return;
+    }
+
+    const targetKey = `type${primaryTypePreset}`;
+    setScores((prev) => ({
+      ...prev,
+      typeScores: Object.fromEntries(
+        TYPE_KEYS.map((key) => [key, key === targetKey ? "100" : "0"]),
+      ),
+    }));
+    setStatus(`Applied primary type preset: Type ${primaryTypePreset} = 100, others = 0.`);
+    console.log("[admin-review] Applied primary type preset", { selectedId, primaryTypePreset });
+  }
+
+  function applyDominantPreset(group, dominantKey, keys) {
+    if (!dominantKey) {
+      setStatus("Pick a dominant option before applying preset values.");
+      return;
+    }
+
+    setScores((prev) => ({
+      ...prev,
+      [group]: Object.fromEntries(
+        keys.map((key) => [key, key === dominantKey ? "100" : "0"]),
+      ),
+    }));
+    setStatus(`Applied dominant preset for ${group}.`);
+    console.log("[admin-review] Applied dominant preset", { selectedId, group, dominantKey });
   }
 
   async function submitReview() {
@@ -215,8 +271,93 @@ export default function AdminReviewPanel() {
             Pending fields: {(selected.pendingFields || []).join(", ") || "none"}
           </p>
 
+          <section
+            data-testid="admin-review-guidance"
+            style={{ padding: "12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#f8fafc", display: "grid", gap: "6px" }}
+          >
+            <strong>Quick Labeling Rules</strong>
+            <span>Primary type: set one type to 100 and all others to 0.</span>
+            <span>Dominant instinct: set one to 100 and the others to 0.</span>
+            <span>Dominant center: set one to 100 and the others to 0.</span>
+            <span>Use whole numbers in the 0-100 range.</span>
+          </section>
+
+          <section data-testid="admin-review-preset-controls" style={{ display: "grid", gap: "10px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "8px", alignItems: "end" }}>
+              <label style={{ display: "grid", gap: "4px" }}>
+                <span>Primary Type Preset</span>
+                <select
+                  data-testid="admin-review-primary-type-select"
+                  value={primaryTypePreset}
+                  onChange={(event) => setPrimaryTypePreset(event.target.value)}
+                >
+                  <option value="">Select primary type</option>
+                  {TYPE_KEYS.map((typeKey) => {
+                    const typeLabel = typeKey.replace("type", "");
+                    return (
+                      <option key={typeKey} value={typeLabel}>
+                        Type {typeLabel}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+              <button data-testid="admin-review-primary-type-apply" onClick={applyPrimaryTypePreset}>
+                Apply Type Preset
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "8px", alignItems: "end" }}>
+              <label style={{ display: "grid", gap: "4px" }}>
+                <span>Dominant Instinct Preset</span>
+                <select
+                  data-testid="admin-review-dominant-instinct-select"
+                  value={dominantInstinctPreset}
+                  onChange={(event) => setDominantInstinctPreset(event.target.value)}
+                >
+                  <option value="">Select dominant instinct</option>
+                  {INSTINCT_KEYS.map((instinctKey) => (
+                    <option key={instinctKey} value={instinctKey}>
+                      {instinctKey}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                data-testid="admin-review-dominant-instinct-apply"
+                onClick={() => applyDominantPreset("instinctScores", dominantInstinctPreset, INSTINCT_KEYS)}
+              >
+                Apply Instinct Preset
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "8px", alignItems: "end" }}>
+              <label style={{ display: "grid", gap: "4px" }}>
+                <span>Dominant Center Preset</span>
+                <select
+                  data-testid="admin-review-dominant-center-select"
+                  value={dominantCenterPreset}
+                  onChange={(event) => setDominantCenterPreset(event.target.value)}
+                >
+                  <option value="">Select dominant center</option>
+                  {CENTER_KEYS.map((centerKey) => (
+                    <option key={centerKey} value={centerKey}>
+                      {centerKey}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                data-testid="admin-review-dominant-center-apply"
+                onClick={() => applyDominantPreset("centerScores", dominantCenterPreset, CENTER_KEYS)}
+              >
+                Apply Center Preset
+              </button>
+            </div>
+          </section>
+
           <div data-testid="admin-review-types" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "8px" }}>
-            {Object.keys(scores.typeScores).map((key) => (
+            {TYPE_KEYS.map((key) => (
               <label key={key} style={{ display: "grid", gap: "4px" }}>
                 <span>{key}</span>
                 <input
@@ -224,13 +365,18 @@ export default function AdminReviewPanel() {
                   value={scores.typeScores[key]}
                   onChange={(event) => setScore("typeScores", key, event.target.value)}
                   inputMode="numeric"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  placeholder="0-100"
                 />
               </label>
             ))}
           </div>
 
           <div data-testid="admin-review-instincts" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "8px" }}>
-            {Object.keys(scores.instinctScores).map((key) => (
+            {INSTINCT_KEYS.map((key) => (
               <label key={key} style={{ display: "grid", gap: "4px" }}>
                 <span>{key}</span>
                 <input
@@ -238,13 +384,18 @@ export default function AdminReviewPanel() {
                   value={scores.instinctScores[key]}
                   onChange={(event) => setScore("instinctScores", key, event.target.value)}
                   inputMode="numeric"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  placeholder="0-100"
                 />
               </label>
             ))}
           </div>
 
           <div data-testid="admin-review-centers" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "8px" }}>
-            {Object.keys(scores.centerScores).map((key) => (
+            {CENTER_KEYS.map((key) => (
               <label key={key} style={{ display: "grid", gap: "4px" }}>
                 <span>{key}</span>
                 <input
@@ -252,6 +403,11 @@ export default function AdminReviewPanel() {
                   value={scores.centerScores[key]}
                   onChange={(event) => setScore("centerScores", key, event.target.value)}
                   inputMode="numeric"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  placeholder="0-100"
                 />
               </label>
             ))}
