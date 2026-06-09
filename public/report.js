@@ -870,17 +870,37 @@ function sanitizeCorePatternBulletText(value) {
   if (!source) return null;
 
   let cleaned = source
-    .replace(/^\s*Typical\s+(?:Action|Thinking|Feeling)\s+Patterns?\s*[:\-]?\s*/i, "")
+    .replace(/^\s*Typical\s*(?:Action|Thinking|Feeling)\s*Patterns?\s*[:\-]?\s*/i, "")
     .replace(/:\s*(?=[A-Za-z])/g, ": ")
     .trim();
 
   if (!cleaned) return null;
+
+  // Some OCR page orders repeat a second core-pattern heading inside the same
+  // section text (for example, "TypicalThinking Patterns" leaking into feeling copy).
+  // Treat any subsequent core-pattern heading as a hard boundary.
+  const repeatedCorePatternHeading =
+    /(?:^|[\n\r]|[.!?]\s+|(?:•|●|▪|◦|·)\s*)Typical\s*(?:Action|Thinking|Feeling)\s*Patterns?\s*[:\-]?/i;
+  const repeatedHeadingMatch = repeatedCorePatternHeading.exec(cleaned);
+  if (repeatedHeadingMatch) {
+    const boundaryIndex = Number(repeatedHeadingMatch.index || 0);
+    if (boundaryIndex === 0) return null;
+    cleaned = cleaned.slice(0, boundaryIndex).trim();
+  }
 
   const spilloverPattern =
     /\b(?:Worldview|World\s*View|Focus\s*of\s*Attention|Core\s*Fear|Self[-\s]*Talk|Gifts?|Vices?)\b\s*(?:[:.\-]|$)/i;
   const spilloverMatch = spilloverPattern.exec(cleaned);
   if (spilloverMatch) {
     const boundaryIndex = Number(spilloverMatch.index || 0);
+    if (boundaryIndex === 0) return null;
+    cleaned = cleaned.slice(0, boundaryIndex).trim();
+  }
+
+  const headingSpilloverPattern = /\b(?:Detailed\s+Enneagram\s+Description|Your\s+main\s+Enneagram\s+style)\b/i;
+  const headingSpilloverMatch = headingSpilloverPattern.exec(cleaned);
+  if (headingSpilloverMatch) {
+    const boundaryIndex = Number(headingSpilloverMatch.index || 0);
     if (boundaryIndex === 0) return null;
     cleaned = cleaned.slice(0, boundaryIndex).trim();
   }
@@ -971,9 +991,13 @@ function extractCorePatternBulletsFromText(text) {
     "World View",
   ]);
   const feelingText = extractCorePatternSectionByAnchors(text, "Typical Feeling Patterns", [
+    "Typical Thinking Patterns",
+    "Typical Action Patterns",
     "Blind Spots",
     "Worldview",
     "World View",
+    "Detailed Enneagram Description",
+    "Your main Enneagram style",
     "Focus of Attention",
     "Core Fear",
     "DEVELOPMENT EXERCISE",
@@ -6022,7 +6046,20 @@ const ASSIGNED_PDF_INSTRUCTION_RULES = {
     pageNumbers: [6, 7],
     startAnchor: "Typical Feeling Patterns",
     endAnchor: "Blind Spots",
-    endAnchors: ["Worldview", "World View", "Focus of Attention", "Core Fear", "Self-Talk", "Self Talk", "Gifts", "Vices"],
+    endAnchors: [
+      "Typical Thinking Patterns",
+      "Typical Action Patterns",
+      "Worldview",
+      "World View",
+      "Detailed Enneagram Description",
+      "Your main Enneagram style",
+      "Focus of Attention",
+      "Core Fear",
+      "Self-Talk",
+      "Self Talk",
+      "Gifts",
+      "Vices",
+    ],
     preferHeadingStart: true,
     preferHeadingEnd: true,
     mode: "single_snippet",
