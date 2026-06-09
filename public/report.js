@@ -1532,8 +1532,10 @@ function extractIntegrationFromPdfText(pdfText) {
 }
 
 function sanitizeSnippet(value, fallback) {
+  const rawValue = String(value || "");
+  const rawHasControlNoise = /[\u0000-\u001F\u007F-\u009F]/.test(rawValue);
   const wordGapMarker = "\u0000";
-  let cleaned = String(value || "")
+  let cleaned = rawValue
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, " ")
     .replace(/\uFFFD/g, " ")
     .replace(/[ \t\u00A0\u2000-\u200B\u202F\u205F\u3000]{2,}/g, wordGapMarker)
@@ -1560,11 +1562,37 @@ function sanitizeSnippet(value, fallback) {
     "we",
     "you",
   ]);
+  const commonOcrBigramWords = new Set([
+    "of",
+    "to",
+    "in",
+    "is",
+    "it",
+    "on",
+    "as",
+    "at",
+    "by",
+    "or",
+    "an",
+    "if",
+    "up",
+    "we",
+    "us",
+    "my",
+    "so",
+  ]);
 
   // Repair hard OCR splits such as "d i f f e r e n c e".
   cleaned = cleaned.replace(/\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b/g, (match) => {
+    const source = String(match || "");
+    const hasExplicitWordGap = source.includes(wordGapMarker);
     const parts = String(match || "").trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return match;
+    // If OCR removed all word boundaries for a long fragment, preserve spacing
+    // instead of collapsing into a single unreadable mega-token.
+    if (!hasExplicitWordGap && source.length >= 48) {
+      return source.replace(/\s+/g, " ").trim();
+    }
     const first = String(parts[0] || "");
     const firstLower = first.toLowerCase();
     if (parts.length >= 4 && first === firstLower && shortWords.has(firstLower)) {
@@ -1573,8 +1601,13 @@ function sanitizeSnippet(value, fallback) {
     return parts.join("");
   });
 
-  // Repair 2-letter OCR splits such as "o f" -> "of".
-  cleaned = cleaned.replace(/\b([A-Za-z])\s+([A-Za-z])\b/g, "$1$2");
+  // Repair isolated 2-letter OCR splits such as "o f" -> "of" without
+  // collapsing longer natural short-word sequences.
+  cleaned = cleaned.replace(/\b([A-Za-z])\s+([A-Za-z])\b/g, (match, left, right) => {
+    const pair = `${String(left || "")}${String(right || "")}`.toLowerCase();
+    if (!commonOcrBigramWords.has(pair)) return match;
+    return `${left}${right}`;
+  });
 
   // Repair 3-part OCR splits such as "sur v ive" and "di ff erence".
   cleaned = cleaned.replace(/\b([A-Za-z]{1,3})\s+([A-Za-z]{1,2})\s+([A-Za-z]{3,})\b/g, (match, partA, partB, partC) => {
@@ -1628,7 +1661,7 @@ function sanitizeSnippet(value, fallback) {
     });
   const hasSymbolNoise = noiseTokens.length >= 8 && noiseTokens.length / Math.max(1, normalizedForNoise.split(/\s+/).filter(Boolean).length) >= 0.28;
   const hasRepeatedPageMarkers = /(?:\bPage\s*\d{1,3}\b\s*){2,}/i.test(normalizedForNoise);
-  if (hasSymbolNoise || hasRepeatedPageMarkers) {
+  if (rawHasControlNoise && (hasSymbolNoise || hasRepeatedPageMarkers)) {
     return fallback == null ? "" : fallback;
   }
   return cleaned;
@@ -1777,49 +1810,39 @@ function extractPdfPageTextFromItems(items) {
         text: value,
         x: Number.isFinite(x) ? x : 0,
         y: Number.isFinite(y) ? y : 0,
+        hasEOL: Boolean(item?.hasEOL),
       };
     })
     .filter(Boolean);
 
   if (!tokens.length) return "";
 
-  tokens.sort((left, right) => {
-    const yDelta = right.y - left.y;
-    if (Math.abs(yDelta) > 2.8) return yDelta;
-    if (Math.abs(left.x - right.x) > 1) return left.x - right.x;
-    return left.index - right.index;
-  });
-
-  const lines = [];
-  const lineTolerance = 3.2;
-  let currentLine = [];
-  let currentY = null;
+  const out = [];
+  let previousY = null;
+  let previousX = null;
   tokens.forEach((token) => {
-    if (currentY == null || Math.abs(token.y - currentY) <= lineTolerance) {
-      currentLine.push(token);
-      currentY = currentY == null ? token.y : (currentY + token.y) / 2;
-      return;
+    const yJump = previousY == null ? 0 : Math.abs(token.y - previousY);
+    const xReset = previousX == null ? false : token.x + 4 < previousX;
+    if (out.length && (token?.hasEOL || yJump > 3.2 || (yJump > 1.6 && xReset))) {
+      out.push("\n");
+    } else if (out.length && out[out.length - 1] !== "\n") {
+      out.push(" ");
     }
-    lines.push(currentLine.slice());
-    currentLine = [token];
-    currentY = token.y;
+    out.push(token.text);
+    previousY = token.y;
+    previousX = token.x;
   });
-  if (currentLine.length) lines.push(currentLine.slice());
 
-  return lines
-    .map((line) =>
-      line
-        .sort((left, right) => left.x - right.x || left.index - right.index)
-        .map((token) => token.text)
-        .join(" ")
-        .replace(/\s+([.,;:!?])/g, "$1")
-        .replace(/\(\s+/g, "(")
-        .replace(/\s+\)/g, ")")
-        .replace(/\s+/g, " ")
-        .trim(),
-    )
-    .filter(Boolean)
-    .join("\n");
+  return out
+    .join("")
+    .replace(/[ \t]+([.,;:!?])/g, "$1")
+    .replace(/\([ \t]+/g, "(")
+    .replace(/[ \t]+\)/g, ")")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 async function extractPdfTextFromSignedUrl(signedUrl) {
@@ -5718,6 +5741,7 @@ function isLowQualityStrainNarrative(value, category) {
   const normalized = normalizeExtractedText(text).toLowerCase();
   if (!normalized) return true;
   if (normalized.length < 36) return true;
+  if (hasExcessiveSymbolNoise(normalized)) return true;
 
   // Accept concise but valid narrative statements that explicitly anchor category + level.
   if (
