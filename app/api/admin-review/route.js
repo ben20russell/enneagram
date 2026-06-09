@@ -8,6 +8,7 @@ import {
   buildScoreComparisonMetrics,
   normalizeScorePayload,
 } from "../../../lib/mlScoreLearning";
+import { resolveMinExpectedPagesByReportType } from "../../../lib/reportTypePageThresholds";
 
 function countNonNull(obj) {
   if (!obj || typeof obj !== "object") return 0;
@@ -175,7 +176,7 @@ export async function POST(req) {
   const supabase = getSupabaseAdmin();
   const { data: row, error: fetchErr } = await supabase
     .from(table)
-    .select("id,results_data")
+    .select("id,results_data,report_pdf")
     .eq("id", reportId)
     .maybeSingle();
 
@@ -227,9 +228,22 @@ export async function POST(req) {
   const centerNonNull = countNonNull(nextProfile?.centerScores);
   const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
   const diagnostics = results?.ingestion?.parseDiagnostics || {};
+  const fileName =
+    row?.report_pdf?.fileName ||
+    results?.file?.fileName ||
+    results?.dashboardContext?.sourceFileName ||
+    null;
   const pageCount = Number(diagnostics?.extraction?.pages || 0);
-  const minPages = Number(diagnostics?.extraction?.minExpectedPages || 20);
-  const parseComplete = pageCount >= minPages && hasAllChartScores;
+  const minPages = resolveMinExpectedPagesByReportType({
+    fileName,
+    fallbackMinExpectedPages: diagnostics?.extraction?.minExpectedPages,
+    defaultMinExpectedPages: Number(process.env.PDF_PARSE_MIN_PAGES || 20),
+  });
+  const hasMinPages = pageCount >= minPages;
+  const parseComplete = hasMinPages && hasAllChartScores;
+  const incompleteReason = !hasMinPages
+    ? `Extracted ${pageCount} pages, expected at least ${minPages}`
+    : "Chart numerics incomplete: one or more type, instinct, or center scores are null";
 
   const nextResults = {
     ...results,
@@ -250,7 +264,12 @@ export async function POST(req) {
         isComplete: parseComplete,
         incompleteReason: parseComplete
           ? null
-          : "Chart numerics incomplete: one or more type, instinct, or center scores are null",
+          : incompleteReason,
+        extraction: {
+          ...(diagnostics?.extraction || {}),
+          pages: pageCount,
+          minExpectedPages: minPages,
+        },
         scoreCoverage: {
           ...(diagnostics?.scoreCoverage || {}),
           typeScoresNonNull: typeNonNull,

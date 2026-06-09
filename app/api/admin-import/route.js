@@ -6,6 +6,7 @@ import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabas
 import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 import { applyMlScoreLearningToParsedProfile } from "../../../lib/mlScoreLearning";
+import { resolveMinExpectedPagesByReportType } from "../../../lib/reportTypePageThresholds";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -132,6 +133,16 @@ function toPositiveInteger(value) {
   return Math.floor(numeric);
 }
 
+const configuredDefaultMinExpectedPages = toPositiveInteger(process.env.PDF_PARSE_MIN_PAGES ?? null) || 20;
+
+function resolveReportMinExpectedPages(fileName, fallbackMinExpectedPages) {
+  return resolveMinExpectedPagesByReportType({
+    fileName,
+    fallbackMinExpectedPages,
+    defaultMinExpectedPages: configuredDefaultMinExpectedPages,
+  });
+}
+
 function buildParseContract({ diagnostics, parseStatus, parseReason }) {
   const parsedPages = toPositiveInteger(diagnostics?.extraction?.pages ?? null);
   const detectedTotalPages = toPositiveInteger(diagnostics?.extraction?.detectedTotalPages ?? null);
@@ -161,9 +172,9 @@ function buildParseContract({ diagnostics, parseStatus, parseReason }) {
   };
 }
 
-function computeCompletenessFromParsed(parsed, diagnostics) {
+function computeCompletenessFromParsed(parsed, diagnostics, fileName) {
   const pages = Number(diagnostics?.extraction?.pages ?? parsed?.reportContent?.pages?.length ?? 0);
-  const minPages = Number(diagnostics?.extraction?.minExpectedPages ?? process.env.PDF_PARSE_MIN_PAGES ?? 20);
+  const minPages = resolveReportMinExpectedPages(fileName, diagnostics?.extraction?.minExpectedPages ?? null);
   const typeNonNull = getNonNullCount(parsed?.typeScores);
   const instinctNonNull = getNonNullCount(parsed?.instinctScores);
   const centerNonNull = getNonNullCount(parsed?.centerScores);
@@ -230,7 +241,7 @@ function buildIngestedResultsData({ reportId, safeFileName, storagePath, bucket,
         incompleteReason: "Report metadata imported; parsed profile not yet available.",
         extraction: {
           pages: 0,
-          minExpectedPages: Number(process.env.PDF_PARSE_MIN_PAGES || 20),
+          minExpectedPages: resolveReportMinExpectedPages(safeFileName, null),
         },
       },
     },
@@ -275,7 +286,7 @@ function buildParsedResultsData({
     parsed && typeof parsed === "object" && parsed._review && typeof parsed._review === "object"
       ? parsed._review
       : null;
-  const recomputed = computeCompletenessFromParsed(parsed, parseDiagnostics);
+  const recomputed = computeCompletenessFromParsed(parsed, parseDiagnostics, safeFileName);
   const nextDiagnostics = {
     ...(parseDiagnostics || {}),
     isComplete: recomputed.isComplete,
@@ -643,7 +654,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
         ? parsedForSave._review
         : null;
 
-    const recomputed = computeCompletenessFromParsed(parsedForSave, parseDiagnostics);
+    const recomputed = computeCompletenessFromParsed(parsedForSave, parseDiagnostics, fileName);
     const nextDiagnostics = {
       ...(parseDiagnostics || {}),
       isComplete: recomputed.isComplete,

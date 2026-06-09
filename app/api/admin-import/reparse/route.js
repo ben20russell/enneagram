@@ -4,6 +4,7 @@ import { authOptions } from "../../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../../lib/adminAccess";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../../lib/supabaseAdmin";
 import { applyMlScoreLearningToParsedProfile } from "../../../../lib/mlScoreLearning";
+import { resolveMinExpectedPagesByReportType } from "../../../../lib/reportTypePageThresholds";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -17,6 +18,16 @@ function toPositiveInteger(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return null;
   return Math.floor(numeric);
+}
+
+const configuredDefaultMinExpectedPages = toPositiveInteger(process.env.PDF_PARSE_MIN_PAGES ?? null) || 20;
+
+function resolveReportMinExpectedPages(fileName, fallbackMinExpectedPages) {
+  return resolveMinExpectedPagesByReportType({
+    fileName,
+    fallbackMinExpectedPages,
+    defaultMinExpectedPages: configuredDefaultMinExpectedPages,
+  });
 }
 
 function buildParseContract({ diagnostics, parseStatus, parseReason }) {
@@ -134,9 +145,9 @@ function resolveHydrationIdentityFields({ parsed, diagnostics, fileName }) {
   };
 }
 
-function computeCompletenessFromParsed(parsed, diagnostics) {
+function computeCompletenessFromParsed(parsed, diagnostics, fileName) {
   const pages = Number(diagnostics?.extraction?.pages ?? parsed?.reportContent?.pages?.length ?? 0);
-  const minPages = Number(diagnostics?.extraction?.minExpectedPages ?? process.env.PDF_PARSE_MIN_PAGES ?? 20);
+  const minPages = resolveReportMinExpectedPages(fileName, diagnostics?.extraction?.minExpectedPages ?? null);
   const typeNonNull = getNonNullCount(parsed?.typeScores);
   const instinctNonNull = getNonNullCount(parsed?.instinctScores);
   const centerNonNull = getNonNullCount(parsed?.centerScores);
@@ -284,7 +295,7 @@ export async function POST(req) {
         ? parsedForSave._review
         : null;
 
-    const recomputed = computeCompletenessFromParsed(parsedForSave, parseDiagnostics);
+    const recomputed = computeCompletenessFromParsed(parsedForSave, parseDiagnostics, fileName);
     const nextDiagnostics = {
       ...(parseDiagnostics || {}),
       isComplete: recomputed.isComplete,

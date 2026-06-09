@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../../lib/supabaseAdmin";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../../lib/adminAccess";
+import { resolveMinExpectedPagesByReportType } from "../../../../lib/reportTypePageThresholds";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -48,7 +49,11 @@ function buildIngestionMetadata({ reportId, safeFileName, storagePath, bucket, s
         incompleteReason: "Report metadata imported; parser deferred.",
         extraction: {
           pages: 0,
-          minExpectedPages: Number(process.env.PDF_PARSE_MIN_PAGES || 20),
+          minExpectedPages: resolveMinExpectedPagesByReportType({
+            fileName: safeFileName,
+            fallbackMinExpectedPages: null,
+            defaultMinExpectedPages: Number(process.env.PDF_PARSE_MIN_PAGES || 20),
+          }),
         },
       },
     },
