@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 const TYPE_KEYS = [
@@ -58,6 +59,7 @@ function resolveHighestScoreKey(values, keys) {
 
 export default function AdminReviewPanel() {
   const [queue, setQueue] = useState([]);
+  const [reviewedReports, setReviewedReports] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [mlMetrics, setMlMetrics] = useState(null);
@@ -78,15 +80,30 @@ export default function AdminReviewPanel() {
         throw new Error(data?.error || "Failed to load review queue");
       }
       const nextQueue = Array.isArray(data?.queue) ? data.queue : [];
+      const nextReviewedReports = Array.isArray(data?.reviewedReports) ? data.reviewedReports : [];
       const nextMlMetrics = data?.mlMetrics && typeof data.mlMetrics === "object" ? data.mlMetrics : null;
+      const nextSelectableReports = [...nextQueue, ...nextReviewedReports];
       setQueue(nextQueue);
+      setReviewedReports(nextReviewedReports);
       setMlMetrics(nextMlMetrics);
-      if (!selectedId && nextQueue.length) {
-        setSelectedId(nextQueue[0].id);
+      const hasSelectedReport = nextSelectableReports.some((item) => item.id === selectedId);
+      if (!hasSelectedReport) {
+        setSelectedId(nextQueue[0]?.id || nextReviewedReports[0]?.id || "");
       }
-      setStatus(nextQueue.length ? `Loaded ${nextQueue.length} pending report(s).` : "No reports need review.");
+      if (nextQueue.length) {
+        setStatus(
+          `Loaded ${nextQueue.length} pending report(s) and ${nextReviewedReports.length} previously graded report(s).`,
+        );
+      } else if (nextReviewedReports.length) {
+        setStatus(
+          `No reports need review. Loaded ${nextReviewedReports.length} previously graded report(s) for lookup/regrade.`,
+        );
+      } else {
+        setStatus("No reports available.");
+      }
       console.log("[admin-review] Queue loaded", {
-        count: nextQueue.length,
+        pendingCount: nextQueue.length,
+        reviewedCount: nextReviewedReports.length,
         labeledReportCount: nextMlMetrics?.labeledReportCount ?? 0,
         parserMae: nextMlMetrics?.parserVsGroundTruth?.meanAbsoluteError ?? null,
         modelMae: nextMlMetrics?.modelVsGroundTruth?.meanAbsoluteError ?? null,
@@ -103,9 +120,14 @@ export default function AdminReviewPanel() {
     loadQueue();
   }, []);
 
+  const selectableReports = useMemo(
+    () => [...queue, ...reviewedReports],
+    [queue, reviewedReports],
+  );
+
   const selected = useMemo(
-    () => queue.find((item) => item.id === selectedId) || null,
-    [queue, selectedId],
+    () => selectableReports.find((item) => item.id === selectedId) || null,
+    [selectableReports, selectedId],
   );
 
   useEffect(() => {
@@ -247,6 +269,25 @@ export default function AdminReviewPanel() {
       </section>
 
       <section data-testid="admin-review-controls" style={{ marginTop: "16px", display: "grid", gap: "10px" }}>
+        <Link
+          data-testid="admin-review-import-link-button"
+          href="/admin-import"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "180px",
+            border: "1px solid #0a66d8",
+            borderRadius: "8px",
+            background: "#ffffff",
+            color: "#0a66d8",
+            fontWeight: 600,
+            textDecoration: "none",
+            padding: "8px 14px",
+          }}
+        >
+          Open Admin Import
+        </Link>
         <button data-testid="admin-review-refresh" onClick={loadQueue} disabled={isLoading} style={{ width: "160px" }}>
           {isLoading ? "Refreshing..." : "Refresh Queue"}
         </button>
@@ -254,14 +295,27 @@ export default function AdminReviewPanel() {
           data-testid="admin-review-select"
           value={selectedId}
           onChange={(event) => setSelectedId(event.target.value)}
-          disabled={!queue.length}
+          disabled={!selectableReports.length}
         >
           <option value="">Select a report</option>
-          {queue.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.userEmail} · {item.fileName || "report"} · {item.id.slice(0, 8)}
-            </option>
-          ))}
+          {queue.length ? (
+            <optgroup label="Pending reports">
+              {queue.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.userEmail} · {item.fileName || "report"} · {item.id.slice(0, 8)}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
+          {reviewedReports.length ? (
+            <optgroup label="Previously graded reports">
+              {reviewedReports.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.userEmail} · {item.fileName || "report"} · {item.id.slice(0, 8)} · {item.reviewStatus}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
         </select>
       </section>
 

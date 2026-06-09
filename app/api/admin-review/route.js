@@ -106,14 +106,14 @@ export async function GET() {
     .select("id,user_email,created_at,source,results_data,report_pdf")
     .eq("source", "admin-import")
     .order("created_at", { ascending: false })
-    .limit(30);
+    .limit(200);
 
   if (error) {
     return NextResponse.json({ error: `Failed to list review queue: ${error.message}` }, { status: 500 });
   }
 
   const reportRows = Array.isArray(data) ? data : [];
-  const queue = reportRows
+  const allReports = reportRows
     .map((row) => {
       const results = row?.results_data && typeof row.results_data === "object" ? row.results_data : {};
       const profile = results?.parsedProfile && typeof results.parsedProfile === "object" ? results.parsedProfile : {};
@@ -138,17 +138,19 @@ export async function GET() {
           centerNonNull,
         },
       };
-    })
-    .filter((item) => item.reviewStatus !== "approved" && item.reviewStatus !== "auto_approved");
+    });
+  const queue = allReports.filter((item) => item.reviewStatus === "needs_review");
+  const reviewedReports = allReports.filter((item) => item.reviewStatus !== "needs_review");
   const mlMetrics = aggregateMlFeedbackMetricsFromReportRows(reportRows);
   console.log("[admin-review] Loaded queue with ML metrics", {
     queueCount: queue.length,
+    reviewedCount: reviewedReports.length,
     labeledReportCount: mlMetrics?.labeledReportCount ?? 0,
     parserMae: mlMetrics?.parserVsGroundTruth?.meanAbsoluteError ?? null,
     modelMae: mlMetrics?.modelVsGroundTruth?.meanAbsoluteError ?? null,
   });
 
-  return NextResponse.json({ queue, mlMetrics }, { status: 200 });
+  return NextResponse.json({ queue, reviewedReports, mlMetrics }, { status: 200 });
 }
 
 export async function POST(req) {
