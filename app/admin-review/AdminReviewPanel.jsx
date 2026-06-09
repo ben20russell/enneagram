@@ -31,6 +31,17 @@ function emptyScores() {
   };
 }
 
+function emptyCoreIdentity() {
+  return {
+    typeName: "",
+    instinctualVariant: "",
+    subtypeKeyword: "",
+    integrationLevel: "",
+    stretchPoint: "",
+    releasePoint: "",
+  };
+}
+
 function numberOrNull(value) {
   const trimmed = String(value ?? "").trim();
   if (!trimmed) return null;
@@ -99,6 +110,7 @@ export default function AdminReviewPanel() {
   const [selectedId, setSelectedId] = useState("");
   const [notes, setNotes] = useState("");
   const [scores, setScores] = useState(emptyScores());
+  const [coreIdentity, setCoreIdentity] = useState(emptyCoreIdentity());
   const [primaryTypePreset, setPrimaryTypePreset] = useState("");
   const [dominantInstinctPreset, setDominantInstinctPreset] = useState("");
   const [dominantCenterPreset, setDominantCenterPreset] = useState("");
@@ -186,7 +198,26 @@ export default function AdminReviewPanel() {
     setPrimaryTypePreset(strongestType ? strongestType.replace("type", "") : "");
     setDominantInstinctPreset(strongestInstinct || "");
     setDominantCenterPreset(strongestCenter || "");
+    setCoreIdentity({
+      typeName: String(selected?.coreIdentity?.typeName || "").trim(),
+      instinctualVariant: String(selected?.coreIdentity?.instinctualVariant || "").trim(),
+      subtypeKeyword: String(selected?.coreIdentity?.subtypeKeyword || "").trim(),
+      integrationLevel: String(selected?.coreIdentity?.integrationLevel || "").trim(),
+      stretchPoint: String(selected?.coreIdentity?.stretchPoint || "").trim(),
+      releasePoint: String(selected?.coreIdentity?.releasePoint || "").trim(),
+    });
     setNotes("");
+    console.log("[admin-review] Hydrated core identity fields for selected report", {
+      selectedId: selected?.id || null,
+      coreIdentity: {
+        typeName: selected?.coreIdentity?.typeName || null,
+        instinctualVariant: selected?.coreIdentity?.instinctualVariant || null,
+        subtypeKeyword: selected?.coreIdentity?.subtypeKeyword || null,
+        integrationLevel: selected?.coreIdentity?.integrationLevel || null,
+        stretchPoint: selected?.coreIdentity?.stretchPoint || null,
+        releasePoint: selected?.coreIdentity?.releasePoint || null,
+      },
+    });
   }, [selected?.id]);
 
   function setScore(group, key, value) {
@@ -196,6 +227,13 @@ export default function AdminReviewPanel() {
         ...(prev[group] || {}),
         [key]: value,
       },
+    }));
+  }
+
+  function setCoreIdentityValue(key, value) {
+    setCoreIdentity((prev) => ({
+      ...prev,
+      [key]: value,
     }));
   }
 
@@ -242,6 +280,14 @@ export default function AdminReviewPanel() {
       reportId: selected.id,
       notes,
       primaryType: primaryTypePreset ? Number(primaryTypePreset) : null,
+      coreIdentity: {
+        typeName: String(coreIdentity?.typeName || "").trim() || null,
+        instinctualVariant: String(coreIdentity?.instinctualVariant || "").trim() || null,
+        subtypeKeyword: String(coreIdentity?.subtypeKeyword || "").trim() || null,
+        integrationLevel: String(coreIdentity?.integrationLevel || "").trim() || null,
+        stretchPoint: String(coreIdentity?.stretchPoint || "").trim() || null,
+        releasePoint: String(coreIdentity?.releasePoint || "").trim() || null,
+      },
       scores: {
         typeScores: Object.fromEntries(
           Object.entries(scores.typeScores).map(([k, v]) => [k, numberOrNull(v)]),
@@ -499,6 +545,98 @@ export default function AdminReviewPanel() {
               >
                 Apply Center Preset
               </button>
+            </div>
+          </section>
+
+          <section
+            data-testid="admin-review-core-identity-section"
+            style={{ padding: "12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#ffffff", display: "grid", gap: "10px" }}
+          >
+            <strong>Core Identity Components</strong>
+            <span style={{ color: "#334155" }}>
+              Label these from the report text so dashboards and ML training use reviewed identity values.
+            </span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px" }}>
+              <label style={{ display: "grid", gap: "4px" }}>
+                <span>Main Type Name</span>
+                <input
+                  data-testid="admin-review-core-main-type-name"
+                  value={coreIdentity.typeName}
+                  onChange={(event) => setCoreIdentityValue("typeName", event.target.value)}
+                  placeholder="Type 2 — Considerate Helper Warm"
+                />
+              </label>
+              <label style={{ display: "grid", gap: "4px" }}>
+                <span>Dominant Instinct</span>
+                <select
+                  data-testid="admin-review-core-dominant-instinct"
+                  value={coreIdentity.instinctualVariant}
+                  onChange={(event) => setCoreIdentityValue("instinctualVariant", event.target.value)}
+                >
+                  <option value="">Select instinct</option>
+                  <option value="sp">SP — Self-Preservation</option>
+                  <option value="so">SO — Social</option>
+                  <option value="sx">SX — One-on-One</option>
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: "4px" }}>
+                <span>Subtype Keyword</span>
+                <input
+                  data-testid="admin-review-core-subtype-keyword"
+                  value={coreIdentity.subtypeKeyword}
+                  onChange={(event) => setCoreIdentityValue("subtypeKeyword", event.target.value)}
+                  placeholder="SP - 2"
+                />
+              </label>
+              <label style={{ display: "grid", gap: "4px" }}>
+                <span>Integration Level</span>
+                <select
+                  data-testid="admin-review-core-integration-level"
+                  value={coreIdentity.integrationLevel}
+                  onChange={(event) => setCoreIdentityValue("integrationLevel", event.target.value)}
+                >
+                  <option value="">Select level</option>
+                  <option value="High">High</option>
+                  <option value="Moderate">Moderate</option>
+                  <option value="Low">Low</option>
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: "4px" }}>
+                <span>Stretch Point</span>
+                <select
+                  data-testid="admin-review-core-stretch-point"
+                  value={coreIdentity.stretchPoint}
+                  onChange={(event) => setCoreIdentityValue("stretchPoint", event.target.value)}
+                >
+                  <option value="">Not detected</option>
+                  {TYPE_KEYS.map((typeKey) => {
+                    const typeLabel = typeKey.replace("type", "");
+                    return (
+                      <option key={typeKey} value={`Type ${typeLabel}`}>
+                        Type {typeLabel}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: "4px" }}>
+                <span>Release Point</span>
+                <select
+                  data-testid="admin-review-core-release-point"
+                  value={coreIdentity.releasePoint}
+                  onChange={(event) => setCoreIdentityValue("releasePoint", event.target.value)}
+                >
+                  <option value="">Not detected</option>
+                  {TYPE_KEYS.map((typeKey) => {
+                    const typeLabel = typeKey.replace("type", "");
+                    return (
+                      <option key={typeKey} value={`Type ${typeLabel}`}>
+                        Type {typeLabel}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
             </div>
           </section>
 

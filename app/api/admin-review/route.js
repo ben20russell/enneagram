@@ -38,6 +38,55 @@ function normalizeTypeNumber(value) {
   return match?.[0] ? Number(match[0]) : null;
 }
 
+function normalizeOptionalString(value) {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized : null;
+}
+
+function normalizeInstinctualVariant(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "sx" || normalized.includes("sexual") || normalized.includes("one-on-one") || normalized.includes("one on one")) {
+    return "sx";
+  }
+  if (normalized === "so" || normalized.includes("social")) return "so";
+  if (normalized === "sp" || normalized.includes("self-preservation") || normalized.includes("self preservation")) {
+    return "sp";
+  }
+  return null;
+}
+
+function normalizeIntegrationLevel(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return null;
+  const lowered = normalized.toLowerCase();
+  if (lowered === "high") return "High";
+  if (lowered === "moderate" || lowered === "medium") return "Moderate";
+  if (lowered === "low") return "Low";
+  return normalized;
+}
+
+function normalizeTypePointLabel(value) {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) return null;
+  const typeNumber = normalizeTypeNumber(normalized);
+  if (typeNumber == null) return null;
+  return `Type ${typeNumber}`;
+}
+
+function normalizeCoreIdentityPayload(input) {
+  const source = input && typeof input === "object" ? input : {};
+  return {
+    primaryType: normalizeTypeNumber(source?.primaryType),
+    typeName: normalizeOptionalString(source?.typeName ?? source?.mainTypeName),
+    instinctualVariant: normalizeInstinctualVariant(source?.instinctualVariant ?? source?.dominantInstinct),
+    subtypeKeyword: normalizeOptionalString(source?.subtypeKeyword),
+    integrationLevel: normalizeIntegrationLevel(source?.integrationLevel),
+    stretchPoint: normalizeTypePointLabel(source?.stretchPoint),
+    releasePoint: normalizeTypePointLabel(source?.releasePoint),
+  };
+}
+
 function resolvePrimaryTypeFromTypeScores(typeScores, fallbackPrimaryType = null) {
   const fallback = normalizeTypeNumber(fallbackPrimaryType);
   if (!typeScores || typeof typeScores !== "object") {
@@ -165,6 +214,19 @@ export async function GET() {
       const results = row?.results_data && typeof row.results_data === "object" ? row.results_data : {};
       const profile = results?.parsedProfile && typeof results.parsedProfile === "object" ? results.parsedProfile : {};
       const review = results?.review && typeof results.review === "object" ? results.review : {};
+      const feedbackIdentity = results?.ml?.feedback?.groundTruthIdentity &&
+        typeof results.ml.feedback.groundTruthIdentity === "object"
+        ? results.ml.feedback.groundTruthIdentity
+        : {};
+      const coreIdentity = normalizeCoreIdentityPayload({
+        primaryType: feedbackIdentity?.primaryType ?? profile?.primaryType ?? row?.enneagram_type ?? null,
+        typeName: feedbackIdentity?.typeName ?? profile?.typeName ?? null,
+        instinctualVariant: feedbackIdentity?.instinctualVariant ?? profile?.instinctualVariant ?? null,
+        subtypeKeyword: feedbackIdentity?.subtypeKeyword ?? profile?.subtypeKeyword ?? null,
+        integrationLevel: feedbackIdentity?.integrationLevel ?? profile?.integrationLevel ?? null,
+        stretchPoint: feedbackIdentity?.stretchPoint ?? profile?.connectedLineB ?? null,
+        releasePoint: feedbackIdentity?.releasePoint ?? profile?.connectedLineA ?? null,
+      });
       const typeNonNull = countNonNull(profile?.typeScores);
       const instinctNonNull = countNonNull(profile?.instinctScores);
       const centerNonNull = countNonNull(profile?.centerScores);
@@ -179,6 +241,7 @@ export async function GET() {
         typeScores: profile?.typeScores || null,
         instinctScores: profile?.instinctScores || null,
         centerScores: profile?.centerScores || null,
+        coreIdentity,
         scoreCoverage: {
           typeNonNull,
           instinctNonNull,
@@ -237,10 +300,12 @@ export async function POST(req) {
   const profile = results?.parsedProfile && typeof results.parsedProfile === "object" ? results.parsedProfile : {};
   const scoreUpdates = normalizeScores(body?.scores || {});
   const requestedPrimaryType = normalizeTypeNumber(body?.primaryType ?? null);
+  const coreIdentityInput = normalizeCoreIdentityPayload(body?.coreIdentity);
   const nextProfile = mergeScores(profile, scoreUpdates);
   const resolvedPrimaryType = resolvePrimaryTypeFromTypeScores(
     nextProfile?.typeScores,
     requestedPrimaryType ||
+      coreIdentityInput?.primaryType ||
       nextProfile?.primaryType ||
       row?.enneagram_type ||
       results?.dashboardContext?.detectedType ||
@@ -254,6 +319,35 @@ export async function POST(req) {
     ...nextProfile,
     primaryType: persistedEnneagramType || nextProfile?.primaryType || null,
   };
+  const normalizedCoreIdentityProfileUpdates = {
+    parsedProfile: {
+      typeName: coreIdentityInput?.typeName || nextProfileWithResolvedType?.typeName || null,
+      instinctualVariant: coreIdentityInput?.instinctualVariant || nextProfileWithResolvedType?.instinctualVariant || null,
+      subtypeKeyword: coreIdentityInput?.subtypeKeyword || nextProfileWithResolvedType?.subtypeKeyword || null,
+      integrationLevel: coreIdentityInput?.integrationLevel || nextProfileWithResolvedType?.integrationLevel || null,
+      connectedLineA: coreIdentityInput?.releasePoint || nextProfileWithResolvedType?.connectedLineA || null,
+      connectedLineB: coreIdentityInput?.stretchPoint || nextProfileWithResolvedType?.connectedLineB || null,
+    },
+  };
+  const persistedProfileWithIdentity = {
+    ...nextProfileWithResolvedType,
+    typeName: normalizedCoreIdentityProfileUpdates.parsedProfile.typeName,
+    instinctualVariant: normalizedCoreIdentityProfileUpdates.parsedProfile.instinctualVariant,
+    subtypeKeyword: normalizedCoreIdentityProfileUpdates.parsedProfile.subtypeKeyword,
+    integrationLevel: normalizedCoreIdentityProfileUpdates.parsedProfile.integrationLevel,
+    connectedLineA: normalizedCoreIdentityProfileUpdates.parsedProfile.connectedLineA,
+    connectedLineB: normalizedCoreIdentityProfileUpdates.parsedProfile.connectedLineB,
+  };
+  const dashboardInstinct =
+    persistedProfileWithIdentity?.instinctualVariant ||
+    normalizeInstinctualVariant(results?.dashboardContext?.instinct) ||
+    normalizeInstinctualVariant(results?.dashboardContext?.instinctCode) ||
+    null;
+  const dashboardIntegrationLevel =
+    persistedProfileWithIdentity?.integrationLevel ||
+    normalizeIntegrationLevel(results?.dashboardContext?.integrationLevel) ||
+    normalizeIntegrationLevel(results?.dashboardContext?.integration) ||
+    null;
   const normalizedGroundTruthScores = normalizeScorePayload(nextProfileWithResolvedType);
   const parserVsGroundTruth = buildScoreComparisonMetrics({
     candidateScores: normalizeScorePayload(profile),
@@ -308,15 +402,31 @@ export async function POST(req) {
     ? `Extracted ${pageCount} pages, expected at least ${minPages}`
     : "Chart numerics incomplete: one or more type, instinct, or center scores are null";
 
-  const nextResults = {
+  const nextResultsBase = {
     ...results,
     parsedProfile: nextProfileWithResolvedType,
+  };
+  const nextResults = {
+    ...nextResultsBase,
+    parsedProfile: {
+      ...nextProfileWithResolvedType,
+      typeName: normalizedCoreIdentityProfileUpdates.parsedProfile.typeName,
+      instinctualVariant: normalizedCoreIdentityProfileUpdates.parsedProfile.instinctualVariant,
+      subtypeKeyword: normalizedCoreIdentityProfileUpdates.parsedProfile.subtypeKeyword,
+      integrationLevel: normalizedCoreIdentityProfileUpdates.parsedProfile.integrationLevel,
+      connectedLineA: normalizedCoreIdentityProfileUpdates.parsedProfile.connectedLineA,
+      connectedLineB: normalizedCoreIdentityProfileUpdates.parsedProfile.connectedLineB,
+    },
     dashboardContext: {
       ...(results?.dashboardContext || {}),
       detectedType: persistedEnneagramType || results?.dashboardContext?.detectedType || null,
       detectedTypeSource: persistedEnneagramType
         ? "admin-review:graded-type-scores"
         : (results?.dashboardContext?.detectedTypeSource || null),
+      instinct: dashboardInstinct,
+      instinctCode: dashboardInstinct,
+      integrationLevel: dashboardIntegrationLevel,
+      integration: dashboardIntegrationLevel,
     },
     review: {
       ...(results?.review || {}),
@@ -342,6 +452,14 @@ export async function POST(req) {
             primaryType:
               persistedEnneagramType ||
               diagnostics?.verification?.resolvedFields?.primaryType ||
+              null,
+            instinctualVariant:
+              persistedProfileWithIdentity?.instinctualVariant ||
+              diagnostics?.verification?.resolvedFields?.instinctualVariant ||
+              null,
+            integrationLevel:
+              persistedProfileWithIdentity?.integrationLevel ||
+              diagnostics?.verification?.resolvedFields?.integrationLevel ||
               null,
           },
         },
@@ -370,6 +488,15 @@ export async function POST(req) {
         labeledAt: new Date().toISOString(),
         notes: String(body?.notes || "").trim() || null,
         groundTruthScores: normalizedGroundTruthScores,
+        groundTruthIdentity: {
+          primaryType: persistedEnneagramType || null,
+          instinctualVariant: persistedProfileWithIdentity?.instinctualVariant || null,
+          integrationLevel: persistedProfileWithIdentity?.integrationLevel || null,
+          subtypeKeyword: persistedProfileWithIdentity?.subtypeKeyword || null,
+          stretchPoint: persistedProfileWithIdentity?.connectedLineB || null,
+          releasePoint: persistedProfileWithIdentity?.connectedLineA || null,
+          typeName: persistedProfileWithIdentity?.typeName || null,
+        },
         evaluation: mlEvaluation,
       },
     },

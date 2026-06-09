@@ -7,6 +7,7 @@ import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 import { applyMlScoreLearningToParsedProfile } from "../../../lib/mlScoreLearning";
 import { resolveMinExpectedPagesByReportType } from "../../../lib/reportTypePageThresholds";
+import { extractClientNameFromReportFileName } from "../../../lib/reportFileNameClientName";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -229,6 +230,7 @@ function computeCompletenessFromParsed(parsed, diagnostics, fileName) {
 
 function buildIngestedResultsData({ reportId, safeFileName, storagePath, bucket, sizeBytes, mimeType }) {
   const { detectedType, detectionSource } = inferTypeFromFileName(safeFileName);
+  const fileNameClientName = extractClientNameFromReportFileName(safeFileName);
 
   return {
     ingestion: {
@@ -249,6 +251,7 @@ function buildIngestedResultsData({ reportId, safeFileName, storagePath, bucket,
       detectedType,
       detectedTypeSource: detectionSource,
       sourceFileName: safeFileName,
+      clientName: fileNameClientName,
       basicFear: null,
       basicDesire: null,
       passion: null,
@@ -278,6 +281,16 @@ function buildParsedResultsData({
   parsed,
   mlLearning,
 }) {
+  const fileNameClientName = extractClientNameFromReportFileName(safeFileName);
+  const parsedClientName = String(parsed?.clientName || "").trim() || null;
+  const resolvedClientName = parsedClientName || fileNameClientName || null;
+  const parsedProfileWithClientName =
+    parsed && typeof parsed === "object"
+      ? {
+        ...parsed,
+        clientName: resolvedClientName,
+      }
+      : parsed;
   const parseDiagnostics =
     parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
       ? parsed._parseDiagnostics
@@ -350,6 +363,7 @@ function buildParsedResultsData({
       detectedType: resolvedIdentity.primaryType,
       detectedTypeSource: resolvedIdentity.detectedTypeSource,
       sourceFileName: safeFileName,
+      clientName: resolvedClientName,
       basicFear: parsed?.coreFear || null,
       basicDesire: parsed?.coreDesire || null,
       passion: parsed?.passion || null,
@@ -369,7 +383,7 @@ function buildParsedResultsData({
       extractedAt: new Date().toISOString(),
       parserVersion: nextDiagnostics?.parserVersion || "multi-pass-v3",
     },
-    parsedProfile: parsed,
+    parsedProfile: parsedProfileWithClientName,
     file: {
       bucket,
       storagePath,
@@ -697,6 +711,16 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
       diagnostics: nextDiagnostics,
       fileName,
     });
+    const fileNameClientName = extractClientNameFromReportFileName(fileName);
+    const parsedClientName = String(parsedForSave?.clientName || "").trim() || null;
+    const resolvedClientName = parsedClientName || fileNameClientName || null;
+    const parsedProfileWithClientName =
+      parsedForSave && typeof parsedForSave === "object"
+        ? {
+          ...parsedForSave,
+          clientName: resolvedClientName,
+        }
+        : parsedForSave;
 
     const nextResultsData = {
       ...priorResults,
@@ -734,6 +758,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
         detectedType: resolvedIdentity.primaryType,
         detectedTypeSource: resolvedIdentity.detectedTypeSource,
         sourceFileName: fileName,
+        clientName: resolvedClientName,
         basicFear: parsedForSave?.coreFear || null,
         basicDesire: parsedForSave?.coreDesire || null,
         passion: priorDashboardContext?.passion || null,
@@ -749,7 +774,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
         extractedAt: new Date().toISOString(),
         parserVersion: nextDiagnostics?.parserVersion || "multi-pass-v3",
       },
-      parsedProfile: parsedForSave,
+      parsedProfile: parsedProfileWithClientName,
     };
 
     const { error: updateErr } = await supabase

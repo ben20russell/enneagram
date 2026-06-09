@@ -4,6 +4,7 @@ import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../../lib/supa
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../../lib/adminAccess";
 import { resolveMinExpectedPagesByReportType } from "../../../../lib/reportTypePageThresholds";
+import { extractClientNameFromReportFileName } from "../../../../lib/reportFileNameClientName";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -38,6 +39,7 @@ function isMissingSourceColumnError(error) {
 }
 
 function buildIngestionMetadata({ reportId, safeFileName, storagePath, bucket, sizeBytes, mimeType }) {
+  const fileNameClientName = extractClientNameFromReportFileName(safeFileName);
   return {
     ingestion: {
       status: "incomplete",
@@ -61,6 +63,7 @@ function buildIngestionMetadata({ reportId, safeFileName, storagePath, bucket, s
       detectedType: inferTypeFromFileName(safeFileName),
       detectedTypeSource: "fileName",
       sourceFileName: safeFileName,
+      clientName: fileNameClientName,
       basicFear: null,
       basicDesire: null,
       passion: null,

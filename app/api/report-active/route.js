@@ -4,6 +4,7 @@ import { getAssignedReportByUserEmail } from "../../../lib/reportsStore";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabaseAdmin";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 import { authOptions } from "../auth/[...nextauth]/route";
+import { extractClientNameFromReportFileName } from "../../../lib/reportFileNameClientName";
 
 function isLocalhostHostValue(value) {
   const normalized = String(value || "").trim().toLowerCase();
@@ -277,6 +278,9 @@ function deriveClientDisplayName({ parsedProfile, userEmail, reportFileName, row
   const parsedProfileName = String(parsedProfile?.clientName || "").trim();
   if (parsedProfileName) return parsedProfileName;
 
+  const fileNameClientName = extractClientNameFromReportFileName(reportFileName);
+  if (fileNameClientName) return fileNameClientName;
+
   const normalizedEmail = normalizeEmail(userEmail);
   if (normalizedEmail.includes("@")) {
     const emailLocal = normalizedEmail.split("@")[0] || "";
@@ -466,6 +470,13 @@ export async function GET(request) {
       );
     }
 
+    const assignedParsedProfile = getParsedProfile(assignedReport?.resultsData);
+    const assignedClientName = deriveClientDisplayName({
+      parsedProfile: assignedParsedProfile,
+      userEmail,
+      reportFileName: assignedReport?.reportPdf?.fileName || null,
+      rowIndex: 0,
+    });
     const signedPdfAccess = await createSignedPdfAccess({
       supabaseAdmin,
       reportPdf: assignedReport?.reportPdf,
@@ -487,9 +498,10 @@ export async function GET(request) {
         isAssignedReportReady: isReportActive,
         isPdfRenderable: signedPdfAccess.isPdfRenderable,
         reportFileName: assignedReport?.reportPdf?.fileName || null,
+        clientName: assignedClientName,
         reportSignedUrl: signedPdfAccess.reportSignedUrl,
         ingestedDashboardContext: getIngestedDashboardContext(assignedReport?.resultsData, assignedIdentityFallback),
-        ingestedParsedProfile: getParsedProfile(assignedReport?.resultsData),
+        ingestedParsedProfile: assignedParsedProfile,
         ingestionStatus: ingestionState.status,
         parseDiagnostics: ingestionState.parseDiagnostics,
         reviewStatus: ingestionState.review?.status || null,

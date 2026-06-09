@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../../lib/adminAccess";
 import { getSupabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { extractClientNameFromReportFileName } from "../../../../lib/reportFileNameClientName";
 
 export const runtime = "nodejs";
 
@@ -101,6 +102,11 @@ function buildBackfilledRow(row, adminEmail) {
   if (!profile) {
     return { skipReason: "missing_parsed_profile" };
   }
+  const fileNameClientName = extractClientNameFromReportFileName(
+    row?.report_pdf?.fileName || results?.file?.fileName || null,
+  );
+  const parsedClientName = String(profile?.clientName || "").trim() || null;
+  const resolvedClientName = parsedClientName || fileNameClientName || null;
 
   const normalizedTypeScores = normalizeScoreMap(profile?.typeScores, TYPE_SCORE_KEYS);
   const normalizedInstinctScores = normalizeScoreMap(profile?.instinctScores, INSTINCT_SCORE_KEYS);
@@ -123,6 +129,7 @@ function buildBackfilledRow(row, adminEmail) {
     ...results,
     parsedProfile: {
       ...profile,
+      clientName: resolvedClientName,
       primaryType: persistedEnneagramType || profile?.primaryType || null,
       typeScores: normalizedTypeScores,
       instinctScores: normalizedInstinctScores,
@@ -130,6 +137,7 @@ function buildBackfilledRow(row, adminEmail) {
     },
     dashboardContext: {
       ...(results?.dashboardContext || {}),
+      clientName: resolvedClientName,
       detectedType: persistedEnneagramType || results?.dashboardContext?.detectedType || null,
       detectedTypeSource: persistedEnneagramType
         ? "admin-review:bulk-resave"

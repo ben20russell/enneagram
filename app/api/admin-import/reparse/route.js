@@ -5,6 +5,7 @@ import { hasAdminAccess, normalizeEmail } from "../../../../lib/adminAccess";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../../lib/supabaseAdmin";
 import { applyMlScoreLearningToParsedProfile } from "../../../../lib/mlScoreLearning";
 import { resolveMinExpectedPagesByReportType } from "../../../../lib/reportTypePageThresholds";
+import { extractClientNameFromReportFileName } from "../../../../lib/reportFileNameClientName";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -343,6 +344,16 @@ export async function POST(req) {
       diagnostics: nextDiagnostics,
       fileName,
     });
+    const fileNameClientName = extractClientNameFromReportFileName(fileName);
+    const parsedClientName = String(parsedForSave?.clientName || "").trim() || null;
+    const resolvedClientName = parsedClientName || fileNameClientName || null;
+    const parsedProfileWithClientName =
+      parsedForSave && typeof parsedForSave === "object"
+        ? {
+          ...parsedForSave,
+          clientName: resolvedClientName,
+        }
+        : parsedForSave;
 
     const nextResultsData = {
       ...priorResults,
@@ -380,6 +391,7 @@ export async function POST(req) {
         detectedType: resolvedIdentity.primaryType,
         detectedTypeSource: resolvedIdentity.detectedTypeSource,
         sourceFileName: fileName,
+        clientName: resolvedClientName,
         basicFear: parsedForSave?.coreFear || null,
         basicDesire: parsedForSave?.coreDesire || null,
         passion: priorDashboardContext?.passion || null,
@@ -395,7 +407,7 @@ export async function POST(req) {
         extractedAt: new Date().toISOString(),
         parserVersion: nextDiagnostics?.parserVersion || "multi-pass-v3",
       },
-      parsedProfile: parsedForSave,
+      parsedProfile: parsedProfileWithClientName,
     };
 
     const { error: updateErr } = await supabase

@@ -2758,7 +2758,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       corePatternLines,
       corePatternBullets,
       reportSummary: parsedProfile?.reportSummary || null,
-      clientName: parsedProfile?.clientName || null,
+      clientName: parsedProfile?.clientName || normalizeAssignedIdentityValue(serverContext?.clientName) || null,
       reportDate: parsedProfile?.reportDate || null,
       wing: parsedProfile?.wing || null,
       trifix: parsedProfile?.trifix || null,
