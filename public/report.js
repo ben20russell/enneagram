@@ -8060,7 +8060,6 @@ function renderReportFromState(isExampleMode) {
   setText('reportTitle', isExampleMode ? `Type ${REPORT.typeNumber} Example Report` : `Type ${REPORT.typeNumber} Assigned PDF Report`);
   setText('mainTypeValue', currentCoreTypeLabel());
   setText('instinctValue', REPORT.instinct);
-  setText('keywordValue', REPORT.keyword);
   const growthCopy = buildGrowthCopyForDisplay(REPORT);
   setText('growthStretchTitle', growthCopy.stretchTitle);
   setText('growthStretchBody', growthCopy.stretchBody);

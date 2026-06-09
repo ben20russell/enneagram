@@ -18,6 +18,53 @@ const INSTINCT_KEYS = ["selfPreservation", "sexual", "social"];
 const CENTER_KEYS = ["head", "heart", "body"];
 const DASHBOARD_REHYDRATE_STORAGE_KEY = "admin-review:dashboard-rehydrate";
 const DASHBOARD_REHYDRATE_CHANNEL = "admin-review-dashboard-sync";
+const MAIN_TYPE_NAME_OPTIONS = [
+  { typeNumber: "1", name: "Strict Perfectionist" },
+  { typeNumber: "2", name: "Considerate Helper" },
+  { typeNumber: "3", name: "Competitive Achiever" },
+  { typeNumber: "4", name: "Intense Creative" },
+  { typeNumber: "5", name: "Quiet Specialist" },
+  { typeNumber: "6", name: "Loyal Sceptic" },
+  { typeNumber: "7", name: "Enthusiastic Visionary" },
+  { typeNumber: "8", name: "Active Controller" },
+  { typeNumber: "9", name: "Adaptive Peacemaker" },
+];
+
+function normalizeTypeNumber(value) {
+  const match = String(value ?? "").match(/[1-9]/);
+  return match?.[0] || "";
+}
+
+function resolveMainTypeNameByTypeNumber(typeNumber) {
+  const normalizedTypeNumber = normalizeTypeNumber(typeNumber);
+  return MAIN_TYPE_NAME_OPTIONS.find((option) => option.typeNumber === normalizedTypeNumber)?.name || "";
+}
+
+function resolveMainTypeNumberByName(name) {
+  const normalized = String(name ?? "").trim().toLowerCase();
+  if (!normalized) return "";
+  return MAIN_TYPE_NAME_OPTIONS.find((option) => option.name.toLowerCase() === normalized)?.typeNumber || "";
+}
+
+function normalizeMainTypeNameOption(value, fallbackTypeNumber = "") {
+  const normalizedValue = String(value ?? "").trim();
+  if (!normalizedValue) {
+    return resolveMainTypeNameByTypeNumber(fallbackTypeNumber);
+  }
+  const directMatch = MAIN_TYPE_NAME_OPTIONS.find((option) => option.name === normalizedValue);
+  if (directMatch) return directMatch.name;
+
+  const keywordMatch = MAIN_TYPE_NAME_OPTIONS.find((option) =>
+    normalizedValue.toLowerCase().includes(option.name.toLowerCase()),
+  );
+  if (keywordMatch) return keywordMatch.name;
+
+  const inferredTypeNumber = normalizeTypeNumber(normalizedValue);
+  if (inferredTypeNumber) {
+    return resolveMainTypeNameByTypeNumber(inferredTypeNumber);
+  }
+  return resolveMainTypeNameByTypeNumber(fallbackTypeNumber);
+}
 
 function emptyGroup(keys) {
   return Object.fromEntries(keys.map((key) => [key, ""]));
@@ -35,7 +82,6 @@ function emptyCoreIdentity() {
   return {
     typeName: "",
     instinctualVariant: "",
-    subtypeKeyword: "",
     integrationLevel: "",
     stretchPoint: "",
     releasePoint: "",
@@ -192,16 +238,16 @@ export default function AdminReviewPanel() {
       next.centerScores[k] = value == null ? "" : String(value);
     });
     const strongestType = resolveHighestScoreKey(next.typeScores, TYPE_KEYS);
+    const strongestTypeNumber = strongestType ? strongestType.replace("type", "") : "";
     const strongestInstinct = resolveHighestScoreKey(next.instinctScores, INSTINCT_KEYS);
     const strongestCenter = resolveHighestScoreKey(next.centerScores, CENTER_KEYS);
     setScores(next);
-    setPrimaryTypePreset(strongestType ? strongestType.replace("type", "") : "");
+    setPrimaryTypePreset(strongestTypeNumber);
     setDominantInstinctPreset(strongestInstinct || "");
     setDominantCenterPreset(strongestCenter || "");
     setCoreIdentity({
-      typeName: String(selected?.coreIdentity?.typeName || "").trim(),
+      typeName: normalizeMainTypeNameOption(selected?.coreIdentity?.typeName, strongestTypeNumber),
       instinctualVariant: String(selected?.coreIdentity?.instinctualVariant || "").trim(),
-      subtypeKeyword: String(selected?.coreIdentity?.subtypeKeyword || "").trim(),
       integrationLevel: String(selected?.coreIdentity?.integrationLevel || "").trim(),
       stretchPoint: String(selected?.coreIdentity?.stretchPoint || "").trim(),
       releasePoint: String(selected?.coreIdentity?.releasePoint || "").trim(),
@@ -212,7 +258,6 @@ export default function AdminReviewPanel() {
       coreIdentity: {
         typeName: selected?.coreIdentity?.typeName || null,
         instinctualVariant: selected?.coreIdentity?.instinctualVariant || null,
-        subtypeKeyword: selected?.coreIdentity?.subtypeKeyword || null,
         integrationLevel: selected?.coreIdentity?.integrationLevel || null,
         stretchPoint: selected?.coreIdentity?.stretchPoint || null,
         releasePoint: selected?.coreIdentity?.releasePoint || null,
@@ -250,6 +295,10 @@ export default function AdminReviewPanel() {
         TYPE_KEYS.map((key) => [key, key === targetKey ? "100" : "0"]),
       ),
     }));
+    setCoreIdentity((prev) => ({
+      ...prev,
+      typeName: resolveMainTypeNameByTypeNumber(primaryTypePreset),
+    }));
     setStatus(`Applied primary type preset: Type ${primaryTypePreset} = 100, others = 0.`);
     console.log("[admin-review] Applied primary type preset", { selectedId, primaryTypePreset });
   }
@@ -283,7 +332,6 @@ export default function AdminReviewPanel() {
       coreIdentity: {
         typeName: String(coreIdentity?.typeName || "").trim() || null,
         instinctualVariant: String(coreIdentity?.instinctualVariant || "").trim() || null,
-        subtypeKeyword: String(coreIdentity?.subtypeKeyword || "").trim() || null,
         integrationLevel: String(coreIdentity?.integrationLevel || "").trim() || null,
         stretchPoint: String(coreIdentity?.stretchPoint || "").trim() || null,
         releasePoint: String(coreIdentity?.releasePoint || "").trim() || null,
@@ -559,12 +607,25 @@ export default function AdminReviewPanel() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px" }}>
               <label style={{ display: "grid", gap: "4px" }}>
                 <span>Main Type Name</span>
-                <input
+                <select
                   data-testid="admin-review-core-main-type-name"
                   value={coreIdentity.typeName}
-                  onChange={(event) => setCoreIdentityValue("typeName", event.target.value)}
-                  placeholder="Type 2 — Considerate Helper Warm"
-                />
+                  onChange={(event) => {
+                    const nextTypeName = event.target.value;
+                    setCoreIdentityValue("typeName", nextTypeName);
+                    const nextTypeNumber = resolveMainTypeNumberByName(nextTypeName);
+                    if (nextTypeNumber) {
+                      setPrimaryTypePreset(nextTypeNumber);
+                    }
+                  }}
+                >
+                  <option value="">Select main type</option>
+                  {MAIN_TYPE_NAME_OPTIONS.map((option) => (
+                    <option key={option.typeNumber} value={option.name}>
+                      Type {option.typeNumber} — {option.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label style={{ display: "grid", gap: "4px" }}>
                 <span>Dominant Instinct</span>
@@ -578,15 +639,6 @@ export default function AdminReviewPanel() {
                   <option value="so">SO — Social</option>
                   <option value="sx">SX — One-on-One</option>
                 </select>
-              </label>
-              <label style={{ display: "grid", gap: "4px" }}>
-                <span>Subtype Keyword</span>
-                <input
-                  data-testid="admin-review-core-subtype-keyword"
-                  value={coreIdentity.subtypeKeyword}
-                  onChange={(event) => setCoreIdentityValue("subtypeKeyword", event.target.value)}
-                  placeholder="SP - 2"
-                />
               </label>
               <label style={{ display: "grid", gap: "4px" }}>
                 <span>Integration Level</span>
