@@ -69,6 +69,7 @@ export default function AdminReviewPanel() {
   const [primaryTypePreset, setPrimaryTypePreset] = useState("");
   const [dominantInstinctPreset, setDominantInstinctPreset] = useState("");
   const [dominantCenterPreset, setDominantCenterPreset] = useState("");
+  const [isResavingGradedReports, setIsResavingGradedReports] = useState(false);
 
   async function loadQueue() {
     setIsLoading(true);
@@ -242,6 +243,32 @@ export default function AdminReviewPanel() {
     }
   }
 
+  async function handleForceResaveGradedReports() {
+    setIsResavingGradedReports(true);
+    setStatus("Force re-saving graded reports...");
+    try {
+      const res = await fetch("/api/admin-review/resave-graded", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxRows: 5000, pageSize: 500 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to re-save graded reports");
+      }
+      setStatus(
+        `Re-save complete. Scanned ${data?.scannedCount ?? 0}, graded ${data?.gradedCount ?? 0}, updated ${data?.updatedCount ?? 0}, skipped ${data?.skippedCount ?? 0}, failed ${data?.failedCount ?? 0}.`,
+      );
+      console.log("[admin-review] Force re-save completed", data);
+      await loadQueue();
+    } catch (error) {
+      setStatus(String(error?.message || "Failed to re-save graded reports"));
+      console.log("[admin-review] Force re-save failed", { details: String(error?.message || error) });
+    } finally {
+      setIsResavingGradedReports(false);
+    }
+  }
+
   return (
     <main data-testid="admin-review-page" style={{ padding: "20px", maxWidth: "980px", margin: "0 auto" }}>
       <section
@@ -302,9 +329,19 @@ export default function AdminReviewPanel() {
       </section>
 
       <section data-testid="admin-review-controls" style={{ marginTop: "16px", display: "grid", gap: "10px" }}>
-        <button data-testid="admin-review-refresh" onClick={loadQueue} disabled={isLoading} style={{ width: "160px" }}>
-          {isLoading ? "Refreshing..." : "Refresh Queue"}
-        </button>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+          <button data-testid="admin-review-refresh" onClick={loadQueue} disabled={isLoading} style={{ width: "160px" }}>
+            {isLoading ? "Refreshing..." : "Refresh Queue"}
+          </button>
+          <button
+            data-testid="admin-review-force-resave-graded"
+            onClick={handleForceResaveGradedReports}
+            disabled={isResavingGradedReports || isLoading}
+            style={{ width: "260px" }}
+          >
+            {isResavingGradedReports ? "Re-saving..." : "Force Re-save Graded Reports"}
+          </button>
+        </div>
         <select
           data-testid="admin-review-select"
           value={selectedId}
