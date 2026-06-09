@@ -167,6 +167,49 @@ def extract_type(text: str) -> tuple[str | None, str]:
     return winner[0], strongest_source
 
 
+def extract_type_from_preferred_page(text: str) -> tuple[str | None, str]:
+    normalized = normalize(text)
+    if not normalized:
+        return None, "none"
+
+    # Page 6 contains the deterministic resonance header in iEQ9 reports.
+    # Prioritize this line before running broader page-level scoring.
+    direct_patterns = [
+        (
+            r"you\s+resonate\s+with\s+the\s+Enneagram\s+type\s*([1-9])\s+which\s+is\s+also\s+known\s+as",
+            "resonanceSentence",
+        ),
+        (
+            r"\bM\s*A\s*I\s*N\s*T\s*Y\s*P\s*E\s*(?:#|No\.?|Number)?\s*[:\-]?\s*(?:T\s*Y\s*P\s*E\s*)?([1-9])\b",
+            "mainTypeLetterSpaced",
+        ),
+        (r"Main\s*Type\s*(?:#|No\.?|Number)?\s*[:\-]?\s*(?:Type\s*)?([1-9])\b", "mainTypeHash"),
+        (r"\bMain\s*Type\b[^0-9]{0,24}([1-9])\b", "mainTypeLoose"),
+    ]
+    for pattern, source in direct_patterns:
+        match = re.search(pattern, normalized, re.I)
+        if not match:
+            continue
+        detected = normalize_type_number(match.group(1))
+        if detected:
+            return detected, source
+
+    return extract_type(normalized)
+
+
+def extract_type_from_pages(page_texts: list[str], preferred_page_number: int = 6) -> tuple[str | None, str]:
+    pages = page_texts if isinstance(page_texts, list) else []
+    if preferred_page_number > 0:
+        preferred_index = preferred_page_number - 1
+        if preferred_index < len(pages):
+            preferred_type, preferred_source = extract_type_from_preferred_page(pages[preferred_index])
+            if preferred_type:
+                return preferred_type, f"page{preferred_page_number}:{preferred_source}"
+
+    combined_text = normalize("\n".join(str(page or "") for page in pages))
+    return extract_type(combined_text)
+
+
 def extract_type_from_filename(file_name: str) -> tuple[str | None, str]:
     normalized_name = normalize(file_name)
     if not normalized_name:
@@ -194,6 +237,66 @@ def instinct_label(code: str | None) -> str | None:
     if c == "SP":
         return "SP — Self-Preservation"
     return None
+
+
+def extract_instinct_code(text: str) -> tuple[str | None, str]:
+    normalized = normalize(text)
+    if not normalized:
+        return None, "none"
+
+    code_patterns = [
+        (r"\bDominant\s*Instinct\s*[:\-]?\s*(SO|SP|SX)\b", "dominantInstinctLabel"),
+        (r"\bwith\s+a\s+(SO|SP|SX)\s+Instinct(?:\b|[A-Z])", "instinctSentence"),
+        (r"\b(SO|SP|SX)\s*[—-]\s*(Social|Self[\s-]?Preservation|One[\s-]?on[\s-]?One)\b", "instinctCodeLabel"),
+    ]
+
+    for pattern, source in code_patterns:
+        match = re.search(pattern, normalized, re.I)
+        if not match or not match.group(1):
+            continue
+        code = str(match.group(1) or "").upper().strip()
+        if code in {"SO", "SP", "SX"}:
+            return code, source
+
+    return None, "none"
+
+
+def extract_instinct_from_preferred_page(text: str) -> tuple[str | None, str]:
+    normalized = normalize(text)
+    if not normalized:
+        return None, "none"
+
+    instinct_code, instinct_source = extract_instinct_code(normalized)
+    if instinct_code:
+        return instinct_label(instinct_code) or instinct_code, instinct_source
+
+    dominant_label_match = re.search(
+        r"\bDominant\s*Instinct\s*[:\-]?\s*([A-Za-z]{2,4}\s*[—-]\s*[A-Za-z][A-Za-z\s-]{2,40})",
+        normalized,
+        re.I,
+    )
+    if dominant_label_match and dominant_label_match.group(1):
+        candidate = clean_metadata_value(dominant_label_match.group(1))
+        if candidate:
+            return candidate, "dominantInstinctLabel"
+
+    return None, "none"
+
+
+def extract_instinct_from_pages(page_texts: list[str], preferred_page_number: int = 10) -> tuple[str | None, str]:
+    pages = page_texts if isinstance(page_texts, list) else []
+    if preferred_page_number > 0:
+        preferred_index = preferred_page_number - 1
+        if preferred_index < len(pages):
+            preferred_instinct, preferred_source = extract_instinct_from_preferred_page(pages[preferred_index])
+            if preferred_instinct:
+                return preferred_instinct, f"page{preferred_page_number}:{preferred_source}"
+
+    combined_text = normalize("\n".join(str(page or "") for page in pages))
+    fallback_instinct, fallback_source = extract_instinct_from_preferred_page(combined_text)
+    if fallback_instinct:
+        return fallback_instinct, fallback_source
+    return None, "none"
 
 
 def extract_first(text: str, patterns: list[str]) -> str | None:
@@ -252,16 +355,13 @@ def main() -> int:
         return 1
 
     reader = PdfReader(str(pdf_path))
-    text = normalize("\n".join((page.extract_text() or "") for page in reader.pages))
-    detected_type, detected_type_source = extract_type(text)
+    page_texts = [(page.extract_text() or "") for page in reader.pages]
+    text = normalize("\n".join(page_texts))
+    detected_type, detected_type_source = extract_type_from_pages(page_texts, preferred_page_number=6)
     if not detected_type:
         detected_type, detected_type_source = extract_type_from_filename(pdf_path.name)
 
-    instinct_code = extract_first(text, [r"\bwith\s+a\s+(SO|SP|SX)\s+Instinct(?:\b|[A-Z])"])
-    instinct = instinct_label(instinct_code) or extract_first(
-        text,
-        [r"\b(SO|SP|SX)\s*[—-]\s*(Social|Self[\s-]?Preservation|One[\s-]?on[\s-]?One)\b"],
-    )
+    instinct, _instinct_source = extract_instinct_from_pages(page_texts, preferred_page_number=10)
     type_name = extract_first(
         text,
         [
@@ -348,6 +448,7 @@ def main() -> int:
             ),
             "mainTypeAsEnnea": bool(re.search(r"main\s+type\s+as\s+an\s+Ennea\s*[1-9]\b", text, re.I)),
             "instinctSentence": bool(re.search(r"\bwith\s+a\s+(SO|SP|SX)\s+Instinct(?:\b|[A-Z])", text, re.I)),
+            "dominantInstinctLabel": bool(re.search(r"\bDominant\s*Instinct\s*[:\-]?\s*(SO|SP|SX)\b", text, re.I)),
             "clientName": bool(client_name),
             "reportDate": bool(report_date),
             "trifix": bool(trifix),

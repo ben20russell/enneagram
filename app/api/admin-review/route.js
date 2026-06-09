@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
 import { getSupabaseAdmin } from "../../../lib/supabaseAdmin";
+import {
+  aggregateMlFeedbackMetricsFromReportRows,
+  buildScoreComparisonMetrics,
+  normalizeScorePayload,
+} from "../../../lib/mlScoreLearning";
 
 function countNonNull(obj) {
   if (!obj || typeof obj !== "object") return 0;
@@ -14,6 +19,13 @@ function toScore(value) {
   if (!Number.isFinite(n)) return null;
   if (n < 0 || n > 100) return null;
   return Math.round(n);
+}
+
+function roundMetric(value, digits = 4) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const factor = 10 ** Math.max(0, Math.floor(digits));
+  return Math.round(numeric * factor) / factor;
 }
 
 function normalizeScores(input) {
@@ -100,7 +112,8 @@ export async function GET() {
     return NextResponse.json({ error: `Failed to list review queue: ${error.message}` }, { status: 500 });
   }
 
-  const queue = (data || [])
+  const reportRows = Array.isArray(data) ? data : [];
+  const queue = reportRows
     .map((row) => {
       const results = row?.results_data && typeof row.results_data === "object" ? row.results_data : {};
       const profile = results?.parsedProfile && typeof results.parsedProfile === "object" ? results.parsedProfile : {};
@@ -127,8 +140,15 @@ export async function GET() {
       };
     })
     .filter((item) => item.reviewStatus !== "approved" && item.reviewStatus !== "auto_approved");
+  const mlMetrics = aggregateMlFeedbackMetricsFromReportRows(reportRows);
+  console.log("[admin-review] Loaded queue with ML metrics", {
+    queueCount: queue.length,
+    labeledReportCount: mlMetrics?.labeledReportCount ?? 0,
+    parserMae: mlMetrics?.parserVsGroundTruth?.meanAbsoluteError ?? null,
+    modelMae: mlMetrics?.modelVsGroundTruth?.meanAbsoluteError ?? null,
+  });
 
-  return NextResponse.json({ queue }, { status: 200 });
+  return NextResponse.json({ queue, mlMetrics }, { status: 200 });
 }
 
 export async function POST(req) {
@@ -168,6 +188,37 @@ export async function POST(req) {
   const profile = results?.parsedProfile && typeof results.parsedProfile === "object" ? results.parsedProfile : {};
   const scoreUpdates = normalizeScores(body?.scores || {});
   const nextProfile = mergeScores(profile, scoreUpdates);
+  const normalizedGroundTruthScores = normalizeScorePayload(nextProfile);
+  const parserVsGroundTruth = buildScoreComparisonMetrics({
+    candidateScores: normalizeScorePayload(profile),
+    groundTruthScores: normalizedGroundTruthScores,
+  });
+  const modelPredictionCandidate =
+    results?.ingestion?.ml?.prediction?.scores && typeof results.ingestion.ml.prediction.scores === "object"
+      ? results.ingestion.ml.prediction.scores
+      : (results?.ingestion?.ml?.prediction && typeof results.ingestion.ml.prediction === "object"
+        ? results.ingestion.ml.prediction
+        : null);
+  const modelVsGroundTruthCandidate = modelPredictionCandidate
+    ? buildScoreComparisonMetrics({
+      candidateScores: normalizeScorePayload(modelPredictionCandidate),
+      groundTruthScores: normalizedGroundTruthScores,
+    })
+    : null;
+  const modelVsGroundTruth = Number(modelVsGroundTruthCandidate?.totalCompared || 0) > 0
+    ? modelVsGroundTruthCandidate
+    : null;
+  const parserMae = Number(parserVsGroundTruth?.meanAbsoluteError);
+  const modelMae = Number(modelVsGroundTruth?.meanAbsoluteError);
+  const hasComparableMae = Number.isFinite(parserMae) && Number.isFinite(modelMae) && parserMae > 0;
+  const mlEvaluation = {
+    parserVsGroundTruth,
+    modelVsGroundTruth,
+    absoluteMaeImprovement: hasComparableMae ? roundMetric(parserMae - modelMae, 4) : null,
+    relativeMaeImprovementPercent: hasComparableMae
+      ? roundMetric(((parserMae - modelMae) / parserMae) * 100, 3)
+      : null,
+  };
 
   const typeNonNull = countNonNull(nextProfile?.typeScores);
   const instinctNonNull = countNonNull(nextProfile?.instinctScores);
@@ -209,6 +260,18 @@ export async function POST(req) {
         },
       },
     },
+    ml: {
+      ...(results?.ml || {}),
+      feedback: {
+        ...(results?.ml?.feedback || {}),
+        labelSource: "admin-review",
+        labeledBy: admin.email,
+        labeledAt: new Date().toISOString(),
+        notes: String(body?.notes || "").trim() || null,
+        groundTruthScores: normalizedGroundTruthScores,
+        evaluation: mlEvaluation,
+      },
+    },
   };
 
   const { error: updateErr } = await supabase
@@ -220,12 +283,22 @@ export async function POST(req) {
     return NextResponse.json({ error: `Failed to save review: ${updateErr.message}` }, { status: 500 });
   }
 
+  console.log("[admin-review] Saved review with ML feedback snapshot", {
+    reportId,
+    reviewedBy: admin.email,
+    parseComplete,
+    parserMae: mlEvaluation?.parserVsGroundTruth?.meanAbsoluteError ?? null,
+    modelMae: mlEvaluation?.modelVsGroundTruth?.meanAbsoluteError ?? null,
+    absoluteMaeImprovement: mlEvaluation?.absoluteMaeImprovement ?? null,
+  });
+
   return NextResponse.json(
     {
       success: true,
       reportId,
       reviewStatus: nextResults.review.status,
       ingestionStatus: nextResults.ingestion.status,
+      mlEvaluation,
       scoreCoverage: {
         typeNonNull,
         instinctNonNull,

@@ -36,10 +36,17 @@ function numberOrNull(value) {
   return Math.round(n);
 }
 
+function formatMetric(value, digits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "n/a";
+  return numeric.toFixed(digits);
+}
+
 export default function AdminReviewPanel() {
   const [queue, setQueue] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState("");
+  const [mlMetrics, setMlMetrics] = useState(null);
   const [selectedId, setSelectedId] = useState("");
   const [notes, setNotes] = useState("");
   const [scores, setScores] = useState(emptyScores());
@@ -54,12 +61,19 @@ export default function AdminReviewPanel() {
         throw new Error(data?.error || "Failed to load review queue");
       }
       const nextQueue = Array.isArray(data?.queue) ? data.queue : [];
+      const nextMlMetrics = data?.mlMetrics && typeof data.mlMetrics === "object" ? data.mlMetrics : null;
       setQueue(nextQueue);
+      setMlMetrics(nextMlMetrics);
       if (!selectedId && nextQueue.length) {
         setSelectedId(nextQueue[0].id);
       }
       setStatus(nextQueue.length ? `Loaded ${nextQueue.length} pending report(s).` : "No reports need review.");
-      console.log("[admin-review] Queue loaded", { count: nextQueue.length });
+      console.log("[admin-review] Queue loaded", {
+        count: nextQueue.length,
+        labeledReportCount: nextMlMetrics?.labeledReportCount ?? 0,
+        parserMae: nextMlMetrics?.parserVsGroundTruth?.meanAbsoluteError ?? null,
+        modelMae: nextMlMetrics?.modelVsGroundTruth?.meanAbsoluteError ?? null,
+      });
     } catch (error) {
       setStatus(String(error?.message || "Failed to load review queue."));
       console.log("[admin-review] Queue load failed", { details: String(error?.message || error) });
@@ -155,6 +169,26 @@ export default function AdminReviewPanel() {
       </p>
 
       <div data-testid="admin-review-status" style={{ marginTop: "8px", fontWeight: 600 }}>{status}</div>
+      <section
+        data-testid="admin-review-ml-metrics"
+        style={{ marginTop: "12px", padding: "12px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "#f8fafc" }}
+      >
+        <h2 data-testid="admin-review-ml-metrics-title" style={{ margin: 0, fontSize: "16px" }}>
+          ML Feedback Metrics
+        </h2>
+        <p data-testid="admin-review-ml-metrics-labeled" style={{ margin: "6px 0 0", color: "#334155" }}>
+          Labeled reports: {mlMetrics?.labeledReportCount ?? 0}
+        </p>
+        <p data-testid="admin-review-ml-metrics-parser-mae" style={{ margin: "6px 0 0", color: "#334155" }}>
+          Parser MAE: {formatMetric(mlMetrics?.parserVsGroundTruth?.meanAbsoluteError)}
+        </p>
+        <p data-testid="admin-review-ml-metrics-model-mae" style={{ margin: "6px 0 0", color: "#334155" }}>
+          Model MAE: {formatMetric(mlMetrics?.modelVsGroundTruth?.meanAbsoluteError)}
+        </p>
+        <p data-testid="admin-review-ml-metrics-improvement" style={{ margin: "6px 0 0", color: "#334155" }}>
+          MAE improvement: {formatMetric(mlMetrics?.absoluteMaeImprovement)} ({formatMetric(mlMetrics?.relativeMaeImprovementPercent)}%)
+        </p>
+      </section>
 
       <section data-testid="admin-review-controls" style={{ marginTop: "16px", display: "grid", gap: "10px" }}>
         <button data-testid="admin-review-refresh" onClick={loadQueue} disabled={isLoading} style={{ width: "160px" }}>

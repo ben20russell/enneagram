@@ -5,6 +5,7 @@ import { createReport, getReportById } from "../../../lib/reportsStore";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabaseAdmin";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
+import { applyMlScoreLearningToParsedProfile } from "../../../lib/mlScoreLearning";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -264,6 +265,7 @@ function buildParsedResultsData({
   sizeBytes,
   mimeType,
   parsed,
+  mlLearning,
 }) {
   const parseDiagnostics =
     parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
@@ -325,6 +327,12 @@ function buildParsedResultsData({
         provider: "azure-openai",
         model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
       },
+      ml: mlLearning && typeof mlLearning === "object"
+        ? mlLearning
+        : {
+          status: "skipped",
+          reason: "ml_learning_not_run",
+        },
       parseDiagnostics: nextDiagnostics,
     },
     dashboardContext: {
@@ -459,6 +467,27 @@ async function finalizeImport({
         allowLocalTextFallback: true,
         enablePythonCrossCheck: true,
       });
+      const reportsTable = process.env.SUPABASE_REPORTS_TABLE || "reports";
+      const mlLearningResult = await applyMlScoreLearningToParsedProfile({
+        supabase: supabaseAdmin,
+        table: reportsTable,
+        parsedProfile: parsed,
+        reportId,
+      });
+      const parsedWithMl =
+        mlLearningResult?.parsedProfile && typeof mlLearningResult.parsedProfile === "object"
+          ? mlLearningResult.parsedProfile
+          : parsed;
+      const mlLearning = mlLearningResult?.ml && typeof mlLearningResult.ml === "object"
+        ? mlLearningResult.ml
+        : null;
+      console.log("[admin-import] ML score learning completed for finalize parse", {
+        reportId,
+        mlStatus: mlLearning?.status || "unknown",
+        mlReason: mlLearning?.reason || null,
+        mlTrainingSamples: mlLearning?.training?.trainingSampleCount ?? null,
+        mlAppliedScoreCount: mlLearning?.applied?.appliedCounts?.total ?? 0,
+      });
       resultsData = buildParsedResultsData({
         reportId,
         safeFileName,
@@ -466,7 +495,8 @@ async function finalizeImport({
         bucket,
         sizeBytes,
         mimeType,
-        parsed,
+        parsed: parsedWithMl,
+        mlLearning,
       });
       parsedPrimaryType = String(resultsData?.dashboardContext?.detectedType || "").trim() || parsedPrimaryType;
       console.log("[admin-import] Parse completed", {
@@ -583,17 +613,37 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
       allowLocalTextFallback: true,
       enablePythonCrossCheck: true,
     });
+    const mlLearningResult = await applyMlScoreLearningToParsedProfile({
+      supabase,
+      table: reportsTable,
+      parsedProfile: parsed,
+      reportId: report.id,
+    });
+    const parsedForSave =
+      mlLearningResult?.parsedProfile && typeof mlLearningResult.parsedProfile === "object"
+        ? mlLearningResult.parsedProfile
+        : parsed;
+    const mlLearning = mlLearningResult?.ml && typeof mlLearningResult.ml === "object"
+      ? mlLearningResult.ml
+      : null;
+    console.log("[admin-import] Reparse ML score learning completed", {
+      reportId: report.id,
+      mlStatus: mlLearning?.status || "unknown",
+      mlReason: mlLearning?.reason || null,
+      mlTrainingSamples: mlLearning?.training?.trainingSampleCount ?? null,
+      mlAppliedScoreCount: mlLearning?.applied?.appliedCounts?.total ?? 0,
+    });
 
     const parseDiagnostics =
-      parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
-        ? parsed._parseDiagnostics
+      parsedForSave && typeof parsedForSave === "object" && parsedForSave._parseDiagnostics && typeof parsedForSave._parseDiagnostics === "object"
+        ? parsedForSave._parseDiagnostics
         : null;
     const parseReview =
-      parsed && typeof parsed === "object" && parsed._review && typeof parsed._review === "object"
-        ? parsed._review
+      parsedForSave && typeof parsedForSave === "object" && parsedForSave._review && typeof parsedForSave._review === "object"
+        ? parsedForSave._review
         : null;
 
-    const recomputed = computeCompletenessFromParsed(parsed, parseDiagnostics);
+    const recomputed = computeCompletenessFromParsed(parsedForSave, parseDiagnostics);
     const nextDiagnostics = {
       ...(parseDiagnostics || {}),
       isComplete: recomputed.isComplete,
@@ -632,7 +682,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
         ? priorResults.dashboardContext
         : {};
     const resolvedIdentity = resolveHydrationIdentityFields({
-      parsed,
+      parsed: parsedForSave,
       diagnostics: nextDiagnostics,
       fileName,
     });
@@ -649,6 +699,12 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
           provider: "azure-openai",
           model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
         },
+        ml: mlLearning && typeof mlLearning === "object"
+          ? mlLearning
+          : {
+            status: "skipped",
+            reason: "ml_learning_not_run",
+          },
         parseAttempt: {
           at: new Date().toISOString(),
           triggeredBy: requesterEmail,
@@ -667,22 +723,22 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
         detectedType: resolvedIdentity.primaryType,
         detectedTypeSource: resolvedIdentity.detectedTypeSource,
         sourceFileName: fileName,
-        basicFear: parsed?.coreFear || null,
-        basicDesire: parsed?.coreDesire || null,
+        basicFear: parsedForSave?.coreFear || null,
+        basicDesire: parsedForSave?.coreDesire || null,
         passion: priorDashboardContext?.passion || null,
         integrationLevel: resolvedIdentity.integrationLevel,
         instinct: resolvedIdentity.instinctualVariant,
-        reportSummary: parsed?.reportSummary || null,
+        reportSummary: parsedForSave?.reportSummary || null,
       },
       extractedContent: {
         ...(priorResults?.extractedContent || {}),
-        documentSummary: parsed?.reportContent?.documentSummary || null,
-        pages: Array.isArray(parsed?.reportContent?.pages) ? parsed.reportContent.pages : [],
-        sections: Array.isArray(parsed?.reportContent?.sections) ? parsed.reportContent.sections : [],
+        documentSummary: parsedForSave?.reportContent?.documentSummary || null,
+        pages: Array.isArray(parsedForSave?.reportContent?.pages) ? parsedForSave.reportContent.pages : [],
+        sections: Array.isArray(parsedForSave?.reportContent?.sections) ? parsedForSave.reportContent.sections : [],
         extractedAt: new Date().toISOString(),
         parserVersion: nextDiagnostics?.parserVersion || "multi-pass-v3",
       },
-      parsedProfile: parsed,
+      parsedProfile: parsedForSave,
     };
 
     const { error: updateErr } = await supabase

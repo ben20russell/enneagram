@@ -744,17 +744,26 @@ function normalizeDetectedTypeCandidate(value) {
 
 function extractInstinctFromPdfText(pdfText) {
   const normalized = normalizeExtractedText(pdfText);
+  const dominantCodeMatch = normalized.match(/\bDominant\s*Instinct\s*[:\-]?\s*(SO|SP|SX)\b/i);
+  if (dominantCodeMatch?.[1]) {
+    return instinctCodeToLabel(dominantCodeMatch[1]) || dominantCodeMatch[1].toUpperCase();
+  }
+
   const codedMatch = normalized.match(/\bwith\s+a\s+(SO|SP|SX)\s+Instinct(?:\b|[A-Z])/i);
   if (codedMatch?.[1]) {
     return instinctCodeToLabel(codedMatch[1]) || codedMatch[1].toUpperCase();
   }
 
   const patterns = [
+    /\bDominant\s*Instinct\s*[:\-]?\s*(SO|SP|SX)\s*[—-]\s*(Social|Self[\s-]?Preservation|One[\s-]?on[\s-]?One)\b/i,
     /Dominant\s*Instinct\s*[:\-]?\s*([A-Za-z]{2,4}\s*[—-]\s*[A-Za-z][A-Za-z\s-]{2,40})/i,
     /\b(SO|SP|SX)\s*[—-]\s*(Social|Self[\s-]?Preservation|One[\s-]?on[\s-]?One)\b/i,
   ];
   for (const pattern of patterns) {
     const match = normalized.match(pattern);
+    if (match?.[1] && /^[a-z]{2,3}$/i.test(String(match[1]))) {
+      return instinctCodeToLabel(match[1]) || String(match[1]).toUpperCase();
+    }
     if (match?.[1]) return String(match[1]).replace(/\s+/g, " ").trim();
     if (match?.[0]) return String(match[0]).replace(/\s+/g, " ").trim();
   }
