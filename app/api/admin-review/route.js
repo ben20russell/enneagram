@@ -25,6 +25,17 @@ const TYPE_SCORE_KEYS = [
   "type9",
 ];
 const STD_MIN_EXPECTED_PAGES = 16;
+const CANONICAL_POINTS_BY_MAIN_TYPE = {
+  "1": { release: "Type 4", stretch: "Type 7" },
+  "2": { release: "Type 8", stretch: "Type 4" },
+  "3": { release: "Type 9", stretch: "Type 6" },
+  "4": { release: "Type 2", stretch: "Type 1" },
+  "5": { release: "Type 7", stretch: "Type 8" },
+  "6": { release: "Type 3", stretch: "Type 9" },
+  "7": { release: "Type 1", stretch: "Type 5" },
+  "8": { release: "Type 5", stretch: "Type 2" },
+  "9": { release: "Type 6", stretch: "Type 3" },
+};
 
 function countNonNull(obj) {
   if (!obj || typeof obj !== "object") return 0;
@@ -89,6 +100,12 @@ function normalizeCoreIdentityPayload(input) {
     stretchPoint: normalizeTypePointLabel(source?.stretchPoint),
     releasePoint: normalizeTypePointLabel(source?.releasePoint),
   };
+}
+
+function resolveCanonicalPointsByTypeNumber(typeNumber) {
+  const normalizedTypeNumber = normalizeTypeNumber(typeNumber);
+  if (normalizedTypeNumber == null) return null;
+  return CANONICAL_POINTS_BY_MAIN_TYPE[String(normalizedTypeNumber)] || null;
 }
 
 function resolvePrimaryTypeFromTypeScores(typeScores, fallbackPrimaryType = null) {
@@ -244,16 +261,20 @@ export async function GET() {
         typeof results.ml.feedback.groundTruthIdentity === "object"
         ? results.ml.feedback.groundTruthIdentity
         : {};
+      const resolvedPrimaryTypeNumber = normalizeTypeNumber(
+        feedbackIdentity?.primaryType ?? profile?.primaryType ?? row?.enneagram_type ?? null,
+      );
+      const canonicalIdentityPoints = resolveCanonicalPointsByTypeNumber(resolvedPrimaryTypeNumber);
       const coreIdentity = normalizeCoreIdentityPayload({
-        primaryType: feedbackIdentity?.primaryType ?? profile?.primaryType ?? row?.enneagram_type ?? null,
+        primaryType: resolvedPrimaryTypeNumber,
         typeName: feedbackIdentity?.typeName ?? profile?.typeName ?? null,
         instinctualVariant: feedbackIdentity?.instinctualVariant ?? profile?.instinctualVariant ?? null,
         subtypeKeyword: feedbackIdentity?.subtypeKeyword ?? profile?.subtypeKeyword ?? null,
         integrationLevel: supportsIntegrationLevel
           ? (feedbackIdentity?.integrationLevel ?? profile?.integrationLevel ?? null)
           : null,
-        stretchPoint: feedbackIdentity?.stretchPoint ?? profile?.connectedLineB ?? null,
-        releasePoint: feedbackIdentity?.releasePoint ?? profile?.connectedLineA ?? null,
+        stretchPoint: feedbackIdentity?.stretchPoint ?? profile?.connectedLineB ?? canonicalIdentityPoints?.stretch ?? null,
+        releasePoint: feedbackIdentity?.releasePoint ?? profile?.connectedLineA ?? canonicalIdentityPoints?.release ?? null,
       });
       const typeNonNull = countNonNull(profile?.typeScores);
       const instinctNonNull = countNonNull(profile?.instinctScores);
@@ -357,6 +378,18 @@ export async function POST(req) {
     ...nextProfile,
     primaryType: persistedEnneagramType || nextProfile?.primaryType || null,
   };
+  const canonicalIdentityPoints = resolveCanonicalPointsByTypeNumber(
+    persistedEnneagramType ||
+      coreIdentityInput?.primaryType ||
+      requestedPrimaryType ||
+      row?.enneagram_type ||
+      null,
+  );
+  console.log("[admin-review] Resolved canonical line points for save", {
+    reportId,
+    persistedEnneagramType: persistedEnneagramType || null,
+    canonicalIdentityPoints,
+  });
   const normalizedCoreIdentityProfileUpdates = {
     parsedProfile: {
       typeName: coreIdentityInput?.typeName || nextProfileWithResolvedType?.typeName || null,
@@ -365,8 +398,8 @@ export async function POST(req) {
       integrationLevel: supportsIntegrationLevel
         ? (coreIdentityInput?.integrationLevel || nextProfileWithResolvedType?.integrationLevel || null)
         : null,
-      connectedLineA: coreIdentityInput?.releasePoint || nextProfileWithResolvedType?.connectedLineA || null,
-      connectedLineB: coreIdentityInput?.stretchPoint || nextProfileWithResolvedType?.connectedLineB || null,
+      connectedLineA: canonicalIdentityPoints?.release || coreIdentityInput?.releasePoint || nextProfileWithResolvedType?.connectedLineA || null,
+      connectedLineB: canonicalIdentityPoints?.stretch || coreIdentityInput?.stretchPoint || nextProfileWithResolvedType?.connectedLineB || null,
     },
   };
   const persistedProfileWithIdentity = {

@@ -29,6 +29,17 @@ const MAIN_TYPE_NAME_OPTIONS = [
   { typeNumber: "8", name: "Active Controller" },
   { typeNumber: "9", name: "Adaptive Peacemaker" },
 ];
+const CANONICAL_POINTS_BY_MAIN_TYPE = {
+  "1": { release: "Type 4", stretch: "Type 7" },
+  "2": { release: "Type 8", stretch: "Type 4" },
+  "3": { release: "Type 9", stretch: "Type 6" },
+  "4": { release: "Type 2", stretch: "Type 1" },
+  "5": { release: "Type 7", stretch: "Type 8" },
+  "6": { release: "Type 3", stretch: "Type 9" },
+  "7": { release: "Type 1", stretch: "Type 5" },
+  "8": { release: "Type 5", stretch: "Type 2" },
+  "9": { release: "Type 6", stretch: "Type 3" },
+};
 
 function normalizeTypeNumber(value) {
   const match = String(value ?? "").match(/[1-9]/);
@@ -44,6 +55,12 @@ function resolveMainTypeNumberByName(name) {
   const normalized = String(name ?? "").trim().toLowerCase();
   if (!normalized) return "";
   return MAIN_TYPE_NAME_OPTIONS.find((option) => option.name.toLowerCase() === normalized)?.typeNumber || "";
+}
+
+function resolveCanonicalPointsByTypeNumber(typeNumber) {
+  const normalizedTypeNumber = normalizeTypeNumber(typeNumber);
+  if (!normalizedTypeNumber) return null;
+  return CANONICAL_POINTS_BY_MAIN_TYPE[normalizedTypeNumber] || null;
 }
 
 function normalizeMainTypeNameOption(value, fallbackTypeNumber = "") {
@@ -64,6 +81,20 @@ function normalizeMainTypeNameOption(value, fallbackTypeNumber = "") {
     return resolveMainTypeNameByTypeNumber(inferredTypeNumber);
   }
   return resolveMainTypeNameByTypeNumber(fallbackTypeNumber);
+}
+
+function resolveMainTypeNumberFromInputs({
+  primaryTypePreset,
+  coreIdentityTypeName,
+  fallbackTypeNumber = "",
+}) {
+  return (
+    normalizeTypeNumber(primaryTypePreset) ||
+    resolveMainTypeNumberByName(coreIdentityTypeName) ||
+    normalizeTypeNumber(coreIdentityTypeName) ||
+    normalizeTypeNumber(fallbackTypeNumber) ||
+    ""
+  );
 }
 
 function emptyGroup(keys) {
@@ -161,6 +192,8 @@ export default function AdminReviewPanel() {
   const [dominantInstinctPreset, setDominantInstinctPreset] = useState("");
   const [dominantCenterPreset, setDominantCenterPreset] = useState("");
   const [isResavingGradedReports, setIsResavingGradedReports] = useState(false);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [lastSavedReportId, setLastSavedReportId] = useState("");
 
   async function loadQueue() {
     setIsLoading(true);
@@ -242,28 +275,38 @@ export default function AdminReviewPanel() {
     const strongestTypeNumber = strongestType ? strongestType.replace("type", "") : "";
     const strongestInstinct = resolveHighestScoreKey(next.instinctScores, INSTINCT_KEYS);
     const strongestCenter = resolveHighestScoreKey(next.centerScores, CENTER_KEYS);
+    const selectedTypeName = normalizeMainTypeNameOption(selected?.coreIdentity?.typeName, strongestTypeNumber);
+    const resolvedMainTypeNumber = resolveMainTypeNumberFromInputs({
+      primaryTypePreset: selected?.coreIdentity?.primaryType || strongestTypeNumber,
+      coreIdentityTypeName: selectedTypeName,
+      fallbackTypeNumber: strongestTypeNumber,
+    });
+    const canonicalPoints = resolveCanonicalPointsByTypeNumber(resolvedMainTypeNumber);
     setScores(next);
-    setPrimaryTypePreset(strongestTypeNumber);
+    setPrimaryTypePreset(resolvedMainTypeNumber || strongestTypeNumber);
     setDominantInstinctPreset(strongestInstinct || "");
     setDominantCenterPreset(strongestCenter || "");
     setCoreIdentity({
-      typeName: normalizeMainTypeNameOption(selected?.coreIdentity?.typeName, strongestTypeNumber),
+      typeName: selectedTypeName,
       instinctualVariant: String(selected?.coreIdentity?.instinctualVariant || "").trim(),
       integrationLevel: supportsIntegrationLevel
         ? String(selected?.coreIdentity?.integrationLevel || "").trim()
         : "",
-      stretchPoint: String(selected?.coreIdentity?.stretchPoint || "").trim(),
-      releasePoint: String(selected?.coreIdentity?.releasePoint || "").trim(),
+      stretchPoint: canonicalPoints?.stretch || String(selected?.coreIdentity?.stretchPoint || "").trim(),
+      releasePoint: canonicalPoints?.release || String(selected?.coreIdentity?.releasePoint || "").trim(),
     });
     setNotes("");
+    setLastSavedReportId("");
     console.log("[admin-review] Hydrated core identity fields for selected report", {
       selectedId: selected?.id || null,
+      resolvedMainTypeNumber: resolvedMainTypeNumber || null,
+      canonicalPoints,
       coreIdentity: {
-        typeName: selected?.coreIdentity?.typeName || null,
+        typeName: selectedTypeName || null,
         instinctualVariant: selected?.coreIdentity?.instinctualVariant || null,
         integrationLevel: selected?.coreIdentity?.integrationLevel || null,
-        stretchPoint: selected?.coreIdentity?.stretchPoint || null,
-        releasePoint: selected?.coreIdentity?.releasePoint || null,
+        stretchPoint: canonicalPoints?.stretch || selected?.coreIdentity?.stretchPoint || null,
+        releasePoint: canonicalPoints?.release || selected?.coreIdentity?.releasePoint || null,
       },
     });
   }, [selected?.id, supportsIntegrationLevel]);
@@ -291,6 +334,7 @@ export default function AdminReviewPanel() {
       return;
     }
 
+    const canonicalPoints = resolveCanonicalPointsByTypeNumber(primaryTypePreset);
     const targetKey = `type${primaryTypePreset}`;
     setScores((prev) => ({
       ...prev,
@@ -301,9 +345,15 @@ export default function AdminReviewPanel() {
     setCoreIdentity((prev) => ({
       ...prev,
       typeName: resolveMainTypeNameByTypeNumber(primaryTypePreset),
+      stretchPoint: canonicalPoints?.stretch || prev.stretchPoint,
+      releasePoint: canonicalPoints?.release || prev.releasePoint,
     }));
     setStatus(`Applied primary type preset: Type ${primaryTypePreset} = 100, others = 0.`);
-    console.log("[admin-review] Applied primary type preset", { selectedId, primaryTypePreset });
+    console.log("[admin-review] Applied primary type preset", {
+      selectedId,
+      primaryTypePreset,
+      canonicalPoints,
+    });
   }
 
   function applyDominantPreset(group, dominantKey, keys) {
@@ -328,9 +378,18 @@ export default function AdminReviewPanel() {
       setStatus("Select a report first.");
       return;
     }
-    setStatus(`Saving review for ${selected.id}...`);
+    const selectedIdForSave = selected.id;
+    setIsSubmittingReview(true);
+    setLastSavedReportId("");
+    setStatus(`Saving review for ${selectedIdForSave}...`);
+    const canonicalMainTypeNumber = resolveMainTypeNumberFromInputs({
+      primaryTypePreset,
+      coreIdentityTypeName: coreIdentity?.typeName,
+      fallbackTypeNumber: selected?.coreIdentity?.primaryType,
+    });
+    const canonicalPoints = resolveCanonicalPointsByTypeNumber(canonicalMainTypeNumber);
     const payload = {
-      reportId: selected.id,
+      reportId: selectedIdForSave,
       notes,
       primaryType: primaryTypePreset ? Number(primaryTypePreset) : null,
       coreIdentity: {
@@ -339,8 +398,8 @@ export default function AdminReviewPanel() {
         integrationLevel: supportsIntegrationLevel
           ? String(coreIdentity?.integrationLevel || "").trim() || null
           : null,
-        stretchPoint: String(coreIdentity?.stretchPoint || "").trim() || null,
-        releasePoint: String(coreIdentity?.releasePoint || "").trim() || null,
+        stretchPoint: canonicalPoints?.stretch || String(coreIdentity?.stretchPoint || "").trim() || null,
+        releasePoint: canonicalPoints?.release || String(coreIdentity?.releasePoint || "").trim() || null,
       },
       scores: {
         typeScores: Object.fromEntries(
@@ -354,6 +413,13 @@ export default function AdminReviewPanel() {
         ),
       },
     };
+    console.log("[admin-review] Prepared canonical core identity mapping for save", {
+      selectedId: selected?.id || null,
+      canonicalMainTypeNumber: canonicalMainTypeNumber || null,
+      canonicalPoints,
+      submittedStretchPoint: payload?.coreIdentity?.stretchPoint || null,
+      submittedReleasePoint: payload?.coreIdentity?.releasePoint || null,
+    });
 
     try {
       const res = await fetch("/api/admin-review", {
@@ -370,9 +436,12 @@ export default function AdminReviewPanel() {
       );
       console.log("[admin-review] Saved review", data);
       await loadQueue();
+      setLastSavedReportId(selectedIdForSave);
     } catch (error) {
       setStatus(String(error?.message || "Failed to save review"));
       console.log("[admin-review] Save failed", { details: String(error?.message || error) });
+    } finally {
+      setIsSubmittingReview(false);
     }
   }
 
@@ -624,7 +693,19 @@ export default function AdminReviewPanel() {
                     setCoreIdentityValue("typeName", nextTypeName);
                     const nextTypeNumber = resolveMainTypeNumberByName(nextTypeName);
                     if (nextTypeNumber) {
+                      const canonicalPoints = resolveCanonicalPointsByTypeNumber(nextTypeNumber);
                       setPrimaryTypePreset(nextTypeNumber);
+                      setCoreIdentity((prev) => ({
+                        ...prev,
+                        typeName: nextTypeName,
+                        stretchPoint: canonicalPoints?.stretch || prev?.stretchPoint || "",
+                        releasePoint: canonicalPoints?.release || prev?.releasePoint || "",
+                      }));
+                      console.log("[admin-review] Main type changed; applied canonical points", {
+                        selectedId: selected?.id || null,
+                        nextTypeNumber,
+                        canonicalPoints,
+                      });
                     }
                   }}
                 >
@@ -718,6 +799,53 @@ export default function AdminReviewPanel() {
                 </select>
               </label>
             </div>
+            <div
+              data-testid="admin-review-core-canonical-points-guide"
+              style={{
+                border: "1px solid #dbe6f2",
+                borderRadius: "8px",
+                background: "#f8fbff",
+                padding: "10px",
+                display: "grid",
+                gap: "8px",
+              }}
+            >
+              <strong>Canonical Release / Stretch Map</strong>
+              <span style={{ color: "#475569" }}>
+                Release Point = Stress/Disintegration. Stretch Point = Growth/Integration.
+              </span>
+              <div
+                data-testid="admin-review-core-canonical-points-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: "6px 10px",
+                }}
+              >
+                {MAIN_TYPE_NAME_OPTIONS.map((option) => {
+                  const canonicalPoints = resolveCanonicalPointsByTypeNumber(option.typeNumber);
+                  const isActiveType = String(primaryTypePreset || "") === String(option.typeNumber);
+                  return (
+                    <div
+                      key={option.typeNumber}
+                      data-testid={`admin-review-core-canonical-row-type-${option.typeNumber}`}
+                      style={{
+                        border: isActiveType ? "1px solid #0a66d8" : "1px solid #dbe6f2",
+                        borderRadius: "6px",
+                        padding: "6px 8px",
+                        background: isActiveType ? "#f0f7ff" : "#ffffff",
+                        display: "grid",
+                        gap: "2px",
+                      }}
+                    >
+                      <strong>Type {option.typeNumber}</strong>
+                      <span>Release: {canonicalPoints?.release || "n/a"}</span>
+                      <span>Stretch: {canonicalPoints?.stretch || "n/a"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </section>
 
           <div data-testid="admin-review-types" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "8px" }}>
@@ -787,8 +915,14 @@ export default function AdminReviewPanel() {
             />
           </label>
 
-          <button type="button" data-testid="admin-review-submit" onClick={submitReview}>
-            Save Review
+          <button
+            type="button"
+            data-testid="admin-review-submit"
+            data-save-state={isSubmittingReview ? "saving" : lastSavedReportId === selected?.id ? "saved" : "idle"}
+            onClick={submitReview}
+            disabled={isSubmittingReview || isLoading}
+          >
+            {isSubmittingReview ? "Saving..." : lastSavedReportId === selected?.id ? "✓" : "Save Review"}
           </button>
         </section>
       ) : null}
