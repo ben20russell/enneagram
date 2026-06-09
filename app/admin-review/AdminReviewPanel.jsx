@@ -241,7 +241,37 @@ export default function AdminReviewPanel() {
 
   return (
     <main data-testid="admin-review-page" style={{ padding: "20px", maxWidth: "980px", margin: "0 auto" }}>
-      <h1 data-testid="admin-review-title" style={{ margin: 0 }}>Admin Review Queue</h1>
+      <section
+        data-testid="admin-review-header-row"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "12px",
+        }}
+      >
+        <h1 data-testid="admin-review-title" style={{ margin: 0 }}>Admin Review Queue</h1>
+        <Link
+          data-testid="admin-review-import-link-button"
+          href="/admin-import"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "180px",
+            border: "1px solid #0a66d8",
+            borderRadius: "8px",
+            background: "#ffffff",
+            color: "#0a66d8",
+            fontWeight: 600,
+            textDecoration: "none",
+            padding: "8px 14px",
+            flexShrink: 0,
+          }}
+        >
+          Open Admin Import
+        </Link>
+      </section>
       <p data-testid="admin-review-subtitle" style={{ color: "#475569" }}>
         Confirm uncertain chart numerics before reports are marked ready.
       </p>
@@ -269,25 +299,6 @@ export default function AdminReviewPanel() {
       </section>
 
       <section data-testid="admin-review-controls" style={{ marginTop: "16px", display: "grid", gap: "10px" }}>
-        <Link
-          data-testid="admin-review-import-link-button"
-          href="/admin-import"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "180px",
-            border: "1px solid #0a66d8",
-            borderRadius: "8px",
-            background: "#ffffff",
-            color: "#0a66d8",
-            fontWeight: 600,
-            textDecoration: "none",
-            padding: "8px 14px",
-          }}
-        >
-          Open Admin Import
-        </Link>
         <button data-testid="admin-review-refresh" onClick={loadQueue} disabled={isLoading} style={{ width: "160px" }}>
           {isLoading ? "Refreshing..." : "Refresh Queue"}
         </button>
