@@ -397,7 +397,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
     <button class="mobile-menu-item" data-sec="leadership" onclick="showSec('leadership');toggleMobileMenu(false)">Leadership</button>
     <button class="mobile-menu-item" data-sec="communication" onclick="showSec('communication');toggleMobileMenu(false)">Communication</button>
     <button class="mobile-menu-item" data-sec="strain" onclick="showSec('strain');toggleMobileMenu(false)">Strain Profile</button>
-    <button class="mobile-menu-item" data-sec="integration" onclick="showSec('integration');toggleMobileMenu(false)">Integration</button>
+    <button class="mobile-menu-item" id="mobileIntegrationNavButton" data-sec="integration" onclick="showSec('integration');toggleMobileMenu(false)">Integration</button>
     <button class="mobile-menu-item" data-sec="growth" onclick="showSec('growth');toggleMobileMenu(false)">Growth Path</button>
     <button class="mobile-menu-item" data-sec="test" data-testid="mobile-test-tab-button" style="display:none" onclick="showSec('test');toggleMobileMenu(false)">TEST</button>
   </div>
@@ -457,7 +457,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           <button data-sec="leadership" onclick="showSec('leadership')">Leadership</button>
           <button data-sec="communication" onclick="showSec('communication')">Communication</button>
           <button data-sec="strain" onclick="showSec('strain')">Strain Profile</button>
-          <button data-sec="integration" onclick="showSec('integration')">Integration</button>
+          <button id="integrationNavButton" data-sec="integration" onclick="showSec('integration')">Integration</button>
           <button data-sec="growth" onclick="showSec('growth')">Growth Path</button>
           <button data-sec="test" data-testid="test-tab-button" style="display:none" onclick="showSec('test')">TEST</button>
         </nav>
@@ -492,7 +492,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             <div class="kv-grid mb16">
               <div><div class="kvl">Main Type</div><div class="kvv red" id="mainTypeValue" data-testid="main-type">8 — Active Controller</div></div>
               <div><div class="kvl">Dominant Instinct</div><div class="kvv gold" id="instinctValue">SX — One-on-One</div></div>
-              <div><div class="kvl">Integration Level</div><div class="kvv red" id="integrationValue">Low</div></div>
+              <div id="integrationValueRow"><div class="kvl">Integration Level</div><div class="kvv red" id="integrationValue">Low</div></div>
               <div><div class="kvl">Stretch Point</div><div class="kvv green" id="stretchValue">Type 5</div></div>
               <div><div class="kvl">Release Point</div><div class="kvv blue" id="releaseValue">Type 2</div></div>
             </div>

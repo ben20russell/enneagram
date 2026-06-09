@@ -8,7 +8,10 @@ import {
   buildScoreComparisonMetrics,
   normalizeScorePayload,
 } from "../../../lib/mlScoreLearning";
-import { resolveMinExpectedPagesByReportType } from "../../../lib/reportTypePageThresholds";
+import {
+  inferReportTypeFromFileName,
+  resolveMinExpectedPagesByReportType,
+} from "../../../lib/reportTypePageThresholds";
 
 const TYPE_SCORE_KEYS = [
   "type1",
@@ -21,6 +24,7 @@ const TYPE_SCORE_KEYS = [
   "type8",
   "type9",
 ];
+const STD_MIN_EXPECTED_PAGES = 16;
 
 function countNonNull(obj) {
   if (!obj || typeof obj !== "object") return 0;
@@ -124,6 +128,19 @@ function roundMetric(value, digits = 4) {
   return Math.round(numeric * factor) / factor;
 }
 
+function supportsIntegrationLevelForReport({ fileName, diagnostics }) {
+  const inferredReportType = inferReportTypeFromFileName(fileName);
+  if (inferredReportType === "STD") return false;
+  if (inferredReportType === "PRO") return true;
+
+  const extractionMinPages = Number(diagnostics?.extraction?.minExpectedPages || 0);
+  if (Number.isFinite(extractionMinPages) && extractionMinPages > 0 && extractionMinPages <= STD_MIN_EXPECTED_PAGES) {
+    return false;
+  }
+
+  return true;
+}
+
 function normalizeScores(input) {
   const out = {
     typeScores: {
@@ -214,6 +231,15 @@ export async function GET() {
       const results = row?.results_data && typeof row.results_data === "object" ? row.results_data : {};
       const profile = results?.parsedProfile && typeof results.parsedProfile === "object" ? results.parsedProfile : {};
       const review = results?.review && typeof results.review === "object" ? results.review : {};
+      const diagnostics = results?.ingestion?.parseDiagnostics && typeof results.ingestion.parseDiagnostics === "object"
+        ? results.ingestion.parseDiagnostics
+        : {};
+      const fileName =
+        row?.report_pdf?.fileName ||
+        results?.file?.fileName ||
+        results?.dashboardContext?.sourceFileName ||
+        null;
+      const supportsIntegrationLevel = supportsIntegrationLevelForReport({ fileName, diagnostics });
       const feedbackIdentity = results?.ml?.feedback?.groundTruthIdentity &&
         typeof results.ml.feedback.groundTruthIdentity === "object"
         ? results.ml.feedback.groundTruthIdentity
@@ -223,7 +249,9 @@ export async function GET() {
         typeName: feedbackIdentity?.typeName ?? profile?.typeName ?? null,
         instinctualVariant: feedbackIdentity?.instinctualVariant ?? profile?.instinctualVariant ?? null,
         subtypeKeyword: feedbackIdentity?.subtypeKeyword ?? profile?.subtypeKeyword ?? null,
-        integrationLevel: feedbackIdentity?.integrationLevel ?? profile?.integrationLevel ?? null,
+        integrationLevel: supportsIntegrationLevel
+          ? (feedbackIdentity?.integrationLevel ?? profile?.integrationLevel ?? null)
+          : null,
         stretchPoint: feedbackIdentity?.stretchPoint ?? profile?.connectedLineB ?? null,
         releasePoint: feedbackIdentity?.releasePoint ?? profile?.connectedLineA ?? null,
       });
@@ -241,7 +269,10 @@ export async function GET() {
         typeScores: profile?.typeScores || null,
         instinctScores: profile?.instinctScores || null,
         centerScores: profile?.centerScores || null,
-        coreIdentity,
+        coreIdentity: {
+          ...coreIdentity,
+          supportsIntegrationLevel,
+        },
         scoreCoverage: {
           typeNonNull,
           instinctNonNull,
@@ -298,6 +329,13 @@ export async function POST(req) {
 
   const results = row?.results_data && typeof row.results_data === "object" ? row.results_data : {};
   const profile = results?.parsedProfile && typeof results.parsedProfile === "object" ? results.parsedProfile : {};
+  const diagnostics = results?.ingestion?.parseDiagnostics || {};
+  const fileName =
+    row?.report_pdf?.fileName ||
+    results?.file?.fileName ||
+    results?.dashboardContext?.sourceFileName ||
+    null;
+  const supportsIntegrationLevel = supportsIntegrationLevelForReport({ fileName, diagnostics });
   const scoreUpdates = normalizeScores(body?.scores || {});
   const requestedPrimaryType = normalizeTypeNumber(body?.primaryType ?? null);
   const coreIdentityInput = normalizeCoreIdentityPayload(body?.coreIdentity);
@@ -324,7 +362,9 @@ export async function POST(req) {
       typeName: coreIdentityInput?.typeName || nextProfileWithResolvedType?.typeName || null,
       instinctualVariant: coreIdentityInput?.instinctualVariant || nextProfileWithResolvedType?.instinctualVariant || null,
       subtypeKeyword: coreIdentityInput?.subtypeKeyword || nextProfileWithResolvedType?.subtypeKeyword || null,
-      integrationLevel: coreIdentityInput?.integrationLevel || nextProfileWithResolvedType?.integrationLevel || null,
+      integrationLevel: supportsIntegrationLevel
+        ? (coreIdentityInput?.integrationLevel || nextProfileWithResolvedType?.integrationLevel || null)
+        : null,
       connectedLineA: coreIdentityInput?.releasePoint || nextProfileWithResolvedType?.connectedLineA || null,
       connectedLineB: coreIdentityInput?.stretchPoint || nextProfileWithResolvedType?.connectedLineB || null,
     },
@@ -343,11 +383,14 @@ export async function POST(req) {
     normalizeInstinctualVariant(results?.dashboardContext?.instinct) ||
     normalizeInstinctualVariant(results?.dashboardContext?.instinctCode) ||
     null;
-  const dashboardIntegrationLevel =
-    persistedProfileWithIdentity?.integrationLevel ||
-    normalizeIntegrationLevel(results?.dashboardContext?.integrationLevel) ||
-    normalizeIntegrationLevel(results?.dashboardContext?.integration) ||
-    null;
+  const dashboardIntegrationLevel = supportsIntegrationLevel
+    ? (
+      persistedProfileWithIdentity?.integrationLevel ||
+      normalizeIntegrationLevel(results?.dashboardContext?.integrationLevel) ||
+      normalizeIntegrationLevel(results?.dashboardContext?.integration) ||
+      null
+    )
+    : null;
   const normalizedGroundTruthScores = normalizeScorePayload(nextProfileWithResolvedType);
   const parserVsGroundTruth = buildScoreComparisonMetrics({
     candidateScores: normalizeScorePayload(profile),
@@ -384,12 +427,6 @@ export async function POST(req) {
   const instinctNonNull = countNonNull(nextProfileWithResolvedType?.instinctScores);
   const centerNonNull = countNonNull(nextProfileWithResolvedType?.centerScores);
   const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
-  const diagnostics = results?.ingestion?.parseDiagnostics || {};
-  const fileName =
-    row?.report_pdf?.fileName ||
-    results?.file?.fileName ||
-    results?.dashboardContext?.sourceFileName ||
-    null;
   const pageCount = Number(diagnostics?.extraction?.pages || 0);
   const minPages = resolveMinExpectedPagesByReportType({
     fileName,
@@ -427,6 +464,7 @@ export async function POST(req) {
       instinctCode: dashboardInstinct,
       integrationLevel: dashboardIntegrationLevel,
       integration: dashboardIntegrationLevel,
+      supportsIntegrationLevel,
     },
     review: {
       ...(results?.review || {}),
@@ -457,10 +495,13 @@ export async function POST(req) {
               persistedProfileWithIdentity?.instinctualVariant ||
               diagnostics?.verification?.resolvedFields?.instinctualVariant ||
               null,
-            integrationLevel:
-              persistedProfileWithIdentity?.integrationLevel ||
-              diagnostics?.verification?.resolvedFields?.integrationLevel ||
-              null,
+            integrationLevel: supportsIntegrationLevel
+              ? (
+                persistedProfileWithIdentity?.integrationLevel ||
+                diagnostics?.verification?.resolvedFields?.integrationLevel ||
+                null
+              )
+              : null,
           },
         },
         extraction: {
@@ -491,7 +532,9 @@ export async function POST(req) {
         groundTruthIdentity: {
           primaryType: persistedEnneagramType || null,
           instinctualVariant: persistedProfileWithIdentity?.instinctualVariant || null,
-          integrationLevel: persistedProfileWithIdentity?.integrationLevel || null,
+          integrationLevel: supportsIntegrationLevel
+            ? (persistedProfileWithIdentity?.integrationLevel || null)
+            : null,
           subtypeKeyword: persistedProfileWithIdentity?.subtypeKeyword || null,
           stretchPoint: persistedProfileWithIdentity?.connectedLineB || null,
           releasePoint: persistedProfileWithIdentity?.connectedLineA || null,

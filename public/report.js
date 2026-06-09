@@ -1205,6 +1205,10 @@ const CC_FINGERPRINT = {
     overall: 26,
   },
 };
+const REPORT_TYPE_PAGE_THRESHOLDS = Object.freeze({
+  STD: 16,
+  PRO: 42,
+});
 
 function hasExactScoreFingerprint(actual, expected) {
   if (!actual || typeof actual !== "object" || !expected || typeof expected !== "object") return false;
@@ -1218,6 +1222,40 @@ function isLikelyProReport({ reportFileName, parsedProfile, reportContentText })
   if (pageCount >= 20) return true;
   const text = normalizeExtractedText(reportContentText || "");
   return /27\s*subtypes|strategic leadership|team behaviour|coaching relationship|feedback guide/i.test(text);
+}
+
+function inferAssignedReportTypeFromFileName(reportFileName) {
+  const normalized = String(reportFileName || "").toUpperCase();
+  if (!normalized) return null;
+  if (/\bSTD\b/.test(normalized) || /\bSTANDARD\b/.test(normalized)) return "STD";
+  if (/\bPRO\b/.test(normalized) || /\bPROFESSIONAL\b/.test(normalized)) return "PRO";
+  return null;
+}
+
+function resolveAssignedReportType({
+  reportFileName,
+  parseDiagnostics,
+  parsedProfile,
+  reportContentText,
+  likelyProReport,
+}) {
+  const inferredFromFileName = inferAssignedReportTypeFromFileName(reportFileName);
+  if (inferredFromFileName) return inferredFromFileName;
+
+  const minExpectedPages = Number(parseDiagnostics?.extraction?.minExpectedPages || 0);
+  if (Number.isFinite(minExpectedPages) && minExpectedPages > 0) {
+    if (minExpectedPages <= REPORT_TYPE_PAGE_THRESHOLDS.STD) return "STD";
+    if (minExpectedPages >= REPORT_TYPE_PAGE_THRESHOLDS.PRO) return "PRO";
+  }
+
+  const proSignal = likelyProReport === true
+    ? true
+    : isLikelyProReport({ reportFileName, parsedProfile, reportContentText });
+  return proSignal ? "PRO" : null;
+}
+
+function supportsIntegrationLevelForAssignedReport(input) {
+  return resolveAssignedReportType(input) !== "STD";
 }
 
 function isCcFingerprintData({ profileScores, instinctScoresRaw, centerScoresRaw, interactionScores, strainScoresRaw }) {
@@ -2184,6 +2222,20 @@ async function ingestAssignedReportIntoDashboard(data) {
       parsedProfile,
       reportContentText,
     });
+    const resolvedReportType = resolveAssignedReportType({
+      reportFileName: data?.reportFileName,
+      parseDiagnostics,
+      parsedProfile,
+      reportContentText,
+      likelyProReport,
+    });
+    const supportsIntegrationLevel = supportsIntegrationLevelForAssignedReport({
+      reportFileName: data?.reportFileName,
+      parseDiagnostics,
+      parsedProfile,
+      reportContentText,
+      likelyProReport,
+    });
 
     if (data?.reportSignedUrl) {
       pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
@@ -2244,7 +2296,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       }
     }
 
-    if (!pdfText && (!typeName || !instinct || !connectedLineA || !connectedLineB || !integrationLevel)) {
+    if (!pdfText && (!typeName || !instinct || !connectedLineA || !connectedLineB || (supportsIntegrationLevel && !integrationLevel))) {
       pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
     }
     typeName = typeName || cleanupTypeName(extractTypeNameFromPdfText(pdfText, detectedType));
@@ -2272,12 +2324,16 @@ async function ingestAssignedReportIntoDashboard(data) {
     if (!hasInformativeScoreMap(profileScores, 3)) {
       profileScores = normalizeScoreScale(extractEnneagramProfileScores(pdfText));
     }
-    integrationLevel =
-      integrationLevel ||
-      extractIntegrationFromPdfText(pdfText) ||
-      extractSnippet(pdfText, "Integration Level") ||
-      extractSnippetFromLabels(reportContentText, ["Integration Level", "Integration"]) ||
-      extractSnippetFromLabels(pdfText, ["Integration Level", "Integration"]);
+    if (supportsIntegrationLevel) {
+      integrationLevel =
+        integrationLevel ||
+        extractIntegrationFromPdfText(pdfText) ||
+        extractSnippet(pdfText, "Integration Level") ||
+        extractSnippetFromLabels(reportContentText, ["Integration Level", "Integration"]) ||
+        extractSnippetFromLabels(pdfText, ["Integration Level", "Integration"]);
+    } else {
+      integrationLevel = null;
+    }
     const extractedStrainScores = extractStrainScoresFromPdfText(pdfText);
     if (!hasInformativeScoreMap(strainScoresRaw, 1) && hasInformativeScoreMap(extractedStrainScores, 1)) {
       strainScoresRaw = extractedStrainScores;
@@ -2747,6 +2803,8 @@ async function ingestAssignedReportIntoDashboard(data) {
       connectedLineA,
       connectedLineB,
       integrationLevel,
+      supportsIntegrationLevel,
+      reportType: resolvedReportType,
       profileScores,
       basicFear,
       basicDesire,
@@ -2794,6 +2852,8 @@ async function ingestAssignedReportIntoDashboard(data) {
     console.log("[report-ingest] Applied PDF-only assigned report context", {
       detectedType,
       detectedTypeSource,
+      resolvedReportType,
+      supportsIntegrationLevel,
       hasProfileScores: Boolean(profileScores),
     });
 
@@ -4911,7 +4971,10 @@ function renderDevelopmentExerciseGridItems(exercises) {
 
 function buildDevExerciseComponentData(report) {
   const typeLabel = `Type ${String(report?.typeNumber || "?")}`;
-  const integrationLevel = normalizeIntegrationLevel(report?.integration);
+  const supportsIntegrationLevel = report?.supportsIntegrationLevel !== false;
+  const integrationLevel = supportsIntegrationLevel
+    ? normalizeIntegrationLevel(report?.integration)
+    : null;
   const overallStrainDirect = toFiniteScoreOrNull(report?.strainScoresRaw?.overall);
   const fallbackStrainValues = Array.isArray(report?.strain)
     ? report.strain.map((value) => toFiniteScoreOrNull(value)).filter((value) => Number.isFinite(value))
@@ -4953,8 +5016,12 @@ function buildDevExerciseComponentData(report) {
   const generatedPaths = [
     {
       title: "Integration Stabilizer",
-      text: integrationPriority[integrationLevel] || integrationPriority.Moderate,
-      source: `Integration signal: ${integrationLevel.toUpperCase()}`,
+      text: supportsIntegrationLevel
+        ? (integrationPriority[integrationLevel] || integrationPriority.Moderate)
+        : "Integration level is not available in this STD report. Focus on steady, repeatable regulation habits and clear communication checks.",
+      source: supportsIntegrationLevel
+        ? `Integration signal: ${integrationLevel.toUpperCase()}`
+        : "Integration signal unavailable for STD report",
     },
     {
       title: "Strain Regulator",
@@ -4979,10 +5046,13 @@ function buildDevExerciseComponentData(report) {
     if (deduped.length >= 6) break;
   }
 
-  const summary = `${typeLabel} growth path currently prioritizes ${integrationLevel.toUpperCase()} integration behaviors with ${overallStrainLevel.toUpperCase()} strain recovery tactics.`;
+  const summary = supportsIntegrationLevel
+    ? `${typeLabel} growth path currently prioritizes ${integrationLevel.toUpperCase()} integration behaviors with ${overallStrainLevel.toUpperCase()} strain recovery tactics.`
+    : `${typeLabel} growth path currently prioritizes strain recovery and steady behavioral consistency because integration level is not available in this STD report.`;
   console.log("[dev-exercise] built component data", {
     typeLabel,
     integrationLevel,
+    supportsIntegrationLevel,
     overallStrainScore,
     overallStrainLevel,
     extractedExerciseCount: extractedPaths.length,
@@ -4996,7 +5066,10 @@ function buildDevExerciseComponentData(report) {
 
 function buildSpreadsheetFocusFallbacks(report, adaptiveCopy = {}) {
   const centerLabel = formatOptionalText(report?.centreOfIntelligence, "current center");
-  const integrationLevel = normalizeIntegrationLevel(report?.integration);
+  const supportsIntegrationLevel = report?.supportsIntegrationLevel !== false;
+  const integrationLevel = supportsIntegrationLevel
+    ? normalizeIntegrationLevel(report?.integration)
+    : null;
   const developingAsFallbackCopy = firstPresentSnippet(
     [report?.motivation2, report?.giftsDesc],
     "Development guidance was not detected in the assigned PDF.",
@@ -5024,7 +5097,9 @@ function buildSpreadsheetFocusFallbacks(report, adaptiveCopy = {}) {
     conflictTriggeredBullets: ["When triggered, slowing the reaction cycle and naming impact improves outcomes."],
     centeredDecisionCopy: `Decisions often center through your ${centerLabel} perspective before balancing the other centers.`,
     decisionImpactCopy: `Your style can influence decisions through ${formatOptionalText(report?.focus, "focused pattern recognition")} and fast priority weighting.`,
-    decisionStrainCopy: `At ${integrationLevel.toUpperCase()} integration, strain effects can amplify speed and certainty while reducing collaboration signals.`,
+    decisionStrainCopy: supportsIntegrationLevel
+      ? `At ${integrationLevel.toUpperCase()} integration, strain effects can amplify speed and certainty while reducing collaboration signals.`
+      : "Integration level is not available in this STD report, so focus on observed strain signals and collaborative pacing in decisions.",
     strategicLeadershipCopy: formatOptionalText(
       adaptiveCopy?.leadershipIntroHtml
         ? String(adaptiveCopy.leadershipIntroHtml).replace(/<[^>]+>/g, " ")
@@ -7880,7 +7955,10 @@ function buildPdfOnlyReport(payload) {
   const keyword = sanitizeSnippet(payload?.subtypeKeyword, fallbackText);
   const release = formatTypeLine(sanitizeSnippet(payload?.connectedLineA, "Not detected"));
   const stretch = formatTypeLine(sanitizeSnippet(payload?.connectedLineB, "Not detected"));
-  const integration = sanitizeSnippet(payload?.integrationLevel || payload?.integration, fallbackText);
+  const supportsIntegrationLevel = payload?.supportsIntegrationLevel !== false;
+  const integration = supportsIntegrationLevel
+    ? sanitizeSnippet(payload?.integrationLevel || payload?.integration, fallbackText)
+    : null;
   const profile = buildPdfOnlyProfile(typeNumber, payload?.profileScores);
   const strainScoresRaw = getParsedProfileStrainScores({ strainScores: payload?.strainScoresRaw });
   const strain = strainScoresRaw
@@ -7932,6 +8010,8 @@ function buildPdfOnlyReport(payload) {
   return {
     typeNumber,
     typeName,
+    reportType: sanitizeSnippet(payload?.reportType, null),
+    supportsIntegrationLevel,
     instinct,
     keyword,
     release,
@@ -8045,6 +8125,27 @@ function buildGrowthCopyForDisplay(report) {
   };
 }
 
+function setIntegrationUiVisibility(isVisible) {
+  const shouldShow = Boolean(isVisible);
+  const rowNode = document.getElementById("integrationValueRow");
+  if (rowNode) rowNode.style.display = shouldShow ? "" : "none";
+
+  const integrationSectionNode = document.getElementById("sec-integration");
+  if (integrationSectionNode) integrationSectionNode.style.display = shouldShow ? "" : "none";
+
+  const integrationButtons = document.querySelectorAll('.nav button[data-sec="integration"],.mobile-menu-item[data-sec="integration"]');
+  integrationButtons.forEach((button) => {
+    button.style.display = shouldShow ? "" : "none";
+    if (!shouldShow) {
+      button.classList.remove("active");
+    }
+  });
+
+  if (!shouldShow && integrationSectionNode?.classList.contains("active")) {
+    showSec("overview");
+  }
+}
+
 function renderReportFromState(isExampleMode) {
   const missingAssignedPdfText = "Not detected in assigned PDF.";
   const growthKeyChallengesBox = document.getElementById('growthKeyChallengesBox');
@@ -8079,10 +8180,16 @@ function renderReportFromState(isExampleMode) {
   }
   setText('releaseValue', formatTypeLine(REPORT.release));
   setText('stretchValue', formatTypeLine(REPORT.stretch));
-  const normalizedIntegrationLevel = normalizeIntegrationLevel(REPORT.integration);
-  setText('integrationValue', normalizedIntegrationLevel);
-  renderIntegrationPanel(normalizedIntegrationLevel);
-  renderWingInfluencePanel(REPORT, normalizedIntegrationLevel);
+  const supportsIntegrationLevel = REPORT?.supportsIntegrationLevel !== false;
+  setIntegrationUiVisibility(supportsIntegrationLevel);
+  if (supportsIntegrationLevel) {
+    const normalizedIntegrationLevel = normalizeIntegrationLevel(REPORT.integration);
+    setText('integrationValue', normalizedIntegrationLevel);
+    renderIntegrationPanel(normalizedIntegrationLevel);
+    renderWingInfluencePanel(REPORT, normalizedIntegrationLevel);
+  } else {
+    setText('integrationValue', "Not available for STD report.");
+  }
   setText('metaQuote', `"${REPORT.meta}"`);
   const coreFearValue = String(REPORT.coreFear || '').replace(/^basic\s*fear\s*:\s*/i, '').trim() || REPORT.coreFear;
   const coreFearDisplay = coreFearValue

@@ -221,6 +221,7 @@ export default function AdminReviewPanel() {
     () => selectableReports.find((item) => item.id === selectedId) || null,
     [selectableReports, selectedId],
   );
+  const supportsIntegrationLevel = selected?.coreIdentity?.supportsIntegrationLevel !== false;
 
   useEffect(() => {
     if (!selected) return;
@@ -248,7 +249,9 @@ export default function AdminReviewPanel() {
     setCoreIdentity({
       typeName: normalizeMainTypeNameOption(selected?.coreIdentity?.typeName, strongestTypeNumber),
       instinctualVariant: String(selected?.coreIdentity?.instinctualVariant || "").trim(),
-      integrationLevel: String(selected?.coreIdentity?.integrationLevel || "").trim(),
+      integrationLevel: supportsIntegrationLevel
+        ? String(selected?.coreIdentity?.integrationLevel || "").trim()
+        : "",
       stretchPoint: String(selected?.coreIdentity?.stretchPoint || "").trim(),
       releasePoint: String(selected?.coreIdentity?.releasePoint || "").trim(),
     });
@@ -263,7 +266,7 @@ export default function AdminReviewPanel() {
         releasePoint: selected?.coreIdentity?.releasePoint || null,
       },
     });
-  }, [selected?.id]);
+  }, [selected?.id, supportsIntegrationLevel]);
 
   function setScore(group, key, value) {
     setScores((prev) => ({
@@ -319,7 +322,8 @@ export default function AdminReviewPanel() {
     console.log("[admin-review] Applied dominant preset", { selectedId, group, dominantKey });
   }
 
-  async function submitReview() {
+  async function submitReview(event) {
+    event?.preventDefault?.();
     if (!selected) {
       setStatus("Select a report first.");
       return;
@@ -332,7 +336,9 @@ export default function AdminReviewPanel() {
       coreIdentity: {
         typeName: String(coreIdentity?.typeName || "").trim() || null,
         instinctualVariant: String(coreIdentity?.instinctualVariant || "").trim() || null,
-        integrationLevel: String(coreIdentity?.integrationLevel || "").trim() || null,
+        integrationLevel: supportsIntegrationLevel
+          ? String(coreIdentity?.integrationLevel || "").trim() || null
+          : null,
         stretchPoint: String(coreIdentity?.stretchPoint || "").trim() || null,
         releasePoint: String(coreIdentity?.releasePoint || "").trim() || null,
       },
@@ -465,10 +471,11 @@ export default function AdminReviewPanel() {
 
       <section data-testid="admin-review-controls" style={{ marginTop: "16px", display: "grid", gap: "10px" }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-          <button data-testid="admin-review-refresh" onClick={loadQueue} disabled={isLoading} style={{ width: "160px" }}>
+          <button type="button" data-testid="admin-review-refresh" onClick={loadQueue} disabled={isLoading} style={{ width: "160px" }}>
             {isLoading ? "Refreshing..." : "Refresh Queue"}
           </button>
           <button
+            type="button"
             data-testid="admin-review-force-resave-graded"
             onClick={handleForceResaveGradedReports}
             disabled={isResavingGradedReports || isLoading}
@@ -542,7 +549,7 @@ export default function AdminReviewPanel() {
                   })}
                 </select>
               </label>
-              <button data-testid="admin-review-primary-type-apply" onClick={applyPrimaryTypePreset}>
+              <button type="button" data-testid="admin-review-primary-type-apply" onClick={applyPrimaryTypePreset}>
                 Apply Type Preset
               </button>
             </div>
@@ -564,6 +571,7 @@ export default function AdminReviewPanel() {
                 </select>
               </label>
               <button
+                type="button"
                 data-testid="admin-review-dominant-instinct-apply"
                 onClick={() => applyDominantPreset("instinctScores", dominantInstinctPreset, INSTINCT_KEYS)}
               >
@@ -588,6 +596,7 @@ export default function AdminReviewPanel() {
                 </select>
               </label>
               <button
+                type="button"
                 data-testid="admin-review-dominant-center-apply"
                 onClick={() => applyDominantPreset("centerScores", dominantCenterPreset, CENTER_KEYS)}
               >
@@ -640,19 +649,38 @@ export default function AdminReviewPanel() {
                   <option value="sx">SX — One-on-One</option>
                 </select>
               </label>
-              <label style={{ display: "grid", gap: "4px" }}>
-                <span>Integration Level</span>
-                <select
-                  data-testid="admin-review-core-integration-level"
-                  value={coreIdentity.integrationLevel}
-                  onChange={(event) => setCoreIdentityValue("integrationLevel", event.target.value)}
+              {supportsIntegrationLevel ? (
+                <label style={{ display: "grid", gap: "4px" }}>
+                  <span>Integration Level</span>
+                  <select
+                    data-testid="admin-review-core-integration-level"
+                    value={coreIdentity.integrationLevel}
+                    onChange={(event) => setCoreIdentityValue("integrationLevel", event.target.value)}
+                  >
+                    <option value="">Select level</option>
+                    <option value="High">High</option>
+                    <option value="Moderate">Moderate</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </label>
+              ) : (
+                <div
+                  data-testid="admin-review-core-integration-level-unavailable"
+                  style={{
+                    display: "grid",
+                    gap: "4px",
+                    padding: "10px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "8px",
+                    background: "#f8fafc",
+                    color: "#334155",
+                    alignContent: "center",
+                  }}
                 >
-                  <option value="">Select level</option>
-                  <option value="High">High</option>
-                  <option value="Moderate">Moderate</option>
-                  <option value="Low">Low</option>
-                </select>
-              </label>
+                  <strong>Integration Level</strong>
+                  <span>Integration Level is not available for STD reports.</span>
+                </div>
+              )}
               <label style={{ display: "grid", gap: "4px" }}>
                 <span>Stretch Point</span>
                 <select
@@ -759,7 +787,7 @@ export default function AdminReviewPanel() {
             />
           </label>
 
-          <button data-testid="admin-review-submit" onClick={submitReview}>
+          <button type="button" data-testid="admin-review-submit" onClick={submitReview}>
             Save Review
           </button>
         </section>
