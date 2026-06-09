@@ -2,6 +2,8 @@ const AUTH_BASE_URL =
   (window.__AUTH_BASE_URL__ && String(window.__AUTH_BASE_URL__).trim()) ||
   window.localStorage.getItem("AUTH_BASE_URL") ||
   window.location.origin;
+const DASHBOARD_REHYDRATE_STORAGE_KEY = "admin-review:dashboard-rehydrate";
+const DASHBOARD_REHYDRATE_CHANNEL = "admin-review-dashboard-sync";
 
 function getAuthBaseUrl() {
   return AUTH_BASE_URL.replace(/\/$/, "");
@@ -102,6 +104,8 @@ let lastAppliedExampleType = "8";
 let latestAdminClientReports = [];
 let latestAdminClientReportsById = new Map();
 let currentClientReportId = null;
+let lastDashboardRehydrateNonce = null;
+let dashboardRehydrateListenersBound = false;
 
 function resetClientReportSelectorSelection() {
   const clientReportSelector = getClientReportSelector();
@@ -2919,6 +2923,61 @@ async function refreshReportActiveUi() {
   }
 }
 
+function parseDashboardRehydrateSignal(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function handleDashboardRehydrateSignal(value, source = "unknown") {
+  const signal = parseDashboardRehydrateSignal(value);
+  if (!signal || signal.type !== "admin-review-force-resave") return;
+
+  const nonce = String(signal?.nonce || signal?.emittedAt || "").trim() || null;
+  if (nonce && nonce === lastDashboardRehydrateNonce) return;
+  lastDashboardRehydrateNonce = nonce;
+
+  console.log("[report-switch] Received dashboard rehydrate signal", {
+    source,
+    reason: signal?.reason || null,
+    scannedCount: Number(signal?.scannedCount ?? 0),
+    gradedCount: Number(signal?.gradedCount ?? 0),
+    updatedCount: Number(signal?.updatedCount ?? 0),
+    skippedCount: Number(signal?.skippedCount ?? 0),
+    failedCount: Number(signal?.failedCount ?? 0),
+    emittedAt: signal?.emittedAt || null,
+  });
+  assignedReportIngested = false;
+  refreshReportActiveUi();
+}
+
+function registerDashboardRehydrateListeners() {
+  if (dashboardRehydrateListenersBound) return;
+  dashboardRehydrateListenersBound = true;
+
+  window.addEventListener("storage", (event) => {
+    if (event.key !== DASHBOARD_REHYDRATE_STORAGE_KEY) return;
+    if (!event.newValue) return;
+    handleDashboardRehydrateSignal(event.newValue, "storage");
+  });
+
+  try {
+    const channel = new BroadcastChannel(DASHBOARD_REHYDRATE_CHANNEL);
+    channel.addEventListener("message", (event) => {
+      handleDashboardRehydrateSignal(event?.data, "broadcast");
+    });
+    console.log("[report-switch] Dashboard rehydrate BroadcastChannel listener active");
+  } catch (error) {
+    console.log("[report-switch] Dashboard rehydrate BroadcastChannel unavailable", error);
+  }
+}
+
 function closeAuthMenu() {
   const menu = getAuthMenu();
   if (!menu) return;
@@ -3319,6 +3378,7 @@ window.addEventListener("DOMContentLoaded", () => {
   setupSearchPopoutHandlers();
   setupReportSelectorHandler();
   setupClientReportSelectorHandler();
+  registerDashboardRehydrateListeners();
   const signOutButton = document.getElementById("authSignOutButton");
   const exportPdfButton = getExportPdfButton();
   if (signOutButton) {

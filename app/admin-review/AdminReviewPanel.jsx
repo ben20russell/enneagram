@@ -16,6 +16,8 @@ const TYPE_KEYS = [
 ];
 const INSTINCT_KEYS = ["selfPreservation", "sexual", "social"];
 const CENTER_KEYS = ["head", "heart", "body"];
+const DASHBOARD_REHYDRATE_STORAGE_KEY = "admin-review:dashboard-rehydrate";
+const DASHBOARD_REHYDRATE_CHANNEL = "admin-review-dashboard-sync";
 
 function emptyGroup(keys) {
   return Object.fromEntries(keys.map((key) => [key, ""]));
@@ -55,6 +57,37 @@ function resolveHighestScoreKey(values, keys) {
     }
   });
   return winningKey;
+}
+
+function emitDashboardRehydrateSignal(signal = {}) {
+  if (typeof window === "undefined") return;
+
+  const payload = {
+    type: "admin-review-force-resave",
+    emittedAt: new Date().toISOString(),
+    nonce: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    ...signal,
+  };
+
+  try {
+    localStorage.setItem(DASHBOARD_REHYDRATE_STORAGE_KEY, JSON.stringify(payload));
+  } catch (error) {
+    console.log("[admin-review] Failed to save dashboard rehydrate storage signal", {
+      details: String(error?.message || error),
+    });
+  }
+
+  try {
+    const channel = new BroadcastChannel(DASHBOARD_REHYDRATE_CHANNEL);
+    channel.postMessage(payload);
+    channel.close();
+  } catch (error) {
+    console.log("[admin-review] BroadcastChannel unavailable for dashboard rehydrate signal", {
+      details: String(error?.message || error),
+    });
+  }
+
+  console.log("[admin-review] Emitted dashboard rehydrate signal", payload);
 }
 
 export default function AdminReviewPanel() {
@@ -259,6 +292,14 @@ export default function AdminReviewPanel() {
       setStatus(
         `Re-save complete. Scanned ${data?.scannedCount ?? 0}, graded ${data?.gradedCount ?? 0}, updated ${data?.updatedCount ?? 0}, skipped ${data?.skippedCount ?? 0}, failed ${data?.failedCount ?? 0}.`,
       );
+      emitDashboardRehydrateSignal({
+        reason: "force-resave-graded",
+        scannedCount: data?.scannedCount ?? 0,
+        gradedCount: data?.gradedCount ?? 0,
+        updatedCount: data?.updatedCount ?? 0,
+        skippedCount: data?.skippedCount ?? 0,
+        failedCount: data?.failedCount ?? 0,
+      });
       console.log("[admin-review] Force re-save completed", data);
       await loadQueue();
     } catch (error) {
