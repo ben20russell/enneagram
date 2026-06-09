@@ -207,6 +207,7 @@ export default function AdminReviewPanel() {
     const payload = {
       reportId: selected.id,
       notes,
+      primaryType: primaryTypePreset ? Number(primaryTypePreset) : null,
       scores: {
         typeScores: Object.fromEntries(
           Object.entries(scores.typeScores).map(([k, v]) => [k, numberOrNull(v)]),
@@ -230,7 +231,9 @@ export default function AdminReviewPanel() {
       if (!res.ok) {
         throw new Error(data?.error || "Failed to save review");
       }
-      setStatus(`Saved review. Status: ${data?.reviewStatus || "updated"}`);
+      setStatus(
+        `Saved review. Status: ${data?.reviewStatus || "updated"} · Type: ${data?.enneagramType || "n/a"}`,
+      );
       console.log("[admin-review] Saved review", data);
       await loadQueue();
     } catch (error) {

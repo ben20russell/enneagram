@@ -236,14 +236,23 @@ export async function POST(req) {
   const results = row?.results_data && typeof row.results_data === "object" ? row.results_data : {};
   const profile = results?.parsedProfile && typeof results.parsedProfile === "object" ? results.parsedProfile : {};
   const scoreUpdates = normalizeScores(body?.scores || {});
+  const requestedPrimaryType = normalizeTypeNumber(body?.primaryType ?? null);
   const nextProfile = mergeScores(profile, scoreUpdates);
   const resolvedPrimaryType = resolvePrimaryTypeFromTypeScores(
     nextProfile?.typeScores,
-    nextProfile?.primaryType || row?.enneagram_type || results?.dashboardContext?.detectedType || null,
+    requestedPrimaryType ||
+      nextProfile?.primaryType ||
+      row?.enneagram_type ||
+      results?.dashboardContext?.detectedType ||
+      null,
   );
+  const persistedEnneagramTypeNumber =
+    normalizeTypeNumber(resolvedPrimaryType) ?? normalizeTypeNumber(row?.enneagram_type ?? null);
+  const persistedEnneagramType =
+    persistedEnneagramTypeNumber != null ? String(persistedEnneagramTypeNumber) : null;
   const nextProfileWithResolvedType = {
     ...nextProfile,
-    primaryType: resolvedPrimaryType || nextProfile?.primaryType || null,
+    primaryType: persistedEnneagramType || nextProfile?.primaryType || null,
   };
   const normalizedGroundTruthScores = normalizeScorePayload(nextProfileWithResolvedType);
   const parserVsGroundTruth = buildScoreComparisonMetrics({
@@ -304,8 +313,8 @@ export async function POST(req) {
     parsedProfile: nextProfileWithResolvedType,
     dashboardContext: {
       ...(results?.dashboardContext || {}),
-      detectedType: resolvedPrimaryType || results?.dashboardContext?.detectedType || null,
-      detectedTypeSource: resolvedPrimaryType
+      detectedType: persistedEnneagramType || results?.dashboardContext?.detectedType || null,
+      detectedTypeSource: persistedEnneagramType
         ? "admin-review:graded-type-scores"
         : (results?.dashboardContext?.detectedTypeSource || null),
     },
@@ -330,7 +339,10 @@ export async function POST(req) {
           ...(diagnostics?.verification || {}),
           resolvedFields: {
             ...(diagnostics?.verification?.resolvedFields || {}),
-            primaryType: resolvedPrimaryType || diagnostics?.verification?.resolvedFields?.primaryType || null,
+            primaryType:
+              persistedEnneagramType ||
+              diagnostics?.verification?.resolvedFields?.primaryType ||
+              null,
           },
         },
         extraction: {
@@ -367,7 +379,7 @@ export async function POST(req) {
     .from(table)
     .update({
       results_data: nextResults,
-      enneagram_type: resolvedPrimaryType || row?.enneagram_type || null,
+      enneagram_type: persistedEnneagramTypeNumber,
     })
     .eq("id", reportId);
 
@@ -378,7 +390,7 @@ export async function POST(req) {
   console.log("[admin-review] Saved review with ML feedback snapshot", {
     reportId,
     reviewedBy: admin.email,
-    resolvedPrimaryType,
+    resolvedPrimaryType: persistedEnneagramType,
     parseComplete,
     parserMae: mlEvaluation?.parserVsGroundTruth?.meanAbsoluteError ?? null,
     modelMae: mlEvaluation?.modelVsGroundTruth?.meanAbsoluteError ?? null,
@@ -391,7 +403,7 @@ export async function POST(req) {
       reportId,
       reviewStatus: nextResults.review.status,
       ingestionStatus: nextResults.ingestion.status,
-      enneagramType: resolvedPrimaryType || row?.enneagram_type || null,
+      enneagramType: persistedEnneagramType,
       mlEvaluation,
       scoreCoverage: {
         typeNonNull,

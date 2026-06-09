@@ -104,16 +104,21 @@ function getVerificationResolvedFields(normalized) {
   return {};
 }
 
-function getIngestedDashboardContext(resultsData) {
+function getIngestedDashboardContext(resultsData, options = {}) {
   const normalized = normalizeResultsData(resultsData);
   if (!normalized) return null;
+  const fallbackPrimaryType =
+    normalizeTypeNumber(options?.enneagramType) ??
+    normalizeTypeNumber(normalized?.enneagramType) ??
+    null;
   const parsed = typeof normalized.parsedProfile === "object" && normalized.parsedProfile
     ? normalized.parsedProfile
     : null;
   const verificationResolvedFields = getVerificationResolvedFields(normalized);
   const resolvedPrimaryType =
     normalizeTypeNumber(verificationResolvedFields?.primaryType) ??
-    normalizeTypeNumber(parsed?.primaryType);
+    normalizeTypeNumber(parsed?.primaryType) ??
+    fallbackPrimaryType;
   const resolvedInstinctualVariant =
     normalizeInstinctualVariant(verificationResolvedFields?.instinctualVariant) ??
     normalizeInstinctualVariant(parsed?.instinctualVariant);
@@ -123,6 +128,15 @@ function getIngestedDashboardContext(resultsData) {
 
   if (typeof normalized.dashboardContext === "object" && normalized.dashboardContext) {
     const dashboardDetectedType = normalizeTypeNumber(normalized.dashboardContext?.detectedType);
+    const verificationPrimaryType = normalizeTypeNumber(verificationResolvedFields?.primaryType);
+    const parsedPrimaryType = normalizeTypeNumber(parsed?.primaryType);
+    const resolvedTypeSource =
+      normalizeIdentityContextValue(normalized.dashboardContext?.detectedTypeSource) ||
+      (verificationPrimaryType != null
+        ? "verification:primaryType"
+        : (parsedPrimaryType != null
+          ? "parsedProfile:primaryType"
+          : (fallbackPrimaryType != null ? "reports.enneagram_type" : null)));
     const dashboardInstinctualVariant = normalizeInstinctualVariant(
       normalizeIdentityContextValue(
         normalized.dashboardContext?.instinct || normalized.dashboardContext?.instinctCode,
@@ -138,7 +152,9 @@ function getIngestedDashboardContext(resultsData) {
       ...normalized.dashboardContext,
       detectedType:
         (resolvedPrimaryType != null ? String(resolvedPrimaryType) : null) ||
-        (dashboardDetectedType != null ? String(dashboardDetectedType) : null),
+        (dashboardDetectedType != null ? String(dashboardDetectedType) : null) ||
+        (fallbackPrimaryType != null ? String(fallbackPrimaryType) : null),
+      detectedTypeSource: resolvedTypeSource,
       instinct: resolvedInstinctualVariant || dashboardInstinctualVariant,
       integrationLevel: resolvedIntegrationLevel || dashboardIntegrationLevel,
       basicFear:
@@ -170,6 +186,20 @@ function getIngestedDashboardContext(resultsData) {
     };
   }
 
+  if (fallbackPrimaryType != null) {
+    return {
+      detectedType: String(fallbackPrimaryType),
+      detectedTypeSource: "reports.enneagram_type",
+      sourceFileName: normalized?.file?.fileName || null,
+      basicFear: null,
+      basicDesire: null,
+      passion: null,
+      instinct: null,
+      integrationLevel: null,
+      reportSummary: null,
+    };
+  }
+
   return null;
 }
 
@@ -196,7 +226,7 @@ function normalizeResultsData(resultsData) {
   return null;
 }
 
-function getIngestionState(resultsData) {
+function getIngestionState(resultsData, options = {}) {
   const normalized = normalizeResultsData(resultsData);
   if (!normalized || typeof normalized !== "object") {
     return { status: null, parseDiagnostics: null, isComplete: false };
@@ -210,11 +240,15 @@ function getIngestionState(resultsData) {
   const parsedProfile = normalized?.parsedProfile && typeof normalized.parsedProfile === "object"
     ? normalized.parsedProfile
     : null;
+  const fallbackPrimaryType =
+    normalizeTypeNumber(options?.enneagramType) ??
+    normalizeTypeNumber(normalized?.enneagramType) ??
+    null;
   const reviewState = normalized?.review && typeof normalized.review === "object" ? normalized.review : null;
   const pageCount = Number(parseDiagnostics?.extraction?.pages || 0);
   const minPages = Number(parseDiagnostics?.extraction?.minExpectedPages || 20);
   const meetsPageCoverage = pageCount >= minPages;
-  const hasCoreIdentity = Boolean(parsedProfile?.primaryType || parsedProfile?.typeName);
+  const hasCoreIdentity = Boolean(parsedProfile?.primaryType || parsedProfile?.typeName || fallbackPrimaryType != null);
   const verificationCriticalMismatchCount = Number(parseDiagnostics?.verification?.criticalMismatchCount ?? 0);
   const hasVerificationConsistency = verificationCriticalMismatchCount <= 0;
   const reviewApproved = !reviewState || reviewState.status === "auto_approved" || reviewState.status === "approved";
@@ -309,7 +343,7 @@ async function listAdminClientReports({ supabaseAdmin }) {
   const table = process.env.SUPABASE_REPORTS_TABLE || "reports";
   const { data, error } = await supabaseAdmin
     .from(table)
-    .select("id,user_email,created_at,source,results_data,report_pdf")
+    .select("id,user_email,enneagram_type,created_at,source,results_data,report_pdf")
     .eq("source", "admin-import")
     .order("created_at", { ascending: false })
     .limit(100);
@@ -327,8 +361,9 @@ async function listAdminClientReports({ supabaseAdmin }) {
   const rows = Array.isArray(data) ? data : [];
   const mapped = await Promise.all(
     rows.map(async (row, index) => {
+      const identityFallback = { enneagramType: row?.enneagram_type };
       const parsedProfile = getParsedProfile(row?.results_data);
-      const ingestionState = getIngestionState(row?.results_data);
+      const ingestionState = getIngestionState(row?.results_data, identityFallback);
       const signedPdfAccess = await createSignedPdfAccess({
         supabaseAdmin,
         reportPdf: row?.report_pdf,
@@ -347,11 +382,12 @@ async function listAdminClientReports({ supabaseAdmin }) {
           rowIndex: index,
         }),
         reportFileName: row?.report_pdf?.fileName || null,
+        enneagramType: row?.enneagram_type ?? null,
         source: row?.source || null,
         createdAt: row?.created_at || null,
         isPdfRenderable: signedPdfAccess.isPdfRenderable,
         reportSignedUrl: signedPdfAccess.reportSignedUrl,
-        ingestedDashboardContext: getIngestedDashboardContext(row?.results_data),
+        ingestedDashboardContext: getIngestedDashboardContext(row?.results_data, identityFallback),
         ingestedParsedProfile: parsedProfile,
         ingestionStatus: ingestionState.status,
         parseDiagnostics: ingestionState.parseDiagnostics,
@@ -437,7 +473,8 @@ export async function GET(request) {
       reportId: assignedReport?.id,
       logPrefix: "assigned report",
     });
-    const ingestionState = getIngestionState(assignedReport?.resultsData);
+    const assignedIdentityFallback = { enneagramType: assignedReport?.enneagramType };
+    const ingestionState = getIngestionState(assignedReport?.resultsData, assignedIdentityFallback);
     const isReportActive = hasAssignedPdfMetadata && signedPdfAccess.isPdfRenderable && ingestionState.isComplete;
 
     return NextResponse.json(
@@ -451,7 +488,7 @@ export async function GET(request) {
         isPdfRenderable: signedPdfAccess.isPdfRenderable,
         reportFileName: assignedReport?.reportPdf?.fileName || null,
         reportSignedUrl: signedPdfAccess.reportSignedUrl,
-        ingestedDashboardContext: getIngestedDashboardContext(assignedReport?.resultsData),
+        ingestedDashboardContext: getIngestedDashboardContext(assignedReport?.resultsData, assignedIdentityFallback),
         ingestedParsedProfile: getParsedProfile(assignedReport?.resultsData),
         ingestionStatus: ingestionState.status,
         parseDiagnostics: ingestionState.parseDiagnostics,
