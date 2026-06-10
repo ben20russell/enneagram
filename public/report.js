@@ -1715,6 +1715,8 @@ function sanitizeSnippet(value, fallback) {
       "dislike", "dropping", "first", "important", "independence", "instincts", "intense", "issue", "language", "mainly",
       "micromanage", "nature", "nothing", "often", "project", "quickly", "second", "seems", "sort", "step", "subject",
       "tall", "tend", "toughen", "unless", "usually", "want", "way", "whenever", "words", "work", "would",
+      "mentally", "assess", "either", "weak", "treat", "according", "assessment", "also", "become", "makes", "tendency",
+      "before", "reacting", "responding", "signal",
       "you", "your", "yourself", "myself", "ourselves", "themselves", "himself", "herself", "itself",
     ]));
 
@@ -1878,9 +1880,20 @@ function sanitizeSnippet(value, fallback) {
         const joined = words.join("");
         const unknownWordCount = words.filter((word) => !wordBoundaryLexicon.has(String(word || "").toLowerCase())).length;
         if (!unknownWordCount) continue;
-        const hasSuspiciousSplit = words.some((word) => word.length <= 2) || joined.length >= 16;
+        const hasTinyUnknownFragment = words.some((word) => {
+          const lowerWord = String(word || "").toLowerCase();
+          return word.length <= 2 && !shortWords.has(lowerWord);
+        });
+        const hasShortUnknownFragment = words.some((word) => {
+          const lowerWord = String(word || "").toLowerCase();
+          return word.length <= 3 && !wordBoundaryLexicon.has(lowerWord);
+        });
+        const hasUnknownPairCompression = windowSize === 2 && unknownWordCount === 2 && joined.length >= 10;
+        const hasSuspiciousSplit = hasTinyUnknownFragment || hasShortUnknownFragment || hasUnknownPairCompression;
         if (!hasSuspiciousSplit) continue;
-        const merged = toLexiconSegments(joined, { fromMergedWords: true });
+        const merged =
+          toLexiconSegments(joined, { fromMergedWords: true }) ||
+          (joined.length >= 16 && unknownWordCount >= 2 ? toApproximateLexiconSegments(joined) : null);
         if (!merged) continue;
         repaired.push(applyCasingFromSource(joined, merged));
         cursor = endIndex + 1;
@@ -1889,7 +1902,9 @@ function sanitizeSnippet(value, fallback) {
       }
       if (mergedApplied) continue;
 
-      const singleTokenRepair = toLexiconSegments(current, { fromMergedWords: false });
+      const singleTokenRepair =
+        toLexiconSegments(current, { fromMergedWords: false }) ||
+        (current.length >= 24 ? toApproximateLexiconSegments(current) : null);
       if (singleTokenRepair) {
         repaired.push(applyCasingFromSource(current, singleTokenRepair));
       } else {
@@ -1931,12 +1946,21 @@ function sanitizeSnippet(value, fallback) {
 
   cleaned = repairWordBoundaryGaps(cleaned);
 
+  // Recover full run-on OCR rows that lost most spaces altogether.
+  cleaned = cleaned.replace(/\b[A-Za-z]{28,}\b/g, (token) => {
+    const segmented =
+      toLexiconSegments(token, { fromMergedWords: true }) ||
+      toApproximateLexiconSegments(token);
+    if (!segmented) return token;
+    return applyCasingFromSource(token, segmented);
+  });
+
   cleaned = cleaned
-    .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b/gi, " ")
-    .replace(/\b(?:Page|Pg\.?)\s*\d{1,3}\b/gi, " ")
+    .replace(/\b(?:Page|Pg\.?)\s*\d(?:\s*\d){0,2}\s*(?:of|\/)\s*\d(?:\s*\d){0,2}\b/gi, " ")
+    .replace(/\b(?:Page|Pg\.?)\s*\d(?:\s*\d){0,2}\b/gi, " ")
     .replace(/\[\s*Page\s*\d{1,3}\s*\]/gi, " ")
     .replace(/\bPage\s*\d{1,3}\s+Page\s*\d{1,3}\b/gi, " ")
-    .replace(/\b\d{1,3}\s*(?:of|\/)\s*\d{1,3}\b(?=\s*(?:$|STRICTLY|CONFIDENTIAL|COPYRIGHT|Integrative|Enneagram|Ben\s*Russell))/gi, " ")
+    .replace(/\b\d(?:\s*\d){0,2}\s*(?:of|\/)\s*\d(?:\s*\d){0,2}\b(?=\s*(?:$|STRICTLY|CONFIDENTIAL|COPYRIGHT|Integrative|Enneagram|Ben\s*Russell))/gi, " ")
     .replace(/\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)\s*20\d{2}\s*\[\s*ENGLISH\s*\]/gi, " ")
     .replace(/\bSTRICTLY\s*CONFIDENTIAL(?:\s+INDIVIDUAL)?(?:\s+PROFESSIONAL)?(?:\s+Enneagram\s*Report)?\b/gi, " ")
     .replace(/\bCopyright\s*\d{2,4}\s*[-–]\s*\d{2,4}\b/gi, " ")

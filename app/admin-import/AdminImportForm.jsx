@@ -1089,7 +1089,14 @@ export default function AdminImportForm() {
 
   function handleOpenAdminReview() {
     console.log("[admin-import-page] Admin review button clicked");
-    router.push("/admin-review");
+    if (typeof window !== "undefined" && window.location.pathname === "/admin") {
+      const adminReviewSectionEl = window.document.getElementById("admin-review-section");
+      if (adminReviewSectionEl) {
+        adminReviewSectionEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+    }
+    router.push("/admin#admin-review-section");
   }
 
   return (

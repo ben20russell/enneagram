@@ -493,7 +493,7 @@ export default function AdminReviewPanel() {
         <h1 data-testid="admin-review-title" style={{ margin: 0 }}>Admin Review Queue</h1>
         <Link
           data-testid="admin-review-import-link-button"
-          href="/admin-import"
+          href="/admin#admin-import-section"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -509,7 +509,7 @@ export default function AdminReviewPanel() {
             flexShrink: 0,
           }}
         >
-          Open Admin Import
+          Jump to Admin Import
         </Link>
       </section>
       <p data-testid="admin-review-subtitle" style={{ color: "#475569" }}>

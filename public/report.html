@@ -197,8 +197,8 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .tt strong{color:var(--text);font-weight:600}
 .core-pattern-row-marker{--bullet-size:20px;font-size:9px}
 .core-pattern-inline-list{display:flex;flex-direction:column;gap:6px;margin:6px 0 0;padding:0;list-style:none}
-.core-pattern-inline-item{position:relative;line-height:1.58;padding-left:12px}
-.core-pattern-inline-item::before{content:"•";position:absolute;left:0;top:.22em;font-size:9px;color:var(--text3);line-height:1}
+.core-pattern-inline-item{--bullet-size:9px;position:relative;line-height:var(--lh-body);padding-left:12px}
+.core-pattern-inline-item::before{content:"•";position:absolute;left:0;top:calc(((1em * var(--lh-body)) - var(--bullet-size)) / 2);font-size:var(--bullet-size);color:var(--text3);line-height:1}
 .sh{font-size:20px;font-weight:700;margin-bottom:14px}.subh{font-size:var(--fs-label);font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:16px 0 8px}
 .tg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.tg-item{background:var(--red-lt);border-left:3px solid var(--red);border-radius:var(--r-sm);padding:13px}.tg-title{font-size:12px;font-weight:600;color:var(--red);margin-bottom:4px}.tg-desc{font-size:12px;color:var(--text3);line-height:1.52}
 .ibox{background:var(--blue-lt);border-left:3px solid var(--blue);border-radius:var(--r-sm);padding:14px 15px}.ibox p{font-size:13px;color:var(--blue);line-height:1.62}
@@ -416,7 +416,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
         <span class="report-active-chip" id="reportActiveChip" data-testid="report-active-chip">Report Active</span>
         <a class="auth-btn google" id="authSignInButton" data-testid="sign-in-google" href="#" onclick="openGoogleSignInPopup(event)">Sign In</a>
         <div class="auth-menu" id="authMenu" data-testid="auth-menu">
-          <a class="auth-menu-item" id="authAdminPageLink" data-testid="admin-page-link" href="/admin-import" target="_blank" style="display:none">Admin Page</a>
+          <a class="auth-menu-item" id="authAdminPageLink" data-testid="admin-page-link" href="/admin" target="_blank" style="display:none">Admin Page</a>
           <button class="auth-menu-item" type="button" id="authExportPdfButton" data-testid="export-pdf-button">Export PDF</button>
           <button class="auth-menu-item" type="button" id="authSignOutButton">Sign Out</button>
         </div>
@@ -492,13 +492,21 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             <div class="kv-grid mb16">
               <div><div class="kvl">Main Type</div><div class="kvv red" id="mainTypeValue" data-testid="main-type">8 — Active Controller</div></div>
               <div><div class="kvl">Dominant Instinct</div><div class="kvv gold" id="instinctValue">SX — One-on-One</div></div>
-              <div id="integrationValueRow"><div class="kvl">Integration Level</div><div class="kvv red" id="integrationValue">Low</div></div>
-              <div><div class="kvl">Stretch Point</div><div class="kvv green" id="stretchValue">Type 5</div></div>
               <div><div class="kvl">Release Point</div><div class="kvv blue" id="releaseValue">Type 2</div></div>
+              <div><div class="kvl">Stretch Point</div><div class="kvv green" id="stretchValue">Type 5</div></div>
+              <div id="integrationValueRow"><div class="kvl">Integration Level</div><div class="kvv red" id="integrationValue">Low</div></div>
             </div>
-            <div style="display:flex;gap:7px;flex-wrap:wrap" id="traitChips">
+            <div class="kvl" data-testid="characteristics-heading">Characteristics</div>
+            <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:4px" id="traitChips">
               <span class="chip cgn">Assertive</span><span class="chip cgn">Decisive</span><span class="chip cgn">Protective</span><span class="chip cgn">Independent</span><span class="chip cgn">Influential</span>
             </div>
+            <div class="div"></div>
+            <div class="kvl" data-testid="core-identity-motivation-label">Motivation</div>
+            <p
+              style="font-size:14px;color:var(--text2);line-height:1.65;margin:8px 0 0"
+              id="motivationSummary"
+              data-testid="core-identity-motivation-summary"
+            >Not detected in assigned PDF.</p>
           </div>
           <div class="card">
             <div class="ct">Your Enneagram Profile</div>
@@ -551,11 +559,6 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
               <div class="ti"><div class="tic neu core-pattern-row-marker">•</div><div class="tt"><strong>Typical Feeling Patterns:</strong> Not detected in assigned PDF.</div></div>
             </div>
           </div>
-        </div>
-
-        <div class="card mb24" data-testid="motivation-card">
-          <div class="ct">Motivation</div>
-          <p style="font-size:14px;color:var(--text2);line-height:1.65;margin:0" id="motivationSummary">Not detected in assigned PDF.</p>
         </div>
 
       </div>
@@ -1013,6 +1016,6 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
   <footer class="site-footer">© 2026 The Kapalaran Group LLC | All rights reserved. | <a href="/privacy" target="_top" data-testid="privacy-policy-link">Privacy Policy</a></footer>
 </div>
 
-<script src="/report.js?v=20260527-1"></script>
+<script src="/report.js?v=20260610-2"></script>
 </body>
 </html>
