@@ -80,13 +80,13 @@ function setReportActiveChipVisible(visible) {
 function setReportSwitchVisible(visible) {
   const control = getReportSwitchControl();
   if (!control) return;
-  control.style.display = SHOW_DASHBOARD_REPORT_DROPDOWNS && visible ? "flex" : "none";
+  control.style.display = SHOW_EXAMPLE_REPORT_DROPDOWN && visible ? "flex" : "none";
 }
 
 function setClientReportSwitchVisible(visible) {
   const control = getClientReportSwitchControl();
   if (!control) return;
-  control.style.display = SHOW_DASHBOARD_REPORT_DROPDOWNS && visible ? "flex" : "none";
+  control.style.display = SHOW_CLIENT_REPORT_DROPDOWN && visible ? "flex" : "none";
 }
 
 function canViewExampleReports({ email, isAuthenticated }) {
@@ -94,7 +94,8 @@ function canViewExampleReports({ email, isAuthenticated }) {
   return hasAdminAccess(email);
 }
 
-const SHOW_DASHBOARD_REPORT_DROPDOWNS = false;
+const SHOW_EXAMPLE_REPORT_DROPDOWN = false;
+const SHOW_CLIENT_REPORT_DROPDOWN = true;
 const DEFAULT_EXAMPLE_REPORT_TYPE = "3";
 
 let assignedReportIngested = false;
