@@ -181,6 +181,17 @@ function populateClientReportSelector(clientReports) {
   clientReportSelector.value = hasPreviousValue ? previousValue : "";
 }
 
+function findClientReportForSignedInUser(clientReports, signedInUserEmail) {
+  const normalizedSignedInEmail = normalizeEmail(signedInUserEmail);
+  if (!normalizedSignedInEmail) return null;
+  const safeClientReports = Array.isArray(clientReports) ? clientReports : [];
+  return (
+    safeClientReports.find(
+      (clientReport) => normalizeEmail(clientReport?.userEmail) === normalizedSignedInEmail,
+    ) || null
+  );
+}
+
 function setExportPdfState({ visible, enabled }) {
   const exportButton = getExportPdfButton();
   if (!exportButton) return;
@@ -2220,6 +2231,178 @@ async function extractPdfTextFromSignedUrl(signedUrl) {
   return chunks.join("\n");
 }
 
+function buildProfileScoresFromTypeScores(typeScoresRaw) {
+  if (!typeScoresRaw || typeof typeScoresRaw !== "object") return null;
+
+  const mapped = {
+    "1": toFiniteScoreOrNull(typeScoresRaw?.["1"] ?? typeScoresRaw?.type1),
+    "2": toFiniteScoreOrNull(typeScoresRaw?.["2"] ?? typeScoresRaw?.type2),
+    "3": toFiniteScoreOrNull(typeScoresRaw?.["3"] ?? typeScoresRaw?.type3),
+    "4": toFiniteScoreOrNull(typeScoresRaw?.["4"] ?? typeScoresRaw?.type4),
+    "5": toFiniteScoreOrNull(typeScoresRaw?.["5"] ?? typeScoresRaw?.type5),
+    "6": toFiniteScoreOrNull(typeScoresRaw?.["6"] ?? typeScoresRaw?.type6),
+    "7": toFiniteScoreOrNull(typeScoresRaw?.["7"] ?? typeScoresRaw?.type7),
+    "8": toFiniteScoreOrNull(typeScoresRaw?.["8"] ?? typeScoresRaw?.type8),
+    "9": toFiniteScoreOrNull(typeScoresRaw?.["9"] ?? typeScoresRaw?.type9),
+  };
+
+  const hasAnyFiniteScore = Object.values(mapped).some((value) => Number.isFinite(value));
+  return hasAnyFiniteScore ? mapped : null;
+}
+
+function applyFallbackAssignedReportFromServerData(data) {
+  const serverContext = data?.ingestedDashboardContext && typeof data.ingestedDashboardContext === "object"
+    ? data.ingestedDashboardContext
+    : {};
+  const parsedProfile = data?.ingestedParsedProfile && typeof data.ingestedParsedProfile === "object"
+    ? data.ingestedParsedProfile
+    : {};
+  const fallbackType =
+    normalizeDetectedTypeCandidate(parsedProfile?.primaryType) ||
+    normalizeDetectedTypeCandidate(serverContext?.detectedType) ||
+    String(DEFAULT_EXAMPLE_REPORT_TYPE);
+  const fallbackExample = REPORT_EXAMPLES?.[String(fallbackType || "")] || REPORT_EXAMPLES?.[DEFAULT_EXAMPLE_REPORT_TYPE] || {};
+
+  const fallbackInstinct =
+    instinctValueToLabel(parsedProfile?.instinctualVariant) ||
+    instinctValueToLabel(serverContext?.instinct || serverContext?.instinctCode) ||
+    fallbackExample?.instinct ||
+    "N/A";
+  const fallbackTypeName =
+    sanitizeSnippet(parsedProfile?.typeName, "") ||
+    sanitizeSnippet(serverContext?.typeName, "") ||
+    sanitizeSnippet(fallbackExample?.typeName, "Not detected in assigned PDF.");
+  const fallbackSubtypeKeyword =
+    sanitizeSnippet(parsedProfile?.subtypeKeyword, "") ||
+    sanitizeSnippet(serverContext?.subtypeKeyword, "") ||
+    sanitizeSnippet(fallbackExample?.keyword, "Not detected in assigned PDF.");
+  const fallbackConnectedLineA =
+    sanitizeSnippet(parsedProfile?.connectedLineA, "") ||
+    (parsedProfile?.arrowDynamics?.integration ? `Type ${parsedProfile.arrowDynamics.integration}` : "") ||
+    sanitizeSnippet(fallbackExample?.release, "Type 5");
+  const fallbackConnectedLineB =
+    sanitizeSnippet(parsedProfile?.connectedLineB, "") ||
+    (parsedProfile?.arrowDynamics?.disintegration ? `Type ${parsedProfile.arrowDynamics.disintegration}` : "") ||
+    sanitizeSnippet(fallbackExample?.stretch, "Type 2");
+  const fallbackIntegrationLevel =
+    sanitizeSnippet(parsedProfile?.integrationLevel || parsedProfile?.integration, "") ||
+    sanitizeSnippet(serverContext?.integrationLevel || serverContext?.integration, "") ||
+    sanitizeSnippet(fallbackExample?.integration, "");
+
+  const parsedDevelopmentExercises = Array.isArray(parsedProfile?.developmentExercises)
+    ? parsedProfile.developmentExercises
+        .map((row, index) => {
+          if (row && typeof row === "object") {
+            return {
+              title: sanitizeSnippet(row?.title, `Exercise ${index + 1}`),
+              text: sanitizeSnippet(row?.text || row?.guidance || row?.description, ""),
+            };
+          }
+          return {
+            title: `Exercise ${index + 1}`,
+            text: sanitizeSnippet(row, ""),
+          };
+        })
+        .filter((row) => Boolean(row?.text))
+    : [];
+
+  applyAssignedPdfReport({
+    typeNumber: fallbackType,
+    typeName: fallbackTypeName,
+    instinct: fallbackInstinct,
+    subtypeKeyword: fallbackSubtypeKeyword,
+    connectedLineA: fallbackConnectedLineA,
+    connectedLineB: fallbackConnectedLineB,
+    integrationLevel: fallbackIntegrationLevel,
+    supportsIntegrationLevel: parsedProfile?.supportsIntegrationLevel !== false,
+    reportType: sanitizeSnippet(parsedProfile?.reportType, null),
+    profileScores: buildProfileScoresFromTypeScores(parsedProfile?.typeScores || null),
+    basicFear: parsedProfile?.coreFear || serverContext?.basicFear || null,
+    basicDesire: parsedProfile?.coreDesire || serverContext?.basicDesire || null,
+    passion: parsedProfile?.passion || serverContext?.passion || null,
+    metaQuote: parsedProfile?.metaMessage || parsedProfile?.selfTalk || null,
+    worldview: parsedProfile?.worldview || null,
+    focus: parsedProfile?.focusOfAttention || parsedProfile?.focus || null,
+    corePatternTitle: parsedProfile?.corePattern?.title || null,
+    corePatternLines: Array.isArray(parsedProfile?.corePattern?.lines)
+      ? parsedProfile.corePattern.lines
+      : [],
+    corePatternBullets:
+      parsedProfile?.corePatternBullets ||
+      parsedProfile?.corePattern?.bullets ||
+      parsedProfile?.corePattern?.patterns ||
+      [],
+    reportSummary: parsedProfile?.reportSummary || null,
+    clientName:
+      parsedProfile?.clientName ||
+      sanitizeSnippet(data?.clientName, null) ||
+      sanitizeSnippet(serverContext?.clientName, null),
+    reportDate: parsedProfile?.reportDate || null,
+    wing: parsedProfile?.wing || null,
+    trifix: parsedProfile?.trifix || null,
+    levelOfDevelopment: parsedProfile?.levelOfDevelopment || null,
+    centreOfIntelligence: parsedProfile?.centreOfIntelligence || null,
+    typeScoresRaw: parsedProfile?.typeScores || null,
+    instinctScoresRaw: parsedProfile?.instinctScores || null,
+    centerScoresRaw: parsedProfile?.centerScores || null,
+    extractedPageCount: Array.isArray(parsedProfile?.reportContent?.pages) ? parsedProfile.reportContent.pages.length : 0,
+    extractedSectionCount: Array.isArray(parsedProfile?.reportContent?.sections) ? parsedProfile.reportContent.sections.length : 0,
+    extractedSectionTitles: Array.isArray(parsedProfile?.reportContent?.sections)
+      ? parsedProfile.reportContent.sections.map((section) => section?.sectionTitle || section?.title || "").filter(Boolean)
+      : [],
+    insightTeamDynamics: parsedProfile?.insightTeamDynamics || null,
+    insightDecisionFramework: parsedProfile?.insightDecisionFramework || null,
+    insightStrategicLeadership: parsedProfile?.insightStrategicLeadership || null,
+    insightCoachingRelationship: parsedProfile?.insightCoachingRelationship || null,
+    insightFeedbackGuide: parsedProfile?.insightFeedbackGuide || null,
+    insightComposite: parsedProfile?.insightComposite || null,
+    feedbackGuideMatrix: Array.isArray(parsedProfile?.feedbackGuideMatrix) ? parsedProfile.feedbackGuideMatrix : [],
+    strainQualitativeWriteups: Array.isArray(parsedProfile?.strainQualitativeWriteups) ? parsedProfile.strainQualitativeWriteups : [],
+    overallStrainSummary: sanitizeSnippet(parsedProfile?.overallStrainSummary, null),
+    developmentExercises: parsedDevelopmentExercises,
+    spreadsheetFocuses:
+      parsedProfile?.spreadsheetFocuses && typeof parsedProfile.spreadsheetFocuses === "object"
+        ? parsedProfile.spreadsheetFocuses
+        : {},
+    teamStageBreakdown:
+      parsedProfile?.teamStageBreakdown && typeof parsedProfile.teamStageBreakdown === "object"
+        ? parsedProfile.teamStageBreakdown
+        : {},
+    strainScoresRaw: getParsedProfileStrainScores(parsedProfile) || null,
+    interactionScores:
+      parsedProfile?.interactionScores && typeof parsedProfile.interactionScores === "object"
+        ? parsedProfile.interactionScores
+        : null,
+    dataQualityDiagnostics: buildDataQualityDiagnostics({
+      parsedProfile,
+      parseDiagnostics: data?.parseDiagnostics && typeof data.parseDiagnostics === "object" ? data.parseDiagnostics : null,
+      feedbackGuideMatrix: Array.isArray(parsedProfile?.feedbackGuideMatrix) ? parsedProfile.feedbackGuideMatrix : [],
+      strainQualitativeWriteups: Array.isArray(parsedProfile?.strainQualitativeWriteups) ? parsedProfile.strainQualitativeWriteups : [],
+      developmentExercises: parsedDevelopmentExercises,
+    }),
+    hydrationSourceAudit: {},
+  });
+
+  renderAssignedIngestCard({
+    fileName: data?.reportFileName || null,
+    detectedType: fallbackType,
+    detectedTypeSource:
+      sanitizeSnippet(serverContext?.detectedTypeSource, null) ||
+      "server-context-fallback",
+    basicFear: parsedProfile?.coreFear || serverContext?.basicFear || null,
+    basicDesire: parsedProfile?.coreDesire || serverContext?.basicDesire || null,
+    passion: parsedProfile?.passion || serverContext?.passion || null,
+  });
+
+  console.log("[report-ingest] Applied fallback assigned/client report from server data", {
+    reportFileName: data?.reportFileName || null,
+    typeNumber: fallbackType,
+    hasParsedProfile: Boolean(Object.keys(parsedProfile).length),
+    hasServerContext: Boolean(Object.keys(serverContext).length),
+    hasSpreadsheetFocuses: Boolean(parsedProfile?.spreadsheetFocuses),
+  });
+}
+
 async function ingestAssignedReportIntoDashboard(data) {
   if (!data) return;
   const ingestionToken = activeAssignedIngestionToken + 1;
@@ -2356,7 +2539,18 @@ async function ingestAssignedReportIntoDashboard(data) {
     });
 
     if (data?.reportSignedUrl) {
-      pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
+      try {
+        pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
+      } catch (error) {
+        pdfText = "";
+        console.log("[report-ingest] Failed PDF extraction pass 1; continuing with server data", {
+          ingestionToken,
+          currentReportViewMode,
+          reportFileName: data?.reportFileName || null,
+          details: String(error?.message || "Unknown PDF extraction error"),
+          stack: error?.stack,
+        });
+      }
     }
 
     if (!detectedType || !basicFear || !basicDesire || !passion || !instinct || !hasInformativeScoreMap(profileScores, 3)) {
@@ -2415,7 +2609,18 @@ async function ingestAssignedReportIntoDashboard(data) {
     }
 
     if (!pdfText && (!typeName || !instinct || !connectedLineA || !connectedLineB || (supportsIntegrationLevel && !integrationLevel))) {
-      pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
+      try {
+        pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
+      } catch (error) {
+        pdfText = "";
+        console.log("[report-ingest] Failed PDF extraction pass 2; continuing with fallback hydration", {
+          ingestionToken,
+          currentReportViewMode,
+          reportFileName: data?.reportFileName || null,
+          details: String(error?.message || "Unknown PDF extraction error"),
+          stack: error?.stack,
+        });
+      }
     }
     typeName = typeName || cleanupTypeName(extractTypeNameFromPdfText(pdfText, detectedType));
     instinct = instinct || extractInstinctFromPdfText(pdfText);
@@ -2994,10 +3199,38 @@ async function ingestAssignedReportIntoDashboard(data) {
       passion,
     });
   } catch (error) {
+    let fallbackApplied = false;
     if (ingestionToken === activeAssignedIngestionToken) {
-      assignedReportIngested = false;
+      try {
+        applyFallbackAssignedReportFromServerData(data);
+        fallbackApplied = true;
+      } catch (fallbackError) {
+        console.log("[report-ingest] Failed to apply server-data fallback after ingestion error", {
+          ingestionToken,
+          currentReportViewMode,
+          reportFileName: data?.reportFileName || null,
+          details: String(fallbackError?.message || "Unknown fallback hydration error"),
+          stack: fallbackError?.stack,
+        });
+      }
+    } else {
+      console.log("[report-ingest] Skipping fallback for stale ingestion token", {
+        ingestionToken,
+        currentReportViewMode,
+        reportFileName: data?.reportFileName || null,
+        activeAssignedIngestionToken,
+      });
+    }
+    if (ingestionToken === activeAssignedIngestionToken) {
+      assignedReportIngested = fallbackApplied;
     }
     console.log("[report-ingest] Assigned PDF ingestion failed", error);
+    console.log("[report-ingest] Ingestion fallback status", {
+      ingestionToken,
+      currentReportViewMode,
+      reportFileName: data?.reportFileName || null,
+      fallbackApplied,
+    });
   }
 }
 
@@ -3074,6 +3307,23 @@ async function refreshReportActiveUi() {
       }
       currentClientReportId = null;
       resetClientReportSelectorSelection();
+    }
+    const emailMatchedClientReport = findClientReportForSignedInUser(
+      adminClientReports,
+      currentSignedInUser?.email,
+    );
+    if (emailMatchedClientReport?.id) {
+      const matchedReportId = String(emailMatchedClientReport.id).trim();
+      currentClientReportId = matchedReportId;
+      const clientReportSelector = getClientReportSelector();
+      if (clientReportSelector) {
+        clientReportSelector.value = matchedReportId;
+      }
+      currentReportViewMode = "client-report";
+      assignedReportIngested = false;
+      latestAssignedPdfReport = null;
+      ingestAssignedReportIntoDashboard(emailMatchedClientReport);
+      return;
     }
     if (hasAssignedReportAvailable) {
       currentClientReportId = null;

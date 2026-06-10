@@ -230,7 +230,9 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 @media(max-width:900px){.reflection-launcher{right:12px;bottom:12px}}
 .chart-wrap{position:relative;width:100%}
 .insight-stack{display:flex;flex-direction:column;gap:10px}
-.core-copy-stack{display:flex;flex-direction:column;gap:12px}
+.core-copy-stack{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media(max-width:1080px){.core-copy-stack{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.core-copy-stack{grid-template-columns:1fr}}
 .core-copy-item{
   border:1px solid #cfe3ff;
   border-left:4px solid var(--blue);
@@ -500,7 +502,6 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:3.3px" id="traitChips">
               <span class="chip cgn">Assertive</span><span class="chip cgn">Decisive</span><span class="chip cgn">Protective</span><span class="chip cgn">Independent</span><span class="chip cgn">Influential</span>
             </div>
-            <div class="div"></div>
             <div class="kvl" data-testid="core-identity-motivation-label">Motivation</div>
             <p
               style="font-size:14px;color:var(--text2);line-height:1.65;margin:8px 0 0"
@@ -521,8 +522,8 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </div>
         </div>
 
-        <div class="g2 mb24">
-          <div class="card">
+        <div class="mb24">
+          <div class="card" id="coreBeliefAttentionCard">
             <div class="ct">Core Belief &amp; Attention Pattern</div>
             <div class="core-copy-stack">
               <div class="core-copy-item">
@@ -549,14 +550,6 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
                 <div class="core-copy-item-title">Vices</div>
                 <div class="core-copy-item-body" id="vicesValue">An unstoppable, insatiable Lust for control leads to excess and makes it difficult to connect with others.</div>
               </div>
-            </div>
-          </div>
-          <div class="card" id="deepSummaryCard">
-            <div class="ct" id="deepTitle">A Deeper Understanding of the SX — 8</div>
-            <div class="tlist" id="corePatternBulletsList" data-testid="core-pattern-bullets-list">
-              <div class="ti"><div class="tic neu core-pattern-row-marker">•</div><div class="tt"><strong>Typical Action Patterns:</strong> Not detected in assigned PDF.</div></div>
-              <div class="ti"><div class="tic neu core-pattern-row-marker">•</div><div class="tt"><strong>Typical Thinking Patterns:</strong> Not detected in assigned PDF.</div></div>
-              <div class="ti"><div class="tic neu core-pattern-row-marker">•</div><div class="tt"><strong>Typical Feeling Patterns:</strong> Not detected in assigned PDF.</div></div>
             </div>
           </div>
         </div>
