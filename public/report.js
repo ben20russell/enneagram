@@ -3943,9 +3943,6 @@ function renderProfileWheel() {
   const wheelNode = document.getElementById('profileWheel');
   if (!wheelNode) return;
 
-  const isCompactWheel = window.matchMedia('(max-width: 700px)').matches;
-  const badgeCollisionBoundaryX = isCompactWheel ? 126 : 146;
-  const badgeCollisionBoundaryY = isCompactWheel ? 126 : 146;
   const size = { width: 560, height: 320 };
   const cx = 292;
   const cy = 166;
@@ -3968,77 +3965,22 @@ function renderProfileWheel() {
   const symbolPoints = PROFILE_TYPE_ORDER.map((_, index) => toPoint(cx, cy, nodeRadius, startAngle + (index + 0.5) * segmentAngle));
   const starIndexOrder = [0, 3, 6, 1, 4, 7, 2, 5, 8];
   const starPath = starIndexOrder.map((pointIndex, index) => `${index === 0 ? 'M' : 'L'} ${symbolPoints[pointIndex].x} ${symbolPoints[pointIndex].y}`).join(' ') + ' Z';
-  const roleLabelRadius = outerRadius + (isCompactWheel ? 20 : 24);
-  const roleLabelOutwardPadding = isCompactWheel ? 6 : 8;
-  const roleAnchorOutwardPadding = isCompactWheel ? 4 : 6;
-  const minLabelX = isCompactWheel ? 34 : 26;
-  const maxLabelX = size.width - (isCompactWheel ? 32 : 24);
-  const minLabelY = isCompactWheel ? 26 : 20;
-  const maxLabelY = size.height - (isCompactWheel ? 22 : 16);
 
   const segmentNodes = PROFILE_TYPE_ORDER.map((typeNumber, index) => {
     const segmentStart = startAngle + index * segmentAngle;
     const segmentEnd = segmentStart + segmentAngle;
     const segmentCenterAngle = segmentStart + segmentAngle / 2;
     const labelPoint = toPoint(cx, cy, ringMidRadius, segmentCenterAngle);
-    const radialRolePoint = toPoint(cx, cy, outerRadius + 26, segmentCenterAngle);
     let fill = PROFILE_SEGMENT_COLORS.base;
-    let roleLabel = '';
-    let roleColor = '';
     if (typeNumber === mainType) fill = PROFILE_SEGMENT_COLORS.main;
     else if (typeNumber === releaseType) fill = PROFILE_SEGMENT_COLORS.release;
     else if (typeNumber === stretchType) fill = PROFILE_SEGMENT_COLORS.stretch;
-    let rolePoint = { ...radialRolePoint };
-    if (typeNumber === mainType) {
-      roleLabel = 'Main';
-      roleColor = PROFILE_SEGMENT_COLORS.main;
-    } else if (typeNumber === releaseType) {
-      roleLabel = 'Release';
-      roleColor = PROFILE_SEGMENT_COLORS.release;
-    } else if (typeNumber === stretchType) {
-      roleLabel = 'Stretch';
-      roleColor = PROFILE_SEGMENT_COLORS.stretch;
-    }
-    if (roleLabel) {
-      rolePoint = toPoint(cx, cy, roleLabelRadius, segmentCenterAngle);
-    }
-    let roleTextX = rolePoint.x;
-    let roleTextY = rolePoint.y;
-    let roleAnchor = "middle";
-    if (roleLabel) {
-      const radialVectorX = roleTextX - cx;
-      const radialVectorY = roleTextY - cy;
-      const radialVectorMagnitude = Math.hypot(radialVectorX, radialVectorY) || 1;
-      roleTextX = roleTextX + (radialVectorX / radialVectorMagnitude) * roleLabelOutwardPadding;
-      roleTextY = roleTextY + (radialVectorY / radialVectorMagnitude) * roleLabelOutwardPadding;
-    }
-    // Keep role labels clear of the top-left badge chip while staying close to the associated segment.
-    if (roleLabel && roleTextX <= badgeCollisionBoundaryX && roleTextY <= badgeCollisionBoundaryY) {
-      const tangentPoint = toPoint(0, 0, isCompactWheel ? 18 : 24, segmentCenterAngle + 90);
-      roleTextX = roleTextX + tangentPoint.x;
-      roleTextY = roleTextY + tangentPoint.y;
-      if (roleTextX <= badgeCollisionBoundaryX) {
-        roleTextX = badgeCollisionBoundaryX + (isCompactWheel ? 8 : 12);
-      }
-    }
-    if (roleLabel) {
-      roleAnchor = roleTextX >= cx ? "start" : "end";
-      roleTextX = roleAnchor === "start"
-        ? roleTextX + roleAnchorOutwardPadding
-        : roleTextX - roleAnchorOutwardPadding;
-    }
-    roleTextX = Math.max(minLabelX, Math.min(maxLabelX, roleTextX));
-    roleTextY = Math.max(minLabelY, Math.min(maxLabelY, roleTextY));
     return {
       segmentPath: `<path d="${donutSlicePath(cx, cy, innerRadius, outerRadius, segmentStart, segmentEnd)}" fill="${fill}" stroke="#ffffff" stroke-width="2"></path>`,
       typeLabel: `<text class="profile-wheel-type" x="${labelPoint.x}" y="${labelPoint.y}" transform="rotate(${segmentCenterAngle + 90}, ${labelPoint.x}, ${labelPoint.y})">${typeNumber}</text>`,
-      roleLabel: roleLabel
-        ? `<text class="profile-wheel-role" x="${roleTextX}" y="${roleTextY}" text-anchor="${roleAnchor}" fill="${roleColor}">${roleLabel}</text>`
-        : '',
     };
   });
   const segmentsMarkup = segmentNodes.map((node) => node.segmentPath).join('');
-  const roleLabelsMarkup = segmentNodes.map((node) => node.roleLabel).join('');
   const typeLabelsMarkup = segmentNodes.map((node) => node.typeLabel).join('');
 
   wheelNode.innerHTML = `
@@ -4059,10 +4001,20 @@ function renderProfileWheel() {
       <path d="M ${symbolPoints[1].x} ${symbolPoints[1].y} L ${symbolPoints[4].x} ${symbolPoints[4].y} L ${symbolPoints[7].x} ${symbolPoints[7].y} Z" fill="none" stroke="#e9edf1" stroke-width="5"></path>
       <path class="profile-wheel-line" d="M ${lineStart.x} ${lineStart.y} L ${releaseTarget.x} ${releaseTarget.y}" stroke="url(#profileLineRelease)" stroke-width="8"></path>
       <path class="profile-wheel-line" d="M ${lineStart.x} ${lineStart.y} L ${stretchTarget.x} ${stretchTarget.y}" stroke="url(#profileLineStretch)" stroke-width="8"></path>
-      ${roleLabelsMarkup}
       ${typeLabelsMarkup}
     </svg>
   `;
+
+  const legendMainNode = document.getElementById("profileWheelLegendMain");
+  const legendReleaseNode = document.getElementById("profileWheelLegendRelease");
+  const legendStretchNode = document.getElementById("profileWheelLegendStretch");
+  if (legendMainNode) legendMainNode.textContent = `Type ${mainType}`;
+  if (legendReleaseNode) {
+    legendReleaseNode.textContent = releaseType ? `Type ${releaseType}` : formatTypeLine(REPORT.release);
+  }
+  if (legendStretchNode) {
+    legendStretchNode.textContent = stretchType ? `Type ${stretchType}` : formatTypeLine(REPORT.stretch);
+  }
 
   console.log('[profile-wheel] rendered', { mainType, releaseType, stretchType, profile: REPORT.profile });
 }
@@ -4892,18 +4844,123 @@ function setBarRow(barId, valueId, value, options = {}) {
   if (valueNode && options.color) valueNode.style.color = options.color;
 }
 
-function setCenterLevelChip(chipId, value) {
-  const chipNode = document.getElementById(chipId);
-  if (!chipNode) return;
+const CENTER_WHEEL_SECTORS = [
+  { key: "body", label: "ACTION CENTRE", startAngle: 300, endAngle: 420, color: "#ff5a37", levelRotation: 0 },
+  { key: "heart", label: "FEELING CENTRE", startAngle: 60, endAngle: 180, color: "#48bf53", levelRotation: 60 },
+  { key: "head", label: "THINKING CENTRE", startAngle: 180, endAngle: 300, color: "#0099e6", levelRotation: -60 },
+];
+
+const CENTER_WHEEL_LEVEL_RADIUS = {
+  LOW: 78,
+  MEDIUM: 136,
+  HIGH: 180,
+  "N/A": 0,
+};
+const CENTER_WHEEL_LEVEL_COLOR = {
+  HIGH: "#48bf53",
+  MEDIUM: "#0099e6",
+  LOW: "#ff5a37",
+  "N/A": "#eceeef",
+};
+
+function sectorSlicePath(cx, cy, radius, startAngle, endAngle) {
+  const startPoint = toPoint(cx, cy, radius, startAngle);
+  const endPoint = toPoint(cx, cy, radius, endAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+  return [
+    `M ${cx} ${cy}`,
+    `L ${startPoint.x} ${startPoint.y}`,
+    `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${endPoint.x} ${endPoint.y}`,
+    "Z",
+  ].join(" ");
+}
+
+function arcPath(cx, cy, radius, startAngle, endAngle) {
+  const startPoint = toPoint(cx, cy, radius, startAngle);
+  const endPoint = toPoint(cx, cy, radius, endAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+  return `M ${startPoint.x} ${startPoint.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${endPoint.x} ${endPoint.y}`;
+}
+
+function scoreToCenterWheelLevel(value) {
   const numeric = toFiniteScoreOrNull(value);
-  const hasValue = Number.isFinite(numeric);
-  const safeValue = hasValue ? Math.max(0, Math.min(100, Math.round(numeric))) : null;
-  const level = hasValue ? scoreBandLabel(safeValue) : "N/A";
-  chipNode.textContent = level;
-  chipNode.classList.remove('center-chip-high', 'center-chip-medium', 'center-chip-low');
-  if (level === "High") chipNode.classList.add('center-chip-high');
-  else if (level === "Medium") chipNode.classList.add('center-chip-medium');
-  else chipNode.classList.add('center-chip-low');
+  if (!Number.isFinite(numeric)) return "N/A";
+  const safeValue = Math.max(0, Math.min(100, Math.round(numeric)));
+  return scoreBandLabel(safeValue).toUpperCase();
+}
+
+function renderCenterExpressionWheel(centerScoresRaw) {
+  const wheelNode = document.getElementById("centerExpressionWheel");
+  if (!wheelNode) return;
+
+  const centerScores = centerScoresRaw && typeof centerScoresRaw === "object" ? centerScoresRaw : {};
+  const cx = 240;
+  const cy = 240;
+  const labelInnerRadius = 188;
+  const labelOuterRadius = 228;
+  const highRadius = CENTER_WHEEL_LEVEL_RADIUS.HIGH;
+  const mediumRadius = CENTER_WHEEL_LEVEL_RADIUS.MEDIUM;
+  const lowRadius = CENTER_WHEEL_LEVEL_RADIUS.LOW;
+  const labelArcRadius = (labelInnerRadius + labelOuterRadius) / 2;
+
+  const outerRing = CENTER_WHEEL_SECTORS.map((sector) => (
+    `<path d="${donutSlicePath(cx, cy, labelInnerRadius, labelOuterRadius, sector.startAngle, sector.endAngle)}" fill="#c9ced3" stroke="#ffffff" stroke-width="3"></path>`
+  )).join("");
+
+  const baseSectors = CENTER_WHEEL_SECTORS.map((sector) => (
+    `<path d="${sectorSlicePath(cx, cy, highRadius, sector.startAngle, sector.endAngle)}" fill="#eceeef"></path>`
+  )).join("");
+
+  const valueSectors = CENTER_WHEEL_SECTORS.map((sector) => {
+    const level = scoreToCenterWheelLevel(centerScores?.[sector.key]);
+    const radius = CENTER_WHEEL_LEVEL_RADIUS[level] || 0;
+    if (!(radius > 0)) return "";
+    const fillColor = CENTER_WHEEL_LEVEL_COLOR[level] || CENTER_WHEEL_LEVEL_COLOR.LOW;
+    return `<path d="${sectorSlicePath(cx, cy, radius, sector.startAngle, sector.endAngle)}" fill="${fillColor}"></path>`;
+  }).join("");
+
+  const boundaryAngles = [60, 180, 300];
+  const radialBoundaries = boundaryAngles.map((angle) => {
+    const boundaryPoint = toPoint(cx, cy, labelOuterRadius, angle);
+    return `<line x1="${cx}" y1="${cy}" x2="${boundaryPoint.x}" y2="${boundaryPoint.y}" stroke="#ffffff" stroke-width="3"></line>`;
+  }).join("");
+
+  const ringGuides = [lowRadius, mediumRadius, highRadius]
+    .map((radius) => `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#ffffff" stroke-width="3"></circle>`)
+    .join("");
+
+  const labelDefs = CENTER_WHEEL_SECTORS.map((sector, index) => (
+    `<path id="centerWheelLabelArc-${index}" d="${arcPath(cx, cy, labelArcRadius, sector.startAngle + 5, sector.endAngle - 5)}"></path>`
+  )).join("");
+
+  const ringLabels = CENTER_WHEEL_SECTORS.map((sector, index) => (
+    `<text fill="#ffffff" font-family="var(--font-display), var(--font-sans), sans-serif" font-size="28" font-weight="700" letter-spacing="0.6">
+      <textPath href="#centerWheelLabelArc-${index}" startOffset="50%" text-anchor="middle">${escapeHtml(sector.label)}</textPath>
+    </text>`
+  )).join("");
+
+  const levelLabels = CENTER_WHEEL_SECTORS.map((sector) => {
+    const level = scoreToCenterWheelLevel(centerScores?.[sector.key]);
+    const radius = CENTER_WHEEL_LEVEL_RADIUS[level] || lowRadius * 0.6;
+    const textRadius = Math.max(52, Math.min(highRadius - 20, radius * 0.62));
+    const textPoint = toPoint(cx, cy, textRadius, (sector.startAngle + sector.endAngle) / 2);
+    const textFill = level === "N/A" ? "#61778f" : "#ffffff";
+    const fontSize = level === "MEDIUM" ? 26 : level === "N/A" ? 20 : 32;
+    return `<text x="${textPoint.x}" y="${textPoint.y}" fill="${textFill}" font-family="var(--font-display), var(--font-sans), sans-serif" font-size="${fontSize}" font-weight="700" letter-spacing="0.7" text-anchor="middle" dominant-baseline="middle" transform="rotate(${sector.levelRotation} ${textPoint.x} ${textPoint.y})">${escapeHtml(level)}</text>`;
+  }).join("");
+
+  wheelNode.innerHTML = `
+    <svg viewBox="0 0 480 480" role="img" aria-label="Centers of Expression wheel">
+      <defs>${labelDefs}</defs>
+      ${outerRing}
+      ${baseSectors}
+      ${valueSectors}
+      ${ringGuides}
+      ${radialBoundaries}
+      ${ringLabels}
+      ${levelLabels}
+    </svg>
+  `;
 }
 
 const CENTER_EXPRESSION_ORDER = [
@@ -5027,28 +5084,6 @@ function renderCenterPatternRows(items, options = {}) {
     })
     .filter(Boolean)
     .join("");
-}
-
-function resolveCenterDominanceLabels(report, centerScoresRaw) {
-  const rankedRows = buildSortedCenterExpressionRows(centerScoresRaw).filter((row) => row.level !== "N/A");
-  if (rankedRows.length >= 2) {
-    return {
-      dominant: rankedRows[0].label,
-      weakest: rankedRows[rankedRows.length - 1].label,
-    };
-  }
-
-  const reportType = String(report?.typeNumber || "").trim();
-  const fallbackExample = REPORT_EXAMPLES?.[reportType] || null;
-  return {
-    dominant: formatOptionalText(report?.dominantCenter || fallbackExample?.dominantCenter, "Not detected"),
-    weakest: formatOptionalText(report?.weakestCenter || fallbackExample?.weakestCenter, "Not detected"),
-  };
-}
-
-function renderCenterDominanceSummary(report, centerScoresRaw) {
-  const labels = resolveCenterDominanceLabels(report, centerScoresRaw);
-  return `Dominant Center: <strong style="color:var(--text)">${escapeHtml(labels.dominant)}</strong>. Weakest Center: <strong style="color:var(--text)">${escapeHtml(labels.weakest)}</strong>.`;
 }
 
 const STRAIN_BREAKDOWN_ORDER = [
@@ -5409,9 +5444,16 @@ function buildDevExercisePathHtml(paths) {
     .map((path, index) => {
       const title = formatOptionalText(path?.title, `Growth Path ${index + 1}`);
       const text = ensureSentenceStartsCapitalized(sanitizeSnippet(formatOptionalText(path?.text, "Not detected in assigned PDF."), "Not detected in assigned PDF."));
+      const bulletRows = text
+        .split(/(?:\s*[•▪◦]\s*|\s*\n+\s*|(?<=[.!?])\s+(?=[A-Z0-9]))/g)
+        .map((row) => ensureSentenceStartsCapitalized(String(row || "").trim()))
+        .filter(Boolean);
+      const textMarkup = bulletRows.length >= 2
+        ? `<ul class="dev-item-list">${bulletRows.map((row) => `<li>${escapeHtml(row)}</li>`).join("")}</ul>`
+        : `<p>${escapeHtml(text)}</p>`;
       const source = sanitizeSnippet(formatOptionalText(path?.source, ""), "");
       const showSource = Boolean(source) && !/extracted\s+from\s+assigned\s+pdf/i.test(source);
-      return `<div class="dev-item"><div class="dev-item-title">${escapeHtml(title)}</div><p>${escapeHtml(text)}</p>${showSource ? `<div class="subh" style="margin:8px 0 0">${escapeHtml(source)}</div>` : ""}</div>`;
+      return `<div class="dev-item"><div class="dev-item-title">${escapeHtml(title)}</div>${textMarkup}${showSource ? `<div class="subh" style="margin:8px 0 0">${escapeHtml(source)}</div>` : ""}</div>`;
     })
     .join("");
 }
@@ -6410,16 +6452,20 @@ function summarizeOverallStrainText(rawText, options = {}) {
     if (leadIndex > 0) normalized = normalizeExtractedText(normalized.slice(leadIndex));
   }
 
-  const categoryBoundary = normalized.match(
-    /\b(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+Strain\b/i,
+  const overallSpilloverBoundary = normalized.match(
+    /\b(?:DEVELOPMENT\s*EXERCISE|Ben\s+your\s+perceived\s+level\s+of\s+(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+strain|(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+Strain)\b/i,
   );
-  if (categoryBoundary?.index > 0) {
-    normalized = normalizeExtractedText(normalized.slice(0, categoryBoundary.index));
+  if (overallSpilloverBoundary?.index > 0) {
+    console.log("[strain] trimming overall summary spillover boundary", {
+      boundary: cleanPdfExtractedValue(overallSpilloverBoundary?.[0] || ""),
+      boundaryIndex: Number(overallSpilloverBoundary.index),
+    });
+    normalized = normalizeExtractedText(normalized.slice(0, overallSpilloverBoundary.index));
   }
   if (!normalized) return null;
 
   const explicit = normalized.match(
-    /overall\s+strain(?:\s+level)?\s*(?:is|appears|rated|of|at|was)?\s*(?:LOW|MEDIUM|HIGH|MODERATE)?\s*[:\-]?\s*([\s\S]{24,520})/i,
+    /overall\s+strain(?:\s+level)?\s*(?:is|appears|rated|of|at|was)?\s*(?:LOW|MEDIUM|HIGH|MODERATE)?\s*[:\-]?\s*([\s\S]{24,2200})/i,
   );
   let summary = cleanPdfExtractedValue(explicit?.[1] || "");
 
@@ -6446,9 +6492,32 @@ function summarizeOverallStrainText(rawText, options = {}) {
       /\boverall\s+strain(?:\s+level)?\s*(?:is|appears|rated|of|at|was)?\s*(?:low|medium|high|moderate)?\s*[:\-]?\s*/gi,
       "",
     )
+    .replace(
+      /\bBen\s+your\s+perceived\s+level\s+of\s+(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+strain[\s\S]*$/i,
+      "",
+    )
+    .replace(
+      /\b(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+Strain\b[\s\S]*$/i,
+      "",
+    )
+    .replace(/\bDEVELOPMENT\s*EXERCISE\b[\s\S]*$/i, "")
     .replace(/\s+/g, " ")
     .trim();
   if (!summary) return null;
+
+  if (!/[.!?]["')\]]?$/.test(summary)) {
+    const lastSentenceStop = Math.max(summary.lastIndexOf("."), summary.lastIndexOf("!"), summary.lastIndexOf("?"));
+    if (lastSentenceStop >= 40) {
+      const trimmedSummary = summary.slice(0, lastSentenceStop + 1).trim();
+      if (trimmedSummary && trimmedSummary !== summary) {
+        console.log("[strain] trimmed incomplete overall summary tail", {
+          originalLength: summary.length,
+          trimmedLength: trimmedSummary.length,
+        });
+        summary = trimmedSummary;
+      }
+    }
+  }
 
   if (Number.isFinite(maxWords) && maxWords > 0) {
     const words = summary.split(/\s+/).filter(Boolean);
@@ -7374,7 +7443,9 @@ function extractOverallStrainSummaryFromTargetedSections(parsedProfile) {
       ? getTargetedSections(parsedProfile).strain_interpretation
       : null;
   if (!targetedStrain) return null;
-  return compactTargetedSectionText(targetedStrain?.overall, { maxItems: 4, maxLength: 420 });
+  const rows = normalizeTargetedSectionRows(targetedStrain?.overall, { maxItems: 4, maxLength: 1600 });
+  if (!rows.length) return null;
+  return summarizeOverallStrainText(rows.join(" "), { maxWords: 0 });
 }
 
 function extractDevelopmentExercisesFromTargetedSections(parsedProfile) {
@@ -8846,11 +8917,8 @@ function renderReportFromState(isExampleMode) {
 
   const corePatternBulletsForRender = resolveCorePatternBulletsForRender(REPORT);
   const centerScores = REPORT.centerScoresRaw || {};
-  setCenterLevelChip('centerBodyChip', centerScores.body ?? null);
-  setCenterLevelChip('centerHeartChip', centerScores.heart ?? null);
-  setCenterLevelChip('centerHeadChip', centerScores.head ?? null);
+  renderCenterExpressionWheel(centerScores);
   sortCenterExpressionRows(centerScores);
-  setHtml('centerDominanceSummary', renderCenterDominanceSummary(REPORT, centerScores));
 
   const centerPatternItemsByKey = {};
   CENTER_PATTERN_COLUMNS.forEach((column) => {

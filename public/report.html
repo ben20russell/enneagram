@@ -204,7 +204,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .sh{font-size:20px;font-weight:700;margin-bottom:14px}.subh{font-size:var(--fs-label);font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:16px 0 8px}
 .tg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.tg-item{background:var(--red-lt);border-left:3px solid var(--red);border-radius:var(--r-sm);padding:13px}.tg-title{font-size:12px;font-weight:600;color:var(--red);margin-bottom:4px}.tg-desc{font-size:12px;color:var(--text3);line-height:1.52}
 .ibox{background:var(--blue-lt);border-left:3px solid var(--blue);border-radius:var(--r-sm);padding:14px 15px}.ibox p{font-size:13px;color:var(--blue);line-height:1.62}
-.devbox{background:var(--gold-lt);border:1px solid rgba(154,110,26,.15);border-radius:var(--r);padding:20px}.devbox-title{font-size:var(--fs-label);font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);margin-bottom:12px}.dev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:11px}.dev-item{background:rgba(255,255,255,.75);border-radius:var(--r-sm);padding:13px}.dev-item-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:5px}.dev-item p{font-size:12px;color:var(--text2);line-height:1.62}
+.devbox{background:var(--gold-lt);border:1px solid rgba(154,110,26,.15);border-radius:var(--r);padding:20px}.devbox-title{font-size:var(--fs-label);font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--gold);margin-bottom:12px}.dev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:11px}.dev-item{background:rgba(255,255,255,.75);border-radius:var(--r-sm);padding:13px}.dev-item-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:5px}.dev-item p{font-size:12px;color:var(--text2);line-height:1.62}.dev-item-list{margin:0;padding-left:18px;list-style:disc}.dev-item-list li{font-size:12px;color:var(--text2);line-height:1.62}.dev-item-list li+li{margin-top:6px}
 .dev-summary{font-size:13px;color:var(--text2);line-height:1.7;margin:0 0 12px}
 .team-stage-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:700px){.team-stage-grid{grid-template-columns:1fr}}
@@ -288,15 +288,66 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .strain-breakdown-scroll{margin-top:12px;flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable}
 @media(max-width:980px){.strain-cards-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.strain-cards-grid{grid-template-columns:1fr}}
-.center-chip-high{background:var(--green-lt);color:var(--green)}
-.center-chip-medium{background:var(--gold-lt);color:var(--gold)}
-.center-chip-low{background:var(--surface2);color:var(--text3)}
+.center-expression-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}
+.center-expression-col-right{padding-left:0}
+.center-expression-visual-wrap{display:flex;justify-content:center;align-items:center}
+#centerExpressionWheel{width:min(100%,300px);max-width:300px;aspect-ratio:1/1}
+#centerExpressionWheel svg{display:block;width:100%;height:auto}
+@media(max-width:900px){
+  .center-expression-layout{grid-template-columns:1fr}
+  .center-expression-col-right{padding-top:0}
+}
+@media(max-width:700px){
+  #centerExpressionWheel{width:min(100%,260px);max-width:260px}
+}
 .strain-chip-high{background:var(--red-lt);color:var(--red)}
 .strain-chip-medium{background:var(--gold-lt);color:var(--gold)}
 .strain-chip-low{background:var(--green-lt);color:var(--green)}
-.profile-wheel-wrap{position:relative;height:300px}
-.profile-wheel{position:relative;width:100%;height:100%;overflow:visible}
+.profile-wheel-wrap{
+  position:relative;
+  min-height:300px;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 156px;
+  gap:14px;
+  align-items:center;
+}
+.profile-wheel{position:relative;width:100%;height:300px;overflow:visible}
 .profile-wheel-svg{width:100%;height:100%;display:block}
+.profile-wheel-legend{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  justify-self:end;
+}
+.profile-wheel-legend-item{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:7px 8px;
+}
+.profile-wheel-legend-swatch{
+  width:9px;
+  height:9px;
+  border-radius:999px;
+  flex:0 0 auto;
+}
+.profile-wheel-legend-main .profile-wheel-legend-swatch{background:var(--blue)}
+.profile-wheel-legend-release .profile-wheel-legend-swatch{background:#1f8ec8}
+.profile-wheel-legend-stretch .profile-wheel-legend-swatch{background:#12b981}
+.profile-wheel-legend-label{
+  font:700 11px/1 var(--font-sans);
+  color:var(--text3);
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  min-width:54px;
+}
+.profile-wheel-legend-value{
+  font:700 12px/1 var(--font-sans);
+  color:var(--text);
+}
 .profile-wheel-badge{
   position:absolute;left:12px;top:8px;width:122px;height:122px;border-radius:999px;
   background:linear-gradient(140deg,#0a66d8 0%, #0f9e83 100%);color:#fff;display:flex;flex-direction:column;justify-content:flex-start;align-items:center;
@@ -328,7 +379,21 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
   stroke-linejoin:round;
 }
 @media(max-width:700px){
-  .profile-wheel-wrap{height:260px}
+  .profile-wheel-wrap{
+    min-height:260px;
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+  .profile-wheel{height:260px}
+  .profile-wheel-legend{
+    justify-self:start;
+    flex-direction:row;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  .profile-wheel-legend-item{padding:6px 8px}
+  .profile-wheel-legend-label{font-size:10px;min-width:48px}
+  .profile-wheel-legend-value{font-size:11px}
   .profile-wheel-badge{width:98px;height:98px;left:6px;top:6px;padding-top:10px}
   .profile-wheel-badge-instinct{font-size:15px}
   .profile-wheel-badge-type{font-size:40px}
@@ -517,6 +582,23 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             <div class="ct">Your Enneagram Profile</div>
             <div class="profile-wheel-wrap">
               <div id="profileWheel" class="profile-wheel" data-testid="profile-wheel"></div>
+              <div class="profile-wheel-legend" id="profileWheelLegend" data-testid="profile-wheel-legend">
+                <div class="profile-wheel-legend-item profile-wheel-legend-main">
+                  <span class="profile-wheel-legend-swatch"></span>
+                  <span class="profile-wheel-legend-label">Main</span>
+                  <span class="profile-wheel-legend-value" id="profileWheelLegendMain">Type 8</span>
+                </div>
+                <div class="profile-wheel-legend-item profile-wheel-legend-release">
+                  <span class="profile-wheel-legend-swatch"></span>
+                  <span class="profile-wheel-legend-label">Release</span>
+                  <span class="profile-wheel-legend-value" id="profileWheelLegendRelease">Type 5</span>
+                </div>
+                <div class="profile-wheel-legend-item profile-wheel-legend-stretch">
+                  <span class="profile-wheel-legend-swatch"></span>
+                  <span class="profile-wheel-legend-label">Stretch</span>
+                  <span class="profile-wheel-legend-value" id="profileWheelLegendStretch">Type 2</span>
+                </div>
+              </div>
               <div class="profile-wheel-badge" data-testid="profile-wheel-badge">
                 <div class="profile-wheel-badge-instinct" id="profileWheelBadgeInstinct">SX</div>
                 <div class="profile-wheel-badge-type" id="profileWheelBadgeType">8</div>
@@ -561,22 +643,24 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
       </div>
 
       <div id="sec-centers" class="sec">
-        <div class="g2 mb24">
+        <div class="mb24">
           <div class="card">
             <div class="ct">Centers of Expression</div>
-            <p style="font-size:13px;color:var(--text2);margin-bottom:14px" id="centerDominanceSummary">Dominant Center: <strong style="color:var(--text)">Action Center</strong>. Weakest Center: <strong style="color:var(--text)">Thinking Center</strong>.</p>
-            <div id="centerExpressionRows" data-testid="center-expression-rows">
-              <div class="brow" data-center-row="body"><div class="blbl">Action Center</div><span class="chip center-chip-high" id="centerBodyChip" data-testid="center-body-chip">High</span></div>
-              <div class="brow" data-center-row="heart"><div class="blbl">Feeling Center</div><span class="chip center-chip-medium" id="centerHeartChip" data-testid="center-heart-chip">Medium</span></div>
-              <div class="brow" data-center-row="head"><div class="blbl">Thinking Center</div><span class="chip center-chip-low" id="centerHeadChip" data-testid="center-head-chip">Low</span></div>
-            </div>
-            <div class="div"></div>
-            <div class="tlist" id="centerExpressionNarratives" data-testid="center-expression-narratives">
-              <div class="ti" data-center-row="body"><div class="tic pos">→</div><div class="tt" id="centerNarrativeBody"><strong>Externalised Action:</strong> You act on gut impulses in quick and compelling ways.</div></div>
-              <div class="ti" data-center-row="heart"><div class="tic neu">♥</div><div class="tt" id="centerNarrativeHeart"><strong>Externalised Feeling:</strong> You focus emotional and relational energy on others.</div></div>
-              <div class="ti" data-center-row="head"><div class="tic inf">◎</div><div class="tt" id="centerNarrativeHead"><strong>Internalised Thinking:</strong> You quietly apply thinking energy inward, creating a rich thought-world.</div></div>
+            <div class="center-expression-layout">
+              <div class="center-expression-visual-wrap">
+                <div id="centerExpressionWheel" data-testid="center-expression-wheel" aria-label="Centers of Expression visual wheel"></div>
+              </div>
+              <div class="center-expression-col-right">
+                <div class="tlist" id="centerExpressionNarratives" data-testid="center-expression-narratives">
+                  <div class="ti" data-center-row="body"><div class="tic pos">→</div><div class="tt" id="centerNarrativeBody"><strong>Externalised Action:</strong> You act on gut impulses in quick and compelling ways.</div></div>
+                  <div class="ti" data-center-row="heart"><div class="tic neu">♥</div><div class="tt" id="centerNarrativeHeart"><strong>Externalised Feeling:</strong> You focus emotional and relational energy on others.</div></div>
+                  <div class="ti" data-center-row="head"><div class="tic inf">◎</div><div class="tt" id="centerNarrativeHead"><strong>Internalised Thinking:</strong> You quietly apply thinking energy inward, creating a rich thought-world.</div></div>
+                </div>
+              </div>
             </div>
           </div>
+        </div>
+        <div class="mb24">
           <div class="card">
             <div class="ct">Typical Patterns</div>
             <div class="g3">
