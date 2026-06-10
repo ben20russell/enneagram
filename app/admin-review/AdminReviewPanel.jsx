@@ -146,6 +146,14 @@ function resolveHighestScoreKey(values, keys) {
   return winningKey;
 }
 
+function mapInstinctScoreKeyToVariantCode(instinctKey) {
+  const normalized = String(instinctKey || "").trim();
+  if (normalized === "selfPreservation") return "sp";
+  if (normalized === "social") return "so";
+  if (normalized === "sexual") return "sx";
+  return "";
+}
+
 function emitDashboardRehydrateSignal(signal = {}) {
   if (typeof window === "undefined") return;
 
@@ -367,6 +375,13 @@ export default function AdminReviewPanel() {
         keys.map((key) => [key, key === dominantKey ? "100" : "0"]),
       ),
     }));
+    if (group === "instinctScores") {
+      const resolvedInstinctVariant = mapInstinctScoreKeyToVariantCode(dominantKey);
+      setCoreIdentity((prev) => ({
+        ...prev,
+        instinctualVariant: resolvedInstinctVariant || prev.instinctualVariant,
+      }));
+    }
     setStatus(`Applied dominant preset for ${group}.`);
     console.log("[admin-review] Applied dominant preset", { selectedId, group, dominantKey });
   }
