@@ -777,53 +777,6 @@ export default function AdminReviewPanel() {
                 <span>{coreIdentity.releasePoint || "Not detected"}</span>
               </div>
             </div>
-            <div
-              data-testid="admin-review-core-canonical-points-guide"
-              style={{
-                border: "1px solid #dbe6f2",
-                borderRadius: "8px",
-                background: "#f8fbff",
-                padding: "10px",
-                display: "grid",
-                gap: "8px",
-              }}
-            >
-              <strong>Canonical Release / Stretch Map</strong>
-              <span style={{ color: "#475569" }}>
-                Release Point = Stress/Disintegration. Stretch Point = Growth/Integration.
-              </span>
-              <div
-                data-testid="admin-review-core-canonical-points-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                  gap: "6px 10px",
-                }}
-              >
-                {MAIN_TYPE_NAME_OPTIONS.map((option) => {
-                  const canonicalPoints = resolveCanonicalPointsByTypeNumber(option.typeNumber);
-                  const isActiveType = String(primaryTypePreset || "") === String(option.typeNumber);
-                  return (
-                    <div
-                      key={option.typeNumber}
-                      data-testid={`admin-review-core-canonical-row-type-${option.typeNumber}`}
-                      style={{
-                        border: isActiveType ? "1px solid #0a66d8" : "1px solid #dbe6f2",
-                        borderRadius: "6px",
-                        padding: "6px 8px",
-                        background: isActiveType ? "#f0f7ff" : "#ffffff",
-                        display: "grid",
-                        gap: "2px",
-                      }}
-                    >
-                      <strong>Type {option.typeNumber}</strong>
-                      <span>Release: {canonicalPoints?.release || "n/a"}</span>
-                      <span>Stretch: {canonicalPoints?.stretch || "n/a"}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           </section>
 
           <div data-testid="admin-review-types" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "8px" }}>
