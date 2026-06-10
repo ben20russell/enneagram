@@ -3968,7 +3968,7 @@ function renderProfileWheel() {
   const viewBoxX = cx - outerRadius - wheelPadding;
   const viewBoxY = cy - outerRadius - wheelPadding;
   const viewBoxSize = (outerRadius + wheelPadding) * 2;
-  const roleLabelRadius = outerRadius + 24;
+  const roleLabelRadius = outerRadius + 18;
 
   const segmentNodes = PROFILE_TYPE_ORDER.map((typeNumber, index) => {
     const segmentStart = startAngle + index * segmentAngle;
@@ -3987,8 +3987,8 @@ function renderProfileWheel() {
   const segmentsMarkup = segmentNodes.map((node) => node.segmentPath).join('');
   const typeLabelsMarkup = segmentNodes.map((node) => node.typeLabel).join('');
   const roleLabelConfig = [
-    { key: "release", label: "RELEASE", index: releaseIndex >= 0 ? releaseIndex : mainIndex, angleOffset: -6, radialOffset: 0, xNudge: 10, yNudge: 4 },
-    { key: "stretch", label: "STRETCH", index: stretchIndex >= 0 ? stretchIndex : mainIndex, angleOffset: 6, radialOffset: 10, xNudge: 10, yNudge: 4 },
+    { key: "release", label: "RELEASE", index: releaseIndex >= 0 ? releaseIndex : mainIndex, angleOffset: -6, radialOffset: 0, xNudge: 8, yNudge: 3 },
+    { key: "stretch", label: "STRETCH", index: stretchIndex >= 0 ? stretchIndex : mainIndex, angleOffset: 6, radialOffset: 6, xNudge: 8, yNudge: 3 },
   ];
   const roleLabelsMarkup = roleLabelConfig.map((role) => {
     const roleAngle = startAngle + (role.index + 0.5) * segmentAngle + role.angleOffset;
