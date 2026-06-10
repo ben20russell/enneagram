@@ -1296,9 +1296,9 @@ function isCcFingerprintData({ profileScores, instinctScoresRaw, centerScoresRaw
 
 function getLevelVisualScore(level) {
   const normalized = String(level || "").trim().toUpperCase();
-  if (normalized === "HIGH") return 80;
-  if (normalized === "MEDIUM" || normalized === "MODERATE") return 55;
-  if (normalized === "LOW") return 25;
+  if (normalized === "HIGH") return 100;
+  if (normalized === "MEDIUM" || normalized === "MODERATE") return 50;
+  if (normalized === "LOW") return 0;
   return null;
 }
 
@@ -3968,7 +3968,9 @@ function renderProfileWheel() {
   const symbolPoints = PROFILE_TYPE_ORDER.map((_, index) => toPoint(cx, cy, nodeRadius, startAngle + (index + 0.5) * segmentAngle));
   const starIndexOrder = [0, 3, 6, 1, 4, 7, 2, 5, 8];
   const starPath = starIndexOrder.map((pointIndex, index) => `${index === 0 ? 'M' : 'L'} ${symbolPoints[pointIndex].x} ${symbolPoints[pointIndex].y}`).join(' ') + ' Z';
-  const roleLabelRadius = outerRadius + (isCompactWheel ? 18 : 22);
+  const roleLabelRadius = outerRadius + (isCompactWheel ? 20 : 24);
+  const roleLabelOutwardPadding = isCompactWheel ? 6 : 8;
+  const roleAnchorOutwardPadding = isCompactWheel ? 4 : 6;
   const minLabelX = isCompactWheel ? 34 : 26;
   const maxLabelX = size.width - (isCompactWheel ? 32 : 24);
   const minLabelY = isCompactWheel ? 26 : 20;
@@ -4003,6 +4005,13 @@ function renderProfileWheel() {
     let roleTextX = rolePoint.x;
     let roleTextY = rolePoint.y;
     let roleAnchor = "middle";
+    if (roleLabel) {
+      const radialVectorX = roleTextX - cx;
+      const radialVectorY = roleTextY - cy;
+      const radialVectorMagnitude = Math.hypot(radialVectorX, radialVectorY) || 1;
+      roleTextX = roleTextX + (radialVectorX / radialVectorMagnitude) * roleLabelOutwardPadding;
+      roleTextY = roleTextY + (radialVectorY / radialVectorMagnitude) * roleLabelOutwardPadding;
+    }
     // Keep role labels clear of the top-left badge chip while staying close to the associated segment.
     if (roleLabel && roleTextX <= badgeCollisionBoundaryX && roleTextY <= badgeCollisionBoundaryY) {
       const tangentPoint = toPoint(0, 0, isCompactWheel ? 18 : 24, segmentCenterAngle + 90);
@@ -4011,6 +4020,12 @@ function renderProfileWheel() {
       if (roleTextX <= badgeCollisionBoundaryX) {
         roleTextX = badgeCollisionBoundaryX + (isCompactWheel ? 8 : 12);
       }
+    }
+    if (roleLabel) {
+      roleAnchor = roleTextX >= cx ? "start" : "end";
+      roleTextX = roleAnchor === "start"
+        ? roleTextX + roleAnchorOutwardPadding
+        : roleTextX - roleAnchorOutwardPadding;
     }
     roleTextX = Math.max(minLabelX, Math.min(maxLabelX, roleTextX));
     roleTextY = Math.max(minLabelY, Math.min(maxLabelY, roleTextY));
