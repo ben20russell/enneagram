@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 const TYPE_KEYS = [
@@ -481,37 +480,7 @@ export default function AdminReviewPanel() {
 
   return (
     <main data-testid="admin-review-page" style={{ padding: "20px", maxWidth: "980px", margin: "0 auto" }}>
-      <section
-        data-testid="admin-review-header-row"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: "12px",
-        }}
-      >
-        <h1 data-testid="admin-review-title" style={{ margin: 0 }}>Admin Review Queue</h1>
-        <Link
-          data-testid="admin-review-import-link-button"
-          href="/admin#admin-import-section"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "180px",
-            border: "1px solid #0a66d8",
-            borderRadius: "8px",
-            background: "#ffffff",
-            color: "#0a66d8",
-            fontWeight: 600,
-            textDecoration: "none",
-            padding: "8px 14px",
-            flexShrink: 0,
-          }}
-        >
-          Jump to Admin Import
-        </Link>
-      </section>
+      <h1 data-testid="admin-review-title" style={{ margin: 0 }}>Admin Review Queue</h1>
       <p data-testid="admin-review-subtitle" style={{ color: "#475569" }}>
         Confirm uncertain chart numerics before reports are marked ready.
       </p>
@@ -762,42 +731,36 @@ export default function AdminReviewPanel() {
                   <span>Integration Level is not available for STD reports.</span>
                 </div>
               )}
-              <label style={{ display: "grid", gap: "4px" }}>
-                <span>Stretch Point</span>
-                <select
-                  data-testid="admin-review-core-stretch-point"
-                  value={coreIdentity.stretchPoint}
-                  onChange={(event) => setCoreIdentityValue("stretchPoint", event.target.value)}
-                >
-                  <option value="">Not detected</option>
-                  {TYPE_KEYS.map((typeKey) => {
-                    const typeLabel = typeKey.replace("type", "");
-                    return (
-                      <option key={typeKey} value={`Type ${typeLabel}`}>
-                        Type {typeLabel}
-                      </option>
-                    );
-                  })}
-                </select>
-              </label>
-              <label style={{ display: "grid", gap: "4px" }}>
-                <span>Release Point</span>
-                <select
-                  data-testid="admin-review-core-release-point"
-                  value={coreIdentity.releasePoint}
-                  onChange={(event) => setCoreIdentityValue("releasePoint", event.target.value)}
-                >
-                  <option value="">Not detected</option>
-                  {TYPE_KEYS.map((typeKey) => {
-                    const typeLabel = typeKey.replace("type", "");
-                    return (
-                      <option key={typeKey} value={`Type ${typeLabel}`}>
-                        Type {typeLabel}
-                      </option>
-                    );
-                  })}
-                </select>
-              </label>
+              <div
+                data-testid="admin-review-core-stretch-point-value"
+                style={{
+                  display: "grid",
+                  gap: "4px",
+                  padding: "10px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  background: "#f8fafc",
+                  alignContent: "center",
+                }}
+              >
+                <strong>Stretch Point</strong>
+                <span>{coreIdentity.stretchPoint || "Not detected"}</span>
+              </div>
+              <div
+                data-testid="admin-review-core-release-point-value"
+                style={{
+                  display: "grid",
+                  gap: "4px",
+                  padding: "10px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "8px",
+                  background: "#f8fafc",
+                  alignContent: "center",
+                }}
+              >
+                <strong>Release Point</strong>
+                <span>{coreIdentity.releasePoint || "Not detected"}</span>
+              </div>
             </div>
             <div
               data-testid="admin-review-core-canonical-points-guide"

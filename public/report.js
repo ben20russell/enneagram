@@ -80,13 +80,13 @@ function setReportActiveChipVisible(visible) {
 function setReportSwitchVisible(visible) {
   const control = getReportSwitchControl();
   if (!control) return;
-  control.style.display = visible ? "flex" : "none";
+  control.style.display = SHOW_DASHBOARD_REPORT_DROPDOWNS && visible ? "flex" : "none";
 }
 
 function setClientReportSwitchVisible(visible) {
   const control = getClientReportSwitchControl();
   if (!control) return;
-  control.style.display = visible ? "flex" : "none";
+  control.style.display = SHOW_DASHBOARD_REPORT_DROPDOWNS && visible ? "flex" : "none";
 }
 
 function canViewExampleReports({ email, isAuthenticated }) {
@@ -94,16 +94,20 @@ function canViewExampleReports({ email, isAuthenticated }) {
   return hasAdminAccess(email);
 }
 
+const SHOW_DASHBOARD_REPORT_DROPDOWNS = false;
+const DEFAULT_EXAMPLE_REPORT_TYPE = "3";
+
 let assignedReportIngested = false;
 let exampleReportInitialized = false;
 let latestReportActiveData = null;
 let currentSignedInUser = null;
 let currentReportViewMode = "example";
 let latestAssignedPdfReport = null;
-let lastAppliedExampleType = "8";
+let lastAppliedExampleType = DEFAULT_EXAMPLE_REPORT_TYPE;
 let latestAdminClientReports = [];
 let latestAdminClientReportsById = new Map();
 let currentClientReportId = null;
+let activeAssignedIngestionToken = 0;
 let lastDashboardRehydrateNonce = null;
 let dashboardRehydrateListenersBound = false;
 
@@ -119,6 +123,15 @@ function clearAdminClientReportState() {
   currentClientReportId = null;
   populateClientReportSelector([]);
   setClientReportSwitchVisible(false);
+}
+
+function invalidateAssignedReportIngestion(reason = "unknown") {
+  activeAssignedIngestionToken += 1;
+  assignedReportIngested = false;
+  console.log("[report-ingest] invalidated active ingestion token", {
+    reason,
+    activeAssignedIngestionToken,
+  });
 }
 
 function buildClientReportOptionLabel(clientReport, index) {
@@ -177,21 +190,22 @@ function setExportPdfState({ visible, enabled }) {
 function applyRandomExampleReport() {
   const reportSelector = document.getElementById("reportSelector");
   if (!reportSelector) return;
-  const randomizedType = String(Math.floor(Math.random() * 9) + 1);
-  reportSelector.value = randomizedType;
-  console.log("[report-switch] randomized initial example report to", randomizedType);
-  applyReport(randomizedType);
+  reportSelector.value = DEFAULT_EXAMPLE_REPORT_TYPE;
+  console.log("[report-switch] applied default initial example report", DEFAULT_EXAMPLE_REPORT_TYPE);
+  applyReport(DEFAULT_EXAMPLE_REPORT_TYPE);
   exampleReportInitialized = true;
 }
 
 function applySelectedExampleReportOrFallback() {
   const reportSelector = getReportSelector();
   const selectedType = String(reportSelector?.value || "").trim();
-  const nextType = /^[1-9]$/.test(selectedType) ? selectedType : "8";
+  const nextType = /^[1-9]$/.test(selectedType) ? selectedType : DEFAULT_EXAMPLE_REPORT_TYPE;
   if (reportSelector) reportSelector.value = nextType;
+  invalidateAssignedReportIngestion("apply-selected-example-report");
   currentClientReportId = null;
   resetClientReportSelectorSelection();
   currentReportViewMode = "example";
+  latestAssignedPdfReport = null;
   applyReport(nextType);
   exampleReportInitialized = true;
 }
@@ -2206,8 +2220,17 @@ async function extractPdfTextFromSignedUrl(signedUrl) {
 }
 
 async function ingestAssignedReportIntoDashboard(data) {
-  if (assignedReportIngested || !data) return;
+  if (!data) return;
+  const ingestionToken = activeAssignedIngestionToken + 1;
+  activeAssignedIngestionToken = ingestionToken;
+  if (assignedReportIngested) return;
   assignedReportIngested = true;
+  console.log("[report-ingest] Started assigned/client ingestion", {
+    ingestionToken,
+    currentReportViewMode,
+    reportFileName: data?.reportFileName || null,
+    reportId: data?.id || null,
+  });
 
   try {
     const serverContext = data?.ingestedDashboardContext || null;
@@ -2889,6 +2912,16 @@ async function ingestAssignedReportIntoDashboard(data) {
       },
     };
 
+    if (ingestionToken !== activeAssignedIngestionToken) {
+      console.log("[report-ingest] stale ingestion payload ignored", {
+        ingestionToken,
+        activeAssignedIngestionToken,
+        currentReportViewMode,
+        reportFileName: data?.reportFileName || null,
+      });
+      return;
+    }
+
     applyAssignedPdfReport({
       typeNumber: detectedType,
       typeName,
@@ -2960,7 +2993,9 @@ async function ingestAssignedReportIntoDashboard(data) {
       passion,
     });
   } catch (error) {
-    assignedReportIngested = false;
+    if (ingestionToken === activeAssignedIngestionToken) {
+      assignedReportIngested = false;
+    }
     console.log("[report-ingest] Assigned PDF ingestion failed", error);
   }
 }
@@ -3107,7 +3142,7 @@ function handleDashboardRehydrateSignal(value, source = "unknown") {
     failedCount: Number(signal?.failedCount ?? 0),
     emittedAt: signal?.emittedAt || null,
   });
-  assignedReportIngested = false;
+  invalidateAssignedReportIngestion("dashboard-rehydrate-signal");
   refreshReportActiveUi();
 }
 
@@ -3167,7 +3202,7 @@ function setSignedOutAuthUi() {
   currentReportViewMode = "example";
   latestAssignedPdfReport = null;
   hideAssignedIngestCard();
-  assignedReportIngested = false;
+  invalidateAssignedReportIngestion("set-signed-out-auth-ui");
   if (!exampleReportInitialized) {
     applyRandomExampleReport();
   } else {
@@ -3619,7 +3654,7 @@ function isBenRussellProContext({ reportFileName, parsedProfile, serverContext }
   return hasBenRussellName && hasProSignal;
 }
 
-let REPORT = normalizeReportPoints(REPORT_EXAMPLES['8']);
+let REPORT = normalizeReportPoints(REPORT_EXAMPLES[DEFAULT_EXAMPLE_REPORT_TYPE]);
 let profileChart;
 let reflectionDeck = {};
 let REPORT_MODULES = [];
@@ -4660,6 +4695,94 @@ function sortCenterExpressionRows(centerScoresRaw) {
       if (rowNode) narrativesContainer.appendChild(rowNode);
     });
   }
+}
+
+const CENTER_PATTERN_COLUMNS = [
+  { patternKey: "action", listId: "centerTypicalActionList", icon: "→", defaultTone: "pos" },
+  { patternKey: "thinking", listId: "centerTypicalThinkingList", icon: "◎", defaultTone: "inf" },
+  { patternKey: "feeling", listId: "centerTypicalFeelingList", icon: "♥", defaultTone: "neu" },
+];
+
+const CENTER_NARRATIVE_SLOTS = [
+  { patternKey: "action", id: "centerNarrativeBody", label: "Externalised Action" },
+  { patternKey: "thinking", id: "centerNarrativeHead", label: "Internalised Thinking" },
+  { patternKey: "feeling", id: "centerNarrativeHeart", label: "Externalised Feeling" },
+];
+
+function resolveCorePatternBulletsForRender(report) {
+  return normalizeCorePatternBullets(
+    Array.isArray(report?.corePatternBullets) && report.corePatternBullets.length
+      ? report.corePatternBullets
+      : [
+          { key: "action", label: "Typical Action Patterns", text: report?.deep?.[0] || null },
+          { key: "thinking", label: "Typical Thinking Patterns", text: report?.deep?.[1] || null },
+          { key: "feeling", label: "Typical Feeling Patterns", text: report?.deep?.[2] || null },
+        ],
+  );
+}
+
+function resolveCenterPatternItems(corePatternBullets, patternKey, maxItems = 3) {
+  const targetKey = String(patternKey || "").trim().toLowerCase();
+  const matchedRow = (Array.isArray(corePatternBullets) ? corePatternBullets : []).find(
+    (row) => String(row?.key || "").trim().toLowerCase() === targetKey,
+  );
+  const text = sanitizeCorePatternBulletText(matchedRow?.text);
+  if (!text) return [];
+
+  const inlineBulletItems = extractInlineCorePatternBulletItems(text, maxItems);
+  if (inlineBulletItems.length) {
+    return inlineBulletItems.slice(0, maxItems);
+  }
+
+  const narrativeItems = extractNarrativeBulletItems(text, maxItems)
+    .map((item) => ensureSentenceStartsCapitalized(cleanPdfExtractedValue(item)))
+    .filter(Boolean);
+  if (narrativeItems.length) {
+    return narrativeItems.slice(0, maxItems);
+  }
+
+  return [ensureSentenceStartsCapitalized(text)];
+}
+
+function renderCenterPatternRows(items, options = {}) {
+  const rows = Array.isArray(items) ? items.filter(Boolean) : [];
+  const fallbackRows = rows.length ? rows : ["Not detected in assigned PDF."];
+  const defaultTone = String(options?.defaultTone || "neu");
+  const defaultIcon = String(options?.icon || "•");
+
+  return fallbackRows
+    .map((item) => {
+      const text = ensureSentenceStartsCapitalized(formatOptionalText(item, "Not detected in assigned PDF."));
+      if (!text) return "";
+      const isNegative = /\b(?:not|dislike|weakness|forced|bribed|charmed|fear|angry|vulnerable|challenge)\b/i.test(text);
+      const tone = isNegative ? "neg" : defaultTone;
+      const icon = isNegative ? "!" : defaultIcon;
+      return `<div class="ti"><div class="tic ${tone}">${escapeHtml(icon)}</div><div class="tt">${escapeHtml(text)}</div></div>`;
+    })
+    .filter(Boolean)
+    .join("");
+}
+
+function resolveCenterDominanceLabels(report, centerScoresRaw) {
+  const rankedRows = buildSortedCenterExpressionRows(centerScoresRaw).filter((row) => row.level !== "N/A");
+  if (rankedRows.length >= 2) {
+    return {
+      dominant: rankedRows[0].label,
+      weakest: rankedRows[rankedRows.length - 1].label,
+    };
+  }
+
+  const reportType = String(report?.typeNumber || "").trim();
+  const fallbackExample = REPORT_EXAMPLES?.[reportType] || null;
+  return {
+    dominant: formatOptionalText(report?.dominantCenter || fallbackExample?.dominantCenter, "Not detected"),
+    weakest: formatOptionalText(report?.weakestCenter || fallbackExample?.weakestCenter, "Not detected"),
+  };
+}
+
+function renderCenterDominanceSummary(report, centerScoresRaw) {
+  const labels = resolveCenterDominanceLabels(report, centerScoresRaw);
+  return `Dominant Center: <strong style="color:var(--text)">${escapeHtml(labels.dominant)}</strong>. Weakest Center: <strong style="color:var(--text)">${escapeHtml(labels.weakest)}</strong>.`;
 }
 
 const STRAIN_BREAKDOWN_ORDER = [
@@ -7189,6 +7312,50 @@ function extractSpreadsheetSnippetFromText(rawText, labels = [], maxLength = 420
   return compactInsightSnippet(normalized, maxLength);
 }
 
+function extractMotivationalNeedSummary(rawText, maxLength = 420) {
+  const normalized = normalizeExtractedText(rawText || "");
+  if (!normalized) return null;
+
+  const clampLength = Number.isFinite(Number(maxLength)) ? Number(maxLength) : 420;
+  const cap = Math.max(120, Math.min(1200, clampLength));
+  const cleanCandidate = (value) => {
+    const cleaned = cleanPdfExtractedValue(value || "")
+      .replace(/^Motivation\s*[:\-]?\s*/i, "")
+      .trim();
+    if (!cleaned) return null;
+    if (cleaned.length <= cap) return cleaned;
+    return `${cleaned.slice(0, cap).trim()}...`;
+  };
+
+  const explicitPatterns = [
+    /\b(This\s+style\s+stems\s+from\s+the\s+motivational\s+need\s+to\s+[^.?!]{10,360}[.?!]?)/i,
+    /\b(This\s+style\s+is\s+motivated\s+by\s+[^.?!]{10,360}[.?!]?)/i,
+    /\b(motivational\s+need\s+to\s+[^.?!]{10,300}[.?!]?)/i,
+    /\b(motivated\s+by\s+[^.?!]{10,300}[.?!]?)/i,
+  ];
+  for (const pattern of explicitPatterns) {
+    const match = normalized.match(pattern);
+    const cleaned = cleanCandidate(match?.[1] || match?.[0] || "");
+    if (cleaned) return cleaned;
+  }
+
+  const motivationBlockMatch = normalized.match(
+    /\bMotivation\b\s*[:\-]?\s*([\s\S]{18,760}?)(?=\b(?:Typical\s+Action\s+Patterns|Typical\s+Thinking\s+Patterns|Typical\s+Feeling\s+Patterns|Blind\s+Spots|Worldview|Focus\s+of\s+Attention|Core\s+Fear|Self[-\s]*Talk|Gifts|Vices)\b|$)/i,
+  );
+  const motivationBlock = motivationBlockMatch?.[1] || "";
+  if (!motivationBlock) return null;
+
+  const sentenceCandidates = (motivationBlock.match(/[^.!?]{12,320}(?:[.!?]|$)/g) || [])
+    .map((sentence) => cleanCandidate(sentence))
+    .filter(Boolean);
+  const prioritizedSentence =
+    sentenceCandidates.find((sentence) => /\bmotivational\s+need\b/i.test(sentence)) ||
+    sentenceCandidates.find((sentence) => /\bmotivated\s+by\b/i.test(sentence)) ||
+    sentenceCandidates[0] ||
+    null;
+  return prioritizedSentence;
+}
+
 function extractInstinctGoalDefinitions(rawText) {
   const normalized = normalizeExtractedText(rawText || "");
   if (!normalized) return null;
@@ -7447,7 +7614,9 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
     : extractNarrativeBulletItems(conflictTriggeredFallbackText || "", 12);
 
   const focused = {
-    motivationSummary: extractSpreadsheetSnippetFromText(
+    motivationSummary: extractMotivationalNeedSummary(
+      normalizeExtractedText(`${motivationInstructionText || ""} ${coreTypeText || ""}`),
+    ) || extractSpreadsheetSnippetFromText(
       motivationInstructionText || coreTypeText,
       ["Motivation", "Key motivations", "motivated"],
     ),
@@ -7561,7 +7730,9 @@ function extractSpreadsheetSectionFocusesFromPdfText(pdfText) {
     .filter(Boolean)
     .filter((row) => !isMissingExtractedText(row));
   const focused = {
-    motivationSummary: extractSpreadsheetSnippetFromText(normalized, ["Motivation", "Key motivations", "motivated"]),
+    motivationSummary:
+      extractMotivationalNeedSummary(normalized) ||
+      extractSpreadsheetSnippetFromText(normalized, ["Motivation", "Key motivations", "motivated"]),
     instinctGoals: extractInstinctGoalDefinitions(normalized),
     developingAsCopy,
     developingAsBullets,
@@ -8017,9 +8188,9 @@ function applyReport(typeId) {
     const normalizedTypeId = String(typeId || "").trim();
     console.log("[report-switch] applyReport requested", normalizedTypeId);
     REPORT = normalizeReportPoints({
-      ...(REPORT_EXAMPLES[normalizedTypeId] || REPORT_EXAMPLES['8']),
+      ...(REPORT_EXAMPLES[normalizedTypeId] || REPORT_EXAMPLES[DEFAULT_EXAMPLE_REPORT_TYPE]),
     });
-    lastAppliedExampleType = String(REPORT.typeNumber || "8");
+    lastAppliedExampleType = String(REPORT.typeNumber || DEFAULT_EXAMPLE_REPORT_TYPE);
     reflectionDeck = buildReflectionDeck(REPORT);
     console.log('[report-switch] applying', REPORT.typeNumber, REPORT.typeName);
     renderReportFromState(true);
@@ -8407,11 +8578,27 @@ function renderReportFromState(isExampleMode) {
       : '<div class="ti"><div class="tic pos">✓</div><div class="tt">No critical data quality issues detected.</div></div>',
   );
 
+  const corePatternBulletsForRender = resolveCorePatternBulletsForRender(REPORT);
   const centerScores = REPORT.centerScoresRaw || {};
   setCenterLevelChip('centerBodyChip', centerScores.body ?? null);
   setCenterLevelChip('centerHeartChip', centerScores.heart ?? null);
   setCenterLevelChip('centerHeadChip', centerScores.head ?? null);
   sortCenterExpressionRows(centerScores);
+  setHtml('centerDominanceSummary', renderCenterDominanceSummary(REPORT, centerScores));
+
+  const centerPatternItemsByKey = {};
+  CENTER_PATTERN_COLUMNS.forEach((column) => {
+    const items = resolveCenterPatternItems(corePatternBulletsForRender, column.patternKey, 3);
+    centerPatternItemsByKey[column.patternKey] = items;
+    setHtml(column.listId, renderCenterPatternRows(items, column));
+  });
+  CENTER_NARRATIVE_SLOTS.forEach((slot) => {
+    const items = centerPatternItemsByKey[slot.patternKey] || [];
+    const narrative = ensureSentenceStartsCapitalized(
+      formatOptionalText(items[0], "Not detected in assigned PDF."),
+    );
+    setHtml(slot.id, `<strong>${escapeHtml(slot.label)}:</strong> ${escapeHtml(narrative)}`);
+  });
 
   const strain = REPORT.strainScoresRaw || {};
   renderStrainBreakdownRows(strain, REPORT.strain);
@@ -8477,13 +8664,6 @@ function renderReportFromState(isExampleMode) {
       ensureSentenceStartsCapitalized(formatOptionalText(REPORT.deepTitle, "Not detected in assigned PDF.")),
     )}`,
   );
-  const corePatternBulletsForRender = Array.isArray(REPORT.corePatternBullets) && REPORT.corePatternBullets.length
-    ? REPORT.corePatternBullets
-    : [
-        { key: "action", label: "Typical Action Patterns", text: REPORT.deep?.[0] || null },
-        { key: "thinking", label: "Typical Thinking Patterns", text: REPORT.deep?.[1] || null },
-        { key: "feeling", label: "Typical Feeling Patterns", text: REPORT.deep?.[2] || null },
-      ];
   setHtml('corePatternBulletsList', renderCorePatternBulletList(corePatternBulletsForRender));
   const deepSummaryCard = document.getElementById('deepSummaryCard');
   if (deepSummaryCard) {
@@ -8719,7 +8899,7 @@ function onReportSelectorChange(event) {
   const selectedType = String(event?.target?.value || getReportSelector()?.value || "").trim();
   console.log('[report-switch] selector changed to', selectedType);
   if (!/^[1-9]$/.test(selectedType)) {
-    const fallbackType = String(lastAppliedExampleType || "8");
+    const fallbackType = String(lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE);
     if (event?.target) event.target.value = fallbackType;
     console.log("[report-switch] ignored invalid example type selection", {
       selectedType,
@@ -8728,15 +8908,18 @@ function onReportSelectorChange(event) {
     });
     return;
   }
+  invalidateAssignedReportIngestion("manual-example-selector-change");
   currentClientReportId = null;
   resetClientReportSelectorSelection();
   currentReportViewMode = "example";
+  latestAssignedPdfReport = null;
   applyReport(selectedType);
 }
 
 function onClientReportSelectorChange(event) {
   const selectedReportId = String(event?.target?.value || getClientReportSelector()?.value || "").trim();
   if (!selectedReportId) {
+    invalidateAssignedReportIngestion("client-report-selection-cleared");
     currentClientReportId = null;
     return;
   }

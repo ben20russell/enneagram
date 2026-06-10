@@ -422,18 +422,18 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
         </div>
       </div>
     </div>
-    <div class="header-controls">
+    <div class="header-controls" style="display:none" data-testid="header-controls-hidden">
       <div class="report-switch" id="reportSwitchControl">
         <label class="report-switch-label" for="reportSelector">Example Reports</label>
         <select class="report-switch-select" id="reportSelector" data-testid="report-selector">
           <option value="1">Type 1</option>
           <option value="2">Type 2</option>
-          <option value="3">Type 3</option>
+          <option value="3" selected>Type 3</option>
           <option value="4">Type 4</option>
           <option value="5">Type 5</option>
           <option value="6">Type 6</option>
           <option value="7">Type 7</option>
-          <option value="8" selected>Type 8</option>
+          <option value="8">Type 8</option>
           <option value="9">Type 9</option>
         </select>
       </div>
@@ -497,7 +497,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
               <div id="integrationValueRow"><div class="kvl">Integration Level</div><div class="kvv red" id="integrationValue">Low</div></div>
             </div>
             <div class="kvl" data-testid="characteristics-heading">Characteristics</div>
-            <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:4px" id="traitChips">
+            <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:3.3px" id="traitChips">
               <span class="chip cgn">Assertive</span><span class="chip cgn">Decisive</span><span class="chip cgn">Protective</span><span class="chip cgn">Independent</span><span class="chip cgn">Influential</span>
             </div>
             <div class="div"></div>
@@ -567,7 +567,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
         <div class="g2 mb24">
           <div class="card">
             <div class="ct">Centers of Expression</div>
-            <p style="font-size:13px;color:var(--text2);margin-bottom:14px">Dominant Center: <strong style="color:var(--text)">Action Center</strong>. Weakest Center: <strong style="color:var(--text)">Thinking Center</strong>.</p>
+            <p style="font-size:13px;color:var(--text2);margin-bottom:14px" id="centerDominanceSummary">Dominant Center: <strong style="color:var(--text)">Action Center</strong>. Weakest Center: <strong style="color:var(--text)">Thinking Center</strong>.</p>
             <div id="centerExpressionRows" data-testid="center-expression-rows">
               <div class="brow" data-center-row="body"><div class="blbl">Action Center</div><span class="chip center-chip-high" id="centerBodyChip" data-testid="center-body-chip">High</span></div>
               <div class="brow" data-center-row="heart"><div class="blbl">Feeling Center</div><span class="chip center-chip-medium" id="centerHeartChip" data-testid="center-heart-chip">Medium</span></div>
@@ -575,9 +575,9 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             </div>
             <div class="div"></div>
             <div class="tlist" id="centerExpressionNarratives" data-testid="center-expression-narratives">
-              <div class="ti" data-center-row="body"><div class="tic pos">→</div><div class="tt"><strong>Externalised Action:</strong> You act on gut impulses in quick and compelling ways.</div></div>
-              <div class="ti" data-center-row="heart"><div class="tic neu">♥</div><div class="tt"><strong>Externalised Feeling:</strong> You focus emotional and relational energy on others.</div></div>
-              <div class="ti" data-center-row="head"><div class="tic inf">◎</div><div class="tt"><strong>Internalised Thinking:</strong> You quietly apply thinking energy inward, creating a rich thought-world.</div></div>
+              <div class="ti" data-center-row="body"><div class="tic pos">→</div><div class="tt" id="centerNarrativeBody"><strong>Externalised Action:</strong> You act on gut impulses in quick and compelling ways.</div></div>
+              <div class="ti" data-center-row="heart"><div class="tic neu">♥</div><div class="tt" id="centerNarrativeHeart"><strong>Externalised Feeling:</strong> You focus emotional and relational energy on others.</div></div>
+              <div class="ti" data-center-row="head"><div class="tic inf">◎</div><div class="tt" id="centerNarrativeHead"><strong>Internalised Thinking:</strong> You quietly apply thinking energy inward, creating a rich thought-world.</div></div>
             </div>
           </div>
           <div class="card">
@@ -585,7 +585,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             <div class="g3">
               <div>
                 <div class="subh" style="margin-top:0">Action Patterns</div>
-                <div class="tlist">
+                <div class="tlist" id="centerTypicalActionList">
                   <div class="ti"><div class="tic pos">→</div><div class="tt">Acting from your gut instinct to make things happen is second nature.</div></div>
                   <div class="ti"><div class="tic pos">→</div><div class="tt">You pursue justice and actively work to protect the vulnerable.</div></div>
                   <div class="ti"><div class="tic neg">!</div><div class="tt">You dislike weakness and may challenge people to toughen up.</div></div>
@@ -593,7 +593,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
               </div>
               <div>
                 <div class="subh" style="margin-top:0">Thinking Patterns</div>
-                <div class="tlist">
+                <div class="tlist" id="centerTypicalThinkingList">
                   <div class="ti"><div class="tic inf">◎</div><div class="tt">You quickly assess people as strong or weak and then treat them accordingly.</div></div>
                   <div class="ti"><div class="tic inf">◎</div><div class="tt">You prefer big picture strategy over too many details.</div></div>
                   <div class="ti"><div class="tic neg">!</div><div class="tt">You do not respond well to being forced, bribed, or charmed into something unimportant.</div></div>
@@ -601,7 +601,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
               </div>
               <div>
                 <div class="subh" style="margin-top:0">Feeling Patterns</div>
-                <div class="tlist">
+                <div class="tlist" id="centerTypicalFeelingList">
                   <div class="ti"><div class="tic neu">♥</div><div class="tt">You tend to be quick to express anger and then try to channel it into immediate action.</div></div>
                   <div class="ti"><div class="tic neu">♥</div><div class="tt">You are generous and kind-hearted with people close to you.</div></div>
                   <div class="ti"><div class="tic neg">!</div><div class="tt">Sadness and fear can feel vulnerable and weak, so softer emotions show up mainly when you feel safe.</div></div>

@@ -1,7 +1,6 @@
 "use client";
 
 import { createClient } from "@supabase/supabase-js";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const API_REQUEST_TIMEOUT_MS = 90_000;
@@ -242,7 +241,6 @@ function writeRememberedEmailsToStorage(emails) {
 }
 
 export default function AdminImportForm() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [rememberedEmails, setRememberedEmails] = useState([]);
   const [reportPdf, setReportPdf] = useState(null);
@@ -1087,18 +1085,6 @@ export default function AdminImportForm() {
     }, 120);
   }
 
-  function handleOpenAdminReview() {
-    console.log("[admin-import-page] Admin review button clicked");
-    if (typeof window !== "undefined" && window.location.pathname === "/admin") {
-      const adminReviewSectionEl = window.document.getElementById("admin-review-section");
-      if (adminReviewSectionEl) {
-        adminReviewSectionEl.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-    }
-    router.push("/admin#admin-review-section");
-  }
-
   return (
     <div
       data-testid="admin-import-page"
@@ -1124,23 +1110,6 @@ export default function AdminImportForm() {
       <p data-testid="admin-import-description" style={{ color: "#475569", marginTop: "8px" }}>
         Use this hidden page to upload a PDF report and assign it to a specific user email.
       </p>
-      <button
-        type="button"
-        data-testid="admin-import-review-button"
-        onClick={handleOpenAdminReview}
-        style={{
-          marginTop: "10px",
-          border: "1px solid #0a66d8",
-          borderRadius: "8px",
-          background: "#ffffff",
-          color: "#0a66d8",
-          fontWeight: 600,
-          cursor: "pointer",
-          padding: "8px 14px",
-        }}
-      >
-        Open Admin Review
-      </button>
       {missingPublicEnvVars.length ? (
         <p
           data-testid="admin-import-env-status"
