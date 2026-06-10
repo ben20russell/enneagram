@@ -304,101 +304,61 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .strain-chip-medium{background:var(--gold-lt);color:var(--gold)}
 .strain-chip-low{background:var(--green-lt);color:var(--green)}
 .profile-wheel-wrap{
+  --profile-wheel-size:332px;
   position:relative;
-  min-height:300px;
+  min-height:var(--profile-wheel-size);
   display:grid;
-  grid-template-columns:minmax(0,1fr) 156px;
-  gap:14px;
+  grid-template-columns:minmax(0, var(--profile-wheel-size));
+  justify-content:center;
   align-items:center;
 }
-.profile-wheel{position:relative;width:100%;height:300px;overflow:visible}
+.profile-wheel{position:relative;width:100%;height:var(--profile-wheel-size);aspect-ratio:1/1;overflow:visible}
 .profile-wheel-svg{width:100%;height:100%;display:block}
-.profile-wheel-legend{
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-  justify-self:end;
-}
-.profile-wheel-legend-item{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  background:#fff;
-  border:1px solid var(--border);
-  border-radius:10px;
-  padding:7px 8px;
-}
-.profile-wheel-legend-swatch{
-  width:9px;
-  height:9px;
-  border-radius:999px;
-  flex:0 0 auto;
-}
-.profile-wheel-legend-main .profile-wheel-legend-swatch{background:var(--blue)}
-.profile-wheel-legend-release .profile-wheel-legend-swatch{background:#1f8ec8}
-.profile-wheel-legend-stretch .profile-wheel-legend-swatch{background:#12b981}
-.profile-wheel-legend-label{
-  font:700 11px/1 var(--font-sans);
-  color:var(--text3);
-  letter-spacing:.06em;
-  text-transform:uppercase;
-  min-width:54px;
-}
-.profile-wheel-legend-value{
-  font:700 12px/1 var(--font-sans);
-  color:var(--text);
-}
 .profile-wheel-badge{
-  position:absolute;left:12px;top:8px;width:122px;height:122px;border-radius:999px;
+  position:absolute;left:10px;top:8px;width:110px;height:110px;border-radius:999px;
   background:linear-gradient(140deg,#0a66d8 0%, #0f9e83 100%);color:#fff;display:flex;flex-direction:column;justify-content:flex-start;align-items:center;
   box-shadow:none;border:3px solid #fff;z-index:2;
-  padding-top:14px;
+  padding-top:11px;
   overflow:hidden;
 }
-.profile-wheel-badge-instinct{font:800 20px/1 var(--font-display);letter-spacing:.02em;text-transform:uppercase}
-.profile-wheel-badge-type{font:800 54px/.85 var(--font-display);margin-top:1px}
+.profile-wheel-badge-instinct{font:800 18px/1 var(--font-display);letter-spacing:.02em;text-transform:uppercase}
+.profile-wheel-badge-type{font:800 48px/.85 var(--font-display);margin-top:1px}
 .profile-wheel-badge-keyword{
-  font:700 10px/1.1 var(--font-sans);
+  font:700 9px/1.1 var(--font-sans);
   letter-spacing:.04em;
   text-transform:uppercase;
   margin-top:2px;
   text-align:center;
-  padding:0 9px;
+  padding:0 8px;
   width:100%;
   overflow-wrap:anywhere;
 }
 .profile-wheel-line{fill:none;stroke-linecap:round;stroke-linejoin:round}
 .profile-wheel-type{font:800 28px/1 var(--font-display);fill:#ffffff;dominant-baseline:middle;text-anchor:middle}
 .profile-wheel-role{
-  font:800 13px/1 var(--font-sans);
+  font:800 10px/1 var(--font-sans);
+  fill:#ffffff;
   dominant-baseline:middle;
-  letter-spacing:.02em;
+  text-anchor:middle;
+  letter-spacing:.05em;
   paint-order:stroke fill;
-  stroke:#ffffff;
-  stroke-width:3px;
+  stroke:rgba(16,34,61,.28);
+  stroke-width:2.2px;
   stroke-linejoin:round;
 }
 @media(max-width:700px){
   .profile-wheel-wrap{
-    min-height:260px;
+    --profile-wheel-size:268px;
+    min-height:var(--profile-wheel-size);
     grid-template-columns:1fr;
-    gap:10px;
+    gap:0;
   }
-  .profile-wheel{height:260px}
-  .profile-wheel-legend{
-    justify-self:start;
-    flex-direction:row;
-    flex-wrap:wrap;
-    gap:6px;
-  }
-  .profile-wheel-legend-item{padding:6px 8px}
-  .profile-wheel-legend-label{font-size:10px;min-width:48px}
-  .profile-wheel-legend-value{font-size:11px}
-  .profile-wheel-badge{width:98px;height:98px;left:6px;top:6px;padding-top:10px}
-  .profile-wheel-badge-instinct{font-size:15px}
-  .profile-wheel-badge-type{font-size:40px}
+  .profile-wheel{height:var(--profile-wheel-size);max-width:284px;justify-self:center}
+  .profile-wheel-badge{width:86px;height:86px;left:6px;top:5px;padding-top:8px}
+  .profile-wheel-badge-instinct{font-size:14px}
+  .profile-wheel-badge-type{font-size:36px}
   .profile-wheel-badge-keyword{font-size:8px;padding:0 8px}
-  .profile-wheel-role{font-size:11px;stroke-width:2.4px}
+  .profile-wheel-role{font-size:8px;stroke-width:2px}
 }
 .footer-note{font-size:11px;color:var(--text3);margin-top:10px}
 .site-footer{margin-top:36px;padding-top:18px;border-top:1px solid var(--border2);font-size:11px;letter-spacing:.04em;color:var(--text3);font-family:var(--font-mono);text-align:center}
@@ -582,23 +542,6 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             <div class="ct">Your Enneagram Profile</div>
             <div class="profile-wheel-wrap">
               <div id="profileWheel" class="profile-wheel" data-testid="profile-wheel"></div>
-              <div class="profile-wheel-legend" id="profileWheelLegend" data-testid="profile-wheel-legend">
-                <div class="profile-wheel-legend-item profile-wheel-legend-main">
-                  <span class="profile-wheel-legend-swatch"></span>
-                  <span class="profile-wheel-legend-label">Main</span>
-                  <span class="profile-wheel-legend-value" id="profileWheelLegendMain">Type 8</span>
-                </div>
-                <div class="profile-wheel-legend-item profile-wheel-legend-release">
-                  <span class="profile-wheel-legend-swatch"></span>
-                  <span class="profile-wheel-legend-label">Release</span>
-                  <span class="profile-wheel-legend-value" id="profileWheelLegendRelease">Type 5</span>
-                </div>
-                <div class="profile-wheel-legend-item profile-wheel-legend-stretch">
-                  <span class="profile-wheel-legend-swatch"></span>
-                  <span class="profile-wheel-legend-label">Stretch</span>
-                  <span class="profile-wheel-legend-value" id="profileWheelLegendStretch">Type 2</span>
-                </div>
-              </div>
               <div class="profile-wheel-badge" data-testid="profile-wheel-badge">
                 <div class="profile-wheel-badge-instinct" id="profileWheelBadgeInstinct">SX</div>
                 <div class="profile-wheel-badge-type" id="profileWheelBadgeType">8</div>

@@ -3943,7 +3943,6 @@ function renderProfileWheel() {
   const wheelNode = document.getElementById('profileWheel');
   if (!wheelNode) return;
 
-  const size = { width: 560, height: 320 };
   const cx = 292;
   const cy = 166;
   const outerRadius = 142;
@@ -3965,6 +3964,11 @@ function renderProfileWheel() {
   const symbolPoints = PROFILE_TYPE_ORDER.map((_, index) => toPoint(cx, cy, nodeRadius, startAngle + (index + 0.5) * segmentAngle));
   const starIndexOrder = [0, 3, 6, 1, 4, 7, 2, 5, 8];
   const starPath = starIndexOrder.map((pointIndex, index) => `${index === 0 ? 'M' : 'L'} ${symbolPoints[pointIndex].x} ${symbolPoints[pointIndex].y}`).join(' ') + ' Z';
+  const wheelPadding = 10;
+  const viewBoxX = cx - outerRadius - wheelPadding;
+  const viewBoxY = cy - outerRadius - wheelPadding;
+  const viewBoxSize = (outerRadius + wheelPadding) * 2;
+  const roleLabelRadius = innerRadius + 10;
 
   const segmentNodes = PROFILE_TYPE_ORDER.map((typeNumber, index) => {
     const segmentStart = startAngle + index * segmentAngle;
@@ -3982,9 +3986,23 @@ function renderProfileWheel() {
   });
   const segmentsMarkup = segmentNodes.map((node) => node.segmentPath).join('');
   const typeLabelsMarkup = segmentNodes.map((node) => node.typeLabel).join('');
+  const roleLabelConfig = [
+    { key: "main", label: "MAIN", index: mainIndex },
+    { key: "release", label: "RELEASE", index: releaseIndex >= 0 ? releaseIndex : mainIndex },
+    { key: "stretch", label: "STRETCH", index: stretchIndex >= 0 ? stretchIndex : mainIndex },
+  ];
+  const claimedRoleSlots = new Set();
+  const roleLabelsMarkup = roleLabelConfig.map((role) => {
+    const slotKey = String(role.index);
+    if (claimedRoleSlots.has(slotKey)) return "";
+    claimedRoleSlots.add(slotKey);
+    const roleAngle = startAngle + (role.index + 0.5) * segmentAngle;
+    const rolePoint = toPoint(cx, cy, roleLabelRadius, roleAngle);
+    return `<text class="profile-wheel-role profile-wheel-role-${role.key}" x="${rolePoint.x}" y="${rolePoint.y}" transform="rotate(${roleAngle + 90}, ${rolePoint.x}, ${rolePoint.y})">${role.label}</text>`;
+  }).join('');
 
   wheelNode.innerHTML = `
-    <svg class="profile-wheel-svg" viewBox="-24 -24 ${size.width + 48} ${size.height + 48}" role="img" aria-label="Enneagram profile wheel">
+    <svg class="profile-wheel-svg" viewBox="${viewBoxX} ${viewBoxY} ${viewBoxSize} ${viewBoxSize}" role="img" aria-label="Enneagram profile wheel">
       <defs>
         <linearGradient id="profileLineRelease" x1="${lineStart.x}" y1="${lineStart.y}" x2="${releaseTarget.x}" y2="${releaseTarget.y}" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stop-color="${PROFILE_SEGMENT_COLORS.main}"></stop>
@@ -4001,20 +4019,10 @@ function renderProfileWheel() {
       <path d="M ${symbolPoints[1].x} ${symbolPoints[1].y} L ${symbolPoints[4].x} ${symbolPoints[4].y} L ${symbolPoints[7].x} ${symbolPoints[7].y} Z" fill="none" stroke="#e9edf1" stroke-width="5"></path>
       <path class="profile-wheel-line" d="M ${lineStart.x} ${lineStart.y} L ${releaseTarget.x} ${releaseTarget.y}" stroke="url(#profileLineRelease)" stroke-width="8"></path>
       <path class="profile-wheel-line" d="M ${lineStart.x} ${lineStart.y} L ${stretchTarget.x} ${stretchTarget.y}" stroke="url(#profileLineStretch)" stroke-width="8"></path>
+      ${roleLabelsMarkup}
       ${typeLabelsMarkup}
     </svg>
   `;
-
-  const legendMainNode = document.getElementById("profileWheelLegendMain");
-  const legendReleaseNode = document.getElementById("profileWheelLegendRelease");
-  const legendStretchNode = document.getElementById("profileWheelLegendStretch");
-  if (legendMainNode) legendMainNode.textContent = `Type ${mainType}`;
-  if (legendReleaseNode) {
-    legendReleaseNode.textContent = releaseType ? `Type ${releaseType}` : formatTypeLine(REPORT.release);
-  }
-  if (legendStretchNode) {
-    legendStretchNode.textContent = stretchType ? `Type ${stretchType}` : formatTypeLine(REPORT.stretch);
-  }
 
   console.log('[profile-wheel] rendered', { mainType, releaseType, stretchType, profile: REPORT.profile });
 }
@@ -4898,10 +4906,14 @@ function renderCenterExpressionWheel(centerScoresRaw) {
   const cy = 240;
   const labelInnerRadius = 188;
   const labelOuterRadius = 228;
+  const labelArcTrimDegrees = 9;
+  const labelArcRadius = labelInnerRadius + 14;
   const highRadius = CENTER_WHEEL_LEVEL_RADIUS.HIGH;
   const mediumRadius = CENTER_WHEEL_LEVEL_RADIUS.MEDIUM;
   const lowRadius = CENTER_WHEEL_LEVEL_RADIUS.LOW;
-  const labelArcRadius = (labelInnerRadius + labelOuterRadius) / 2;
+  const svgPadding = 30;
+  const viewBoxMin = -svgPadding;
+  const viewBoxSize = (cx * 2) + (svgPadding * 2);
 
   const outerRing = CENTER_WHEEL_SECTORS.map((sector) => (
     `<path d="${donutSlicePath(cx, cy, labelInnerRadius, labelOuterRadius, sector.startAngle, sector.endAngle)}" fill="#c9ced3" stroke="#ffffff" stroke-width="3"></path>`
@@ -4930,14 +4942,17 @@ function renderCenterExpressionWheel(centerScoresRaw) {
     .join("");
 
   const labelDefs = CENTER_WHEEL_SECTORS.map((sector, index) => (
-    `<path id="centerWheelLabelArc-${index}" d="${arcPath(cx, cy, labelArcRadius, sector.startAngle + 5, sector.endAngle - 5)}"></path>`
+    `<path id="centerWheelLabelArc-${index}" d="${arcPath(cx, cy, labelArcRadius, sector.startAngle + labelArcTrimDegrees, sector.endAngle - labelArcTrimDegrees)}"></path>`
   )).join("");
 
-  const ringLabels = CENTER_WHEEL_SECTORS.map((sector, index) => (
-    `<text fill="#ffffff" font-family="var(--font-display), var(--font-sans), sans-serif" font-size="28" font-weight="700" letter-spacing="0.6">
-      <textPath href="#centerWheelLabelArc-${index}" startOffset="50%" text-anchor="middle">${escapeHtml(sector.label)}</textPath>
-    </text>`
-  )).join("");
+  const ringLabels = CENTER_WHEEL_SECTORS.map((sector, index) => {
+    const labelArcSweep = Math.max(1, (sector.endAngle - sector.startAngle) - (labelArcTrimDegrees * 2));
+    const labelArcLength = (Math.PI * 2 * labelArcRadius * labelArcSweep) / 360;
+    const labelTextLength = Math.max(60, labelArcLength - 24);
+    return `<text fill="#ffffff" font-family="var(--font-display), var(--font-sans), sans-serif" font-size="24" font-weight="700" letter-spacing="0.22">
+      <textPath href="#centerWheelLabelArc-${index}" startOffset="50%" text-anchor="middle" textLength="${labelTextLength}" lengthAdjust="spacing">${escapeHtml(sector.label)}</textPath>
+    </text>`;
+  }).join("");
 
   const levelLabels = CENTER_WHEEL_SECTORS.map((sector) => {
     const level = scoreToCenterWheelLevel(centerScores?.[sector.key]);
@@ -4950,7 +4965,7 @@ function renderCenterExpressionWheel(centerScoresRaw) {
   }).join("");
 
   wheelNode.innerHTML = `
-    <svg viewBox="0 0 480 480" role="img" aria-label="Centers of Expression wheel">
+    <svg viewBox="${viewBoxMin} ${viewBoxMin} ${viewBoxSize} ${viewBoxSize}" role="img" aria-label="Centers of Expression wheel">
       <defs>${labelDefs}</defs>
       ${outerRing}
       ${baseSectors}
