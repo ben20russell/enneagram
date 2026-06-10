@@ -3964,11 +3964,11 @@ function renderProfileWheel() {
   const symbolPoints = PROFILE_TYPE_ORDER.map((_, index) => toPoint(cx, cy, nodeRadius, startAngle + (index + 0.5) * segmentAngle));
   const starIndexOrder = [0, 3, 6, 1, 4, 7, 2, 5, 8];
   const starPath = starIndexOrder.map((pointIndex, index) => `${index === 0 ? 'M' : 'L'} ${symbolPoints[pointIndex].x} ${symbolPoints[pointIndex].y}`).join(' ') + ' Z';
-  const wheelPadding = 10;
+  const wheelPadding = 46;
   const viewBoxX = cx - outerRadius - wheelPadding;
   const viewBoxY = cy - outerRadius - wheelPadding;
   const viewBoxSize = (outerRadius + wheelPadding) * 2;
-  const roleLabelRadius = innerRadius + 10;
+  const roleLabelRadius = outerRadius + 24;
 
   const segmentNodes = PROFILE_TYPE_ORDER.map((typeNumber, index) => {
     const segmentStart = startAngle + index * segmentAngle;
@@ -3987,18 +3987,21 @@ function renderProfileWheel() {
   const segmentsMarkup = segmentNodes.map((node) => node.segmentPath).join('');
   const typeLabelsMarkup = segmentNodes.map((node) => node.typeLabel).join('');
   const roleLabelConfig = [
-    { key: "main", label: "MAIN", index: mainIndex },
-    { key: "release", label: "RELEASE", index: releaseIndex >= 0 ? releaseIndex : mainIndex },
-    { key: "stretch", label: "STRETCH", index: stretchIndex >= 0 ? stretchIndex : mainIndex },
+    { key: "release", label: "RELEASE", index: releaseIndex >= 0 ? releaseIndex : mainIndex, angleOffset: -6, radialOffset: 0, xNudge: 10, yNudge: 4 },
+    { key: "stretch", label: "STRETCH", index: stretchIndex >= 0 ? stretchIndex : mainIndex, angleOffset: 6, radialOffset: 10, xNudge: 10, yNudge: 4 },
   ];
-  const claimedRoleSlots = new Set();
   const roleLabelsMarkup = roleLabelConfig.map((role) => {
-    const slotKey = String(role.index);
-    if (claimedRoleSlots.has(slotKey)) return "";
-    claimedRoleSlots.add(slotKey);
-    const roleAngle = startAngle + (role.index + 0.5) * segmentAngle;
-    const rolePoint = toPoint(cx, cy, roleLabelRadius, roleAngle);
-    return `<text class="profile-wheel-role profile-wheel-role-${role.key}" x="${rolePoint.x}" y="${rolePoint.y}" transform="rotate(${roleAngle + 90}, ${rolePoint.x}, ${rolePoint.y})">${role.label}</text>`;
+    const roleAngle = startAngle + (role.index + 0.5) * segmentAngle + role.angleOffset;
+    const rolePoint = toPoint(cx, cy, roleLabelRadius + role.radialOffset, roleAngle);
+    const outwardX = rolePoint.x - cx;
+    const outwardY = rolePoint.y - cy;
+    const outwardLength = Math.hypot(outwardX, outwardY) || 1;
+    const outwardUnitX = outwardX / outwardLength;
+    const outwardUnitY = outwardY / outwardLength;
+    const textAnchor = outwardUnitX >= 0 ? "start" : "end";
+    const roleLabelX = rolePoint.x + (outwardUnitX * role.xNudge);
+    const roleLabelY = rolePoint.y + (outwardUnitY * role.yNudge);
+    return `<text class="profile-wheel-role profile-wheel-role-${role.key}" x="${roleLabelX}" y="${roleLabelY}" text-anchor="${textAnchor}">${role.label}</text>`;
   }).join('');
 
   wheelNode.innerHTML = `
@@ -4853,9 +4856,9 @@ function setBarRow(barId, valueId, value, options = {}) {
 }
 
 const CENTER_WHEEL_SECTORS = [
-  { key: "body", label: "ACTION CENTRE", startAngle: 300, endAngle: 420, color: "#ff5a37", levelRotation: 0 },
-  { key: "heart", label: "FEELING CENTRE", startAngle: 60, endAngle: 180, color: "#48bf53", levelRotation: 60 },
-  { key: "head", label: "THINKING CENTRE", startAngle: 180, endAngle: 300, color: "#0099e6", levelRotation: -60 },
+  { key: "body", label: "ACTION CENTER", startAngle: 300, endAngle: 420, color: "#ff5a37", levelRotation: 0 },
+  { key: "heart", label: "FEELING CENTER", startAngle: 60, endAngle: 180, color: "#48bf53", levelRotation: 60 },
+  { key: "head", label: "THINKING CENTER", startAngle: 180, endAngle: 300, color: "#0099e6", levelRotation: -60 },
 ];
 
 const CENTER_WHEEL_LEVEL_RADIUS = {
@@ -4945,14 +4948,11 @@ function renderCenterExpressionWheel(centerScoresRaw) {
     `<path id="centerWheelLabelArc-${index}" d="${arcPath(cx, cy, labelArcRadius, sector.startAngle + labelArcTrimDegrees, sector.endAngle - labelArcTrimDegrees)}"></path>`
   )).join("");
 
-  const ringLabels = CENTER_WHEEL_SECTORS.map((sector, index) => {
-    const labelArcSweep = Math.max(1, (sector.endAngle - sector.startAngle) - (labelArcTrimDegrees * 2));
-    const labelArcLength = (Math.PI * 2 * labelArcRadius * labelArcSweep) / 360;
-    const labelTextLength = Math.max(60, labelArcLength - 24);
-    return `<text fill="#ffffff" font-family="var(--font-display), var(--font-sans), sans-serif" font-size="24" font-weight="700" letter-spacing="0.22">
-      <textPath href="#centerWheelLabelArc-${index}" startOffset="50%" text-anchor="middle" textLength="${labelTextLength}" lengthAdjust="spacing">${escapeHtml(sector.label)}</textPath>
-    </text>`;
-  }).join("");
+  const ringLabels = CENTER_WHEEL_SECTORS.map((sector, index) => (
+    `<text fill="#ffffff" font-family="var(--font-display), var(--font-sans), sans-serif" font-size="21" font-weight="700">
+      <textPath href="#centerWheelLabelArc-${index}" startOffset="50%" text-anchor="middle">${escapeHtml(sector.label)}</textPath>
+    </text>`
+  )).join("");
 
   const levelLabels = CENTER_WHEEL_SECTORS.map((sector) => {
     const level = scoreToCenterWheelLevel(centerScores?.[sector.key]);
@@ -4960,8 +4960,8 @@ function renderCenterExpressionWheel(centerScoresRaw) {
     const textRadius = Math.max(52, Math.min(highRadius - 20, radius * 0.62));
     const textPoint = toPoint(cx, cy, textRadius, (sector.startAngle + sector.endAngle) / 2);
     const textFill = level === "N/A" ? "#61778f" : "#ffffff";
-    const fontSize = level === "MEDIUM" ? 26 : level === "N/A" ? 20 : 32;
-    return `<text x="${textPoint.x}" y="${textPoint.y}" fill="${textFill}" font-family="var(--font-display), var(--font-sans), sans-serif" font-size="${fontSize}" font-weight="700" letter-spacing="0.7" text-anchor="middle" dominant-baseline="middle" transform="rotate(${sector.levelRotation} ${textPoint.x} ${textPoint.y})">${escapeHtml(level)}</text>`;
+    const fontSize = level === "LOW" ? 20 : level === "MEDIUM" ? 26 : level === "N/A" ? 20 : 32;
+    return `<text x="${textPoint.x}" y="${textPoint.y}" fill="${textFill}" font-family="var(--font-display), var(--font-sans), sans-serif" font-size="${fontSize}" font-weight="700" text-anchor="middle" dominant-baseline="middle" transform="rotate(${sector.levelRotation} ${textPoint.x} ${textPoint.y})">${escapeHtml(level)}</text>`;
   }).join("");
 
   wheelNode.innerHTML = `
