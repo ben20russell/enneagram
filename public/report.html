@@ -170,6 +170,8 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .mb16{margin-bottom:16px}.mb24{margin-bottom:24px}.mb32{margin-bottom:32px}
 .kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.kvl{font-size:var(--fs-label);text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px}
 .kvv{font-size:var(--fs-body-lg);color:var(--text);line-height:var(--lh-tight);font-weight:600}.kvv.red{color:var(--red);font-weight:600}.kvv.gold{color:var(--gold);font-weight:600}.kvv.green{color:var(--green);font-weight:600}.kvv.blue{color:var(--blue);font-weight:600}
+.core-identity-motivation{margin-top:12px}
+.core-identity-motivation-summary{font-size:14px;color:var(--text2);line-height:1.65;margin:0}
 .div{height:1px;background:var(--border);margin:16px 0}.quote{border-left:3px solid var(--blue);padding:3px 0 3px 16px;margin:12px 0}.quote p{font-size:16px;font-weight:500;color:var(--text2);line-height:1.5;overflow-wrap:anywhere}
 .brow{display:flex;align-items:center;gap:11px;margin-bottom:10px}.brow:last-child{margin-bottom:0}.blbl{font-size:13px;color:var(--text2);min-width:130px;flex-shrink:0}.btrk{flex:1;height:4px;background:var(--surface3);border-radius:100px;overflow:hidden}.bfil{height:100%;border-radius:100px}.bval{font-size:12px;font-weight:500;color:var(--text);min-width:36px;text-align:right}
 .chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:500;line-height:1.4}.cr{background:var(--red-lt);color:var(--red)}.cg{background:var(--gold-lt);color:var(--gold)}.cgn{background:var(--green-lt);color:var(--green)}.cb{background:var(--blue-lt);color:var(--blue)}.cx{background:var(--surface2);color:var(--text3)}
@@ -502,12 +504,14 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
             <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:3.3px" id="traitChips">
               <span class="chip cgn">Assertive</span><span class="chip cgn">Decisive</span><span class="chip cgn">Protective</span><span class="chip cgn">Independent</span><span class="chip cgn">Influential</span>
             </div>
-            <div class="kvl" data-testid="core-identity-motivation-label">Motivation</div>
-            <p
-              style="font-size:14px;color:var(--text2);line-height:1.65;margin:8px 0 0"
-              id="motivationSummary"
-              data-testid="core-identity-motivation-summary"
-            >Not detected in assigned PDF.</p>
+            <div class="core-identity-motivation">
+              <div class="kvl" data-testid="core-identity-motivation-label">Motivation</div>
+              <p
+                class="core-identity-motivation-summary"
+                id="motivationSummary"
+                data-testid="core-identity-motivation-summary"
+              >Not detected in assigned PDF.</p>
+            </div>
           </div>
           <div class="card">
             <div class="ct">Your Enneagram Profile</div>
