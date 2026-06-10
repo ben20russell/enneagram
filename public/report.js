@@ -1676,32 +1676,6 @@ function sanitizeSnippet(value, fallback) {
     return parts.join("");
   });
 
-  // Repair isolated 2-letter OCR splits such as "o f" -> "of" without
-  // collapsing longer natural short-word sequences.
-  cleaned = cleaned.replace(/\b([A-Za-z])\s+([A-Za-z])\b/g, (match, left, right) => {
-    const pair = `${String(left || "")}${String(right || "")}`.toLowerCase();
-    if (!commonOcrBigramWords.has(pair)) return match;
-    return `${left}${right}`;
-  });
-
-  // Repair 3-part OCR splits such as "sur v ive" and "di ff erence".
-  cleaned = cleaned.replace(/\b([A-Za-z]{1,3})\s+([A-Za-z]{1,2})\s+([A-Za-z]{3,})\b/g, (match, partA, partB, partC) => {
-    const lowerA = String(partA || "").toLowerCase();
-    const lowerB = String(partB || "").toLowerCase();
-    if (shortWords.has(lowerA) || shortWords.has(lowerB)) return match;
-    return `${partA}${partB}${partC}`;
-  });
-
-  // Repair 2-part OCR splits such as "di fficult" while preserving short-word phrases.
-  cleaned = cleaned.replace(/(^|[^A-Za-z'’`´-])([A-Za-z]{1,2})\s+([A-Za-z]{4,})\b/g, (match, lead, prefix, suffix) => {
-    const lowerPrefix = String(prefix || "").toLowerCase();
-    if (shortWords.has(lowerPrefix)) return match;
-    return `${lead}${prefix}${suffix}`;
-  });
-
-  // Repair frequent OCR fragment "G i s" -> "G is".
-  cleaned = cleaned.replace(/\b([A-Za-z])\s+i\s+s\b/g, "$1 is");
-
   const wordBoundaryLexicon =
     sanitizeSnippet.__wordBoundaryLexicon ||
     (sanitizeSnippet.__wordBoundaryLexicon = new Set([
@@ -1737,6 +1711,10 @@ function sanitizeSnippet(value, fallback) {
       "under", "understanding", "unjust", "up", "us",
       "vice", "vices", "vocational", "vulnerability",
       "we", "weakness", "wellbeing", "what", "when", "which", "who", "with", "without", "wing", "world", "worldview",
+      "able", "acting", "all", "any", "are", "ball", "begin", "better", "body", "choice", "choose", "devoted", "direct",
+      "dislike", "dropping", "first", "important", "independence", "instincts", "intense", "issue", "language", "mainly",
+      "micromanage", "nature", "nothing", "often", "project", "quickly", "second", "seems", "sort", "step", "subject",
+      "tall", "tend", "toughen", "unless", "usually", "want", "way", "whenever", "words", "work", "would",
       "you", "your", "yourself", "myself", "ourselves", "themselves", "himself", "herself", "itself",
     ]));
 
@@ -1804,6 +1782,70 @@ function sanitizeSnippet(value, fallback) {
     return normalized;
   }
 
+  function toApproximateLexiconSegments(token) {
+    const sourceToken = String(token || "");
+    if (!/^[A-Za-z]+$/.test(sourceToken)) return null;
+    const lowerToken = sourceToken.toLowerCase();
+    const tokenLength = lowerToken.length;
+    if (tokenLength < 7) return null;
+    const maxPieceLength = Math.min(20, tokenLength);
+    const dp = Array(tokenLength + 1).fill(null);
+    dp[0] = { score: 0, parts: [], knownChars: 0 };
+
+    for (let index = 0; index < tokenLength; index += 1) {
+      const existing = dp[index];
+      if (!existing) continue;
+      for (let end = index + 1; end <= Math.min(tokenLength, index + maxPieceLength); end += 1) {
+        const piece = lowerToken.slice(index, end);
+        const known = wordBoundaryLexicon.has(piece);
+        if (known && piece.length === 1 && piece !== "a" && piece !== "i") continue;
+        if (!known && (piece.length < 3 || piece.length > 10)) continue;
+
+        let score = existing.score;
+        if (known) {
+          score -= piece.length >= 4 ? 12 + piece.length : 3;
+        } else {
+          score += 18 + (piece.length * 2);
+          if (index === 0 || end === tokenLength) score += 10;
+        }
+
+        const candidate = {
+          score,
+          parts: existing.parts.concat(piece),
+          knownChars: existing.knownChars + (known ? piece.length : 0),
+        };
+        const current = dp[end];
+        if (!current || candidate.score < current.score) {
+          dp[end] = candidate;
+          continue;
+        }
+        if (candidate.score === current.score && candidate.parts.length < current.parts.length) {
+          dp[end] = candidate;
+        }
+      }
+    }
+
+    const result = dp[tokenLength];
+    if (!result || result.parts.length < 2) return null;
+    if (result.parts.some((part) => part.length === 1 && part !== "a" && part !== "i")) return null;
+    if (result.parts.some((part) => !wordBoundaryLexicon.has(part) && part.length > 7)) return null;
+    if (result.knownChars / tokenLength < 0.6) return null;
+    return result.parts.join(" ");
+  }
+
+  function repairLongLetterRuns(value) {
+    return String(value || "").replace(/\b(?:[A-Za-z]\s+){6,}[A-Za-z]\b/g, (match) => {
+      const letters = String(match || "").trim().split(/\s+/).filter((token) => /^[A-Za-z]$/.test(token));
+      if (letters.length < 7) return match;
+      const merged = letters.join("");
+      const segmented =
+        toLexiconSegments(merged, { fromMergedWords: true }) ||
+        toApproximateLexiconSegments(merged);
+      if (!segmented) return match;
+      return applyCasingFromSource(merged, segmented);
+    });
+  }
+
   function repairWordBoundaryGaps(value) {
     const parts = String(value || "").match(/[A-Za-z]+|[^A-Za-z]+/g) || [];
     const repaired = [];
@@ -1858,6 +1900,34 @@ function sanitizeSnippet(value, fallback) {
 
     return repaired.join("");
   }
+
+  cleaned = repairLongLetterRuns(cleaned);
+
+  // Repair isolated 2-letter OCR splits such as "o f" -> "of" without
+  // collapsing longer natural short-word sequences.
+  cleaned = cleaned.replace(/\b([A-Za-z])\s+([A-Za-z])\b/g, (match, left, right) => {
+    const pair = `${String(left || "")}${String(right || "")}`.toLowerCase();
+    if (!commonOcrBigramWords.has(pair)) return match;
+    return `${left}${right}`;
+  });
+
+  // Repair 3-part OCR splits such as "sur v ive" and "di ff erence".
+  cleaned = cleaned.replace(/\b([A-Za-z]{1,3})\s+([A-Za-z]{1,2})\s+([A-Za-z]{3,})\b/g, (match, partA, partB, partC) => {
+    const lowerA = String(partA || "").toLowerCase();
+    const lowerB = String(partB || "").toLowerCase();
+    if (shortWords.has(lowerA) || shortWords.has(lowerB)) return match;
+    return `${partA}${partB}${partC}`;
+  });
+
+  // Repair 2-part OCR splits such as "di fficult" while preserving short-word phrases.
+  cleaned = cleaned.replace(/(^|[^A-Za-z'’`´-])([A-Za-z]{1,2})\s+([A-Za-z]{4,})\b/g, (match, lead, prefix, suffix) => {
+    const lowerPrefix = String(prefix || "").toLowerCase();
+    if (shortWords.has(lowerPrefix)) return match;
+    return `${lead}${prefix}${suffix}`;
+  });
+
+  // Repair frequent OCR fragment "G i s" -> "G is".
+  cleaned = cleaned.replace(/\b([A-Za-z])\s+i\s+s\b/g, "$1 is");
 
   cleaned = repairWordBoundaryGaps(cleaned);
 
