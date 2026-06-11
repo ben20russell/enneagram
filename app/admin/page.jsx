@@ -46,27 +46,7 @@ export default async function AdminPage() {
             borderTop: "1px solid #cbd5e1",
             position: "relative",
           }}
-        >
-          <span
-            style={{
-              position: "absolute",
-              top: "-11px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "#f8fafc",
-              border: "1px solid #cbd5e1",
-              borderRadius: "999px",
-              color: "#334155",
-              fontSize: "12px",
-              fontWeight: 600,
-              letterSpacing: "0.04em",
-              padding: "2px 10px",
-              textTransform: "uppercase",
-            }}
-          >
-            Review Queue
-          </span>
-        </div>
+        />
       </section>
 
       <section id="admin-review-section" data-testid="admin-review-section">

@@ -1186,9 +1186,9 @@ export default function AdminImportForm() {
       data-testid="admin-import-page"
       style={{
         maxWidth: "900px",
-        margin: "0 auto",
+        margin: "0",
         padding: "24px",
-        textAlign: "center",
+        textAlign: "left",
         fontFamily: DASHBOARD_SANS_FONT_FAMILY,
       }}
     >
@@ -1226,7 +1226,7 @@ export default function AdminImportForm() {
         style={{
           border: "1px solid #cbd5e1",
           borderRadius: "14px",
-          margin: "20px auto 0",
+          margin: "20px 0 0",
           padding: "22px",
           maxWidth: "620px",
           background: "#ffffff",
