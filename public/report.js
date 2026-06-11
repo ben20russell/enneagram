@@ -97,12 +97,10 @@ function canViewExampleReports({ email, isAuthenticated }) {
 const SHOW_EXAMPLE_REPORT_DROPDOWN = false;
 const SHOW_CLIENT_REPORT_DROPDOWN = true;
 const DEFAULT_EXAMPLE_REPORT_TYPE = "3";
-const CORE_PATTERN_HYDRATION_CLEANUP_ROUTE = "/api/report-hydration/core-patterns/cleanup";
-const CORE_PATTERN_HYDRATION_LLM_TIMEOUT_MS = 45_000;
-const CORE_PATTERN_HYDRATION_CACHE = new Map();
 const DASHBOARD_COPY_HYDRATION_CLEANUP_ROUTE = "/api/report-hydration/dashboard-copy/cleanup";
 const DASHBOARD_COPY_HYDRATION_LLM_TIMEOUT_MS = 75_000;
 const DASHBOARD_COPY_HYDRATION_CACHE = new Map();
+const INSTRUCTION_EXTRACTION_ENGINE_CACHE = new WeakMap();
 
 let assignedReportIngested = false;
 let exampleReportInitialized = false;
@@ -506,6 +504,9 @@ const ASSIGNED_HYDRATION_REQUIRED_SLOTS = Object.freeze([
   "selfTalkValue",
   "giftsValue",
   "vicesValue",
+  "instinctGoalSelfPres",
+  "instinctGoalSocial",
+  "instinctGoalOneOnOne",
   "feedbackGuideMatrixBody",
   "devExercisePaths",
   "teamStageForming",
@@ -515,7 +516,10 @@ const ASSIGNED_HYDRATION_REQUIRED_SLOTS = Object.freeze([
   "motivationSummary",
   "conflictResponseCopy",
   "decisionImpactCopy",
+  "teamImpactCopy",
+  "interdependenceCopy",
   "coachingRelationshipCopy",
+  "overallStrainSummary",
   "strainWriteupCards",
 ]);
 
@@ -992,23 +996,6 @@ function mergeCorePatternBullets(preferredBullets, fallbackBullets) {
   });
 }
 
-const CORE_PATTERN_SECTION_BOUNDARY_MARKERS = [
-  "Blind Spots",
-  "BlindSpots",
-  "Worldview",
-  "World View",
-  "Detailed Enneagram Description",
-  "Your main Enneagram style",
-  "Focus of Attention",
-  "Core Fear",
-  "Self-Talk",
-  "Self Talk",
-  "Gifts",
-  "Vices",
-  "Development Exercise",
-  "DEVELOPMENT EXERCISE",
-];
-
 function stripCorePatternSectionBoundarySpillover(value) {
   let cleaned = sanitizeSnippet(value, "");
   if (!cleaned) return null;
@@ -1067,127 +1054,6 @@ function resolveHydratedCorePatternBullets(value) {
     text: stripCorePatternSectionBoundarySpillover(row?.text) || row?.text || null,
   }));
   return normalizeCorePatternBullets(cleanedRows);
-}
-
-function buildCorePatternHydrationCacheKey({ corePatternBullets, detectedType, reportFileName, reportId }) {
-  const rows = normalizeCorePatternBullets(corePatternBullets)
-    .map((row) => ({ key: row.key, text: sanitizeSnippet(row?.text, "") }))
-    .filter((row) => !isMissingExtractedText(row?.text));
-  return JSON.stringify({
-    detectedType: String(detectedType || ""),
-    reportFileName: String(reportFileName || ""),
-    reportId: String(reportId || ""),
-    rows,
-  });
-}
-
-async function hydrateCorePatternBulletsWithLlmCleanup({
-  corePatternBullets,
-  detectedType,
-  reportFileName,
-  reportId,
-  ingestionToken,
-}) {
-  const normalizedBullets = normalizeCorePatternBullets(corePatternBullets);
-  const shouldCleanup = shouldRequestCorePatternHydrationCleanup(normalizedBullets);
-  if (!shouldCleanup) {
-    return normalizedBullets;
-  }
-  if (typeof fetch !== "function") return normalizedBullets;
-
-  const cacheKey = buildCorePatternHydrationCacheKey({
-    corePatternBullets: normalizedBullets,
-    detectedType,
-    reportFileName,
-    reportId,
-  });
-  if (CORE_PATTERN_HYDRATION_CACHE.has(cacheKey)) {
-    const cachedRows = CORE_PATTERN_HYDRATION_CACHE.get(cacheKey);
-    console.log("[report-ingest] Reusing cached core-pattern LLM cleanup result", {
-      ingestionToken,
-      reportId: reportId || null,
-      reportFileName: reportFileName || null,
-    });
-    return mergeCorePatternBullets(cachedRows, normalizedBullets);
-  }
-
-  const requestBody = {
-    detectedType: detectedType || null,
-    reportFileName: reportFileName || null,
-    reportId: reportId || null,
-    bullets: normalizedBullets.map((row) => ({
-      key: row.key,
-      label: row.label,
-      text: isMissingExtractedText(row?.text) ? "" : String(row?.text || ""),
-    })),
-  };
-
-  const abortController = new AbortController();
-  const timeoutId = window.setTimeout(() => {
-    abortController.abort(new Error("core-pattern llm cleanup timeout"));
-  }, CORE_PATTERN_HYDRATION_LLM_TIMEOUT_MS);
-
-  try {
-    console.log("[report-ingest] Running core-pattern LLM hydration cleanup", {
-      ingestionToken,
-      detectedType: detectedType || null,
-      reportId: reportId || null,
-      reportFileName: reportFileName || null,
-      route: CORE_PATTERN_HYDRATION_CLEANUP_ROUTE,
-      boundaryMarkers: CORE_PATTERN_SECTION_BOUNDARY_MARKERS,
-    });
-    const response = await fetch(CORE_PATTERN_HYDRATION_CLEANUP_ROUTE, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      credentials: "include",
-      cache: "no-store",
-      body: JSON.stringify(requestBody),
-      signal: abortController.signal,
-    });
-    if (!response.ok) {
-      const failureText = await response.text().catch(() => "");
-      console.log("[report-ingest] Core-pattern LLM cleanup route failed", {
-        ingestionToken,
-        status: response.status,
-        statusText: response.statusText,
-        responseTextPreview: String(failureText || "").slice(0, 400),
-      });
-      CORE_PATTERN_HYDRATION_CACHE.set(cacheKey, normalizedBullets);
-      return normalizedBullets;
-    }
-
-    const payload = await response.json().catch(() => ({}));
-    const cleanedRows = resolveHydratedCorePatternBullets(payload?.bullets);
-    const mergedRows = mergeCorePatternBullets(cleanedRows, normalizedBullets);
-    const changedKeys = mergedRows
-      .filter((row, index) => sanitizeSnippet(row?.text, "") !== sanitizeSnippet(normalizedBullets[index]?.text, ""))
-      .map((row) => row.key);
-    CORE_PATTERN_HYDRATION_CACHE.set(cacheKey, mergedRows);
-    console.log("[report-ingest] Core-pattern LLM hydration cleanup complete", {
-      ingestionToken,
-      reportId: reportId || null,
-      reportFileName: reportFileName || null,
-      changedKeys,
-      usedFallback: payload?.success === false,
-      model: payload?.model || null,
-    });
-    return mergedRows;
-  } catch (error) {
-    console.log("[report-ingest] Core-pattern LLM cleanup request failed; using deterministic bullets", {
-      ingestionToken,
-      reportId: reportId || null,
-      reportFileName: reportFileName || null,
-      details: String(error?.message || "Unknown core-pattern cleanup error"),
-      stack: error?.stack,
-    });
-    CORE_PATTERN_HYDRATION_CACHE.set(cacheKey, normalizedBullets);
-    return normalizedBullets;
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
 }
 
 const DASHBOARD_CLEANUP_STRAIN_CATEGORIES = [
@@ -1350,6 +1216,7 @@ function normalizeDashboardNarrativeCleanupTeamStageBreakdown(value) {
 function normalizeDashboardNarrativeCleanupInput(payload) {
   const safePayload = payload && typeof payload === "object" ? payload : {};
   return {
+    corePatternBullets: resolveHydratedCorePatternBullets(safePayload?.corePatternBullets),
     strainQualitativeWriteups: normalizeDashboardNarrativeCleanupStrainRows(
       safePayload?.strainQualitativeWriteups,
     ),
@@ -1411,6 +1278,10 @@ function dashboardNarrativeHasCleanupArtifacts(value, options = {}) {
 function shouldRequestDashboardNarrativesCleanup(payload) {
   const normalized = normalizeDashboardNarrativeCleanupInput(payload);
   const candidates = [
+    ...((Array.isArray(normalized.corePatternBullets) ? normalized.corePatternBullets : []).map((row) => ({
+      fieldKey: `corePattern:${String(row?.key || "").toLowerCase() || "unknown"}`,
+      text: row?.text,
+    }))),
     ...normalized.strainQualitativeWriteups.map((row) => ({
       fieldKey: `strain:${String(row?.category || "").toLowerCase()}`,
       text: row?.text,
@@ -1508,10 +1379,12 @@ function shouldRequestDashboardNarrativesCleanup(payload) {
     (candidate) => candidate?.text && !isMissingExtractedText(candidate.text),
   );
   if (!informativeCandidates.length) return false;
+  if (shouldRequestCorePatternHydrationCleanup(normalized.corePatternBullets)) return true;
   return true;
 }
 
 function buildDashboardNarrativesCleanupCacheKey({
+  corePatternBullets,
   strainQualitativeWriteups,
   feedbackGuideMatrix,
   overallStrainSummary,
@@ -1523,6 +1396,7 @@ function buildDashboardNarrativesCleanupCacheKey({
   reportId,
 }) {
   const normalized = normalizeDashboardNarrativeCleanupInput({
+    corePatternBullets,
     strainQualitativeWriteups,
     feedbackGuideMatrix,
     overallStrainSummary,
@@ -1541,6 +1415,10 @@ function buildDashboardNarrativesCleanupCacheKey({
 function mergeDashboardNarrativeCleanupPayload(preferredPayload, fallbackPayload) {
   const preferred = normalizeDashboardNarrativeCleanupInput(preferredPayload);
   const fallback = normalizeDashboardNarrativeCleanupInput(fallbackPayload);
+  const corePatternBullets = mergeCorePatternBullets(
+    preferred.corePatternBullets,
+    fallback.corePatternBullets,
+  );
 
   const strainQualitativeWriteups = DASHBOARD_CLEANUP_STRAIN_CATEGORIES.map((category) => {
     const preferredRow = preferred.strainQualitativeWriteups.find(
@@ -1761,6 +1639,7 @@ function mergeDashboardNarrativeCleanupPayload(preferredPayload, fallbackPayload
   };
 
   return {
+    corePatternBullets,
     strainQualitativeWriteups,
     feedbackGuideMatrix,
     overallStrainSummary: mergeSimpleTopLevelTextField("overallStrainSummary"),
@@ -1799,6 +1678,7 @@ function resolveDashboardNarrativeCleanupPayload(value) {
 }
 
 async function hydrateDashboardNarrativesWithLlmCleanup({
+  corePatternBullets,
   strainQualitativeWriteups,
   feedbackGuideMatrix,
   overallStrainSummary,
@@ -1811,6 +1691,7 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
   ingestionToken,
 }) {
   const normalizedPayload = normalizeDashboardNarrativeCleanupInput({
+    corePatternBullets,
     strainQualitativeWriteups,
     feedbackGuideMatrix,
     overallStrainSummary,
@@ -1825,6 +1706,7 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
   if (typeof fetch !== "function") return normalizedPayload;
 
   const cacheKey = buildDashboardNarrativesCleanupCacheKey({
+    corePatternBullets: normalizedPayload.corePatternBullets,
     strainQualitativeWriteups: normalizedPayload.strainQualitativeWriteups,
     feedbackGuideMatrix: normalizedPayload.feedbackGuideMatrix,
     overallStrainSummary: normalizedPayload.overallStrainSummary,
@@ -3738,11 +3620,12 @@ async function ingestAssignedReportIntoDashboard(data) {
       jsPassion = BEN_RUSSELL_PRO_PAGE7_TYPE8_CORE.vices;
       console.log("[report-ingest] locked Core Belief & Attention Pattern to Ben Russell PRO page 7 Type 8 source text");
     }
+    const targetedCoreIdentity = extractCoreIdentityFromTargetedSections(parsedProfile);
     basicFear = hydrationAudit.resolve(
       "coreFearValue",
       [
         { source: "verification_python", value: verificationResolvedFields?.coreFear || verificationResolvedFields?.basicFear },
-        { source: "targeted_sections", value: null },
+        { source: "targeted_sections", value: targetedCoreIdentity?.coreFear },
         { source: "js_deterministic", value: jsBasicFear },
         { source: "parsed_profile_llm", value: parsedProfile?.coreFear },
         { source: "dashboard_context_default", value: serverContext?.basicFear },
@@ -3753,7 +3636,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       "giftsValue",
       [
         { source: "verification_python", value: verificationResolvedFields?.basicDesire || verificationResolvedFields?.gifts },
-        { source: "targeted_sections", value: null },
+        { source: "targeted_sections", value: targetedCoreIdentity?.basicDesire },
         { source: "js_deterministic", value: jsBasicDesire },
         { source: "parsed_profile_llm", value: parsedProfile?.coreDesire },
         { source: "dashboard_context_default", value: serverContext?.basicDesire },
@@ -3764,7 +3647,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       "vicesValue",
       [
         { source: "verification_python", value: verificationResolvedFields?.passion || verificationResolvedFields?.vices },
-        { source: "targeted_sections", value: null },
+        { source: "targeted_sections", value: targetedCoreIdentity?.passion },
         { source: "js_deterministic", value: jsPassion },
         { source: "parsed_profile_llm", value: parsedProfile?.passion },
         { source: "dashboard_context_default", value: serverContext?.passion },
@@ -3775,7 +3658,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       "selfTalkValue",
       [
         { source: "verification_python", value: verificationResolvedFields?.metaMessage || verificationResolvedFields?.selfTalk },
-        { source: "targeted_sections", value: null },
+        { source: "targeted_sections", value: targetedCoreIdentity?.selfTalk },
         { source: "js_deterministic", value: jsMetaQuote },
         { source: "parsed_profile_llm", value: parsedProfile?.metaMessage || parsedProfile?.selfTalk },
         { source: "dashboard_context_default", value: serverContext?.metaMessage || serverContext?.selfTalk },
@@ -3786,7 +3669,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       "worldviewValue",
       [
         { source: "verification_python", value: verificationResolvedFields?.worldview },
-        { source: "targeted_sections", value: null },
+        { source: "targeted_sections", value: targetedCoreIdentity?.worldview },
         { source: "js_deterministic", value: jsWorldview },
         { source: "parsed_profile_llm", value: parsedProfile?.worldview },
         { source: "dashboard_context_default", value: serverContext?.worldview },
@@ -3797,7 +3680,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       "focusValue",
       [
         { source: "verification_python", value: verificationResolvedFields?.focus || verificationResolvedFields?.focusOfAttention },
-        { source: "targeted_sections", value: null },
+        { source: "targeted_sections", value: targetedCoreIdentity?.focus },
         { source: "js_deterministic", value: jsFocus },
         { source: "parsed_profile_llm", value: parsedProfile?.focusOfAttention || parsedProfile?.focus },
         { source: "dashboard_context_default", value: serverContext?.focus },
@@ -3812,13 +3695,6 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractCorePatternBulletsFromText(pdfText),
     );
     corePatternBullets = mergeCorePatternBullets(corePatternBullets, corePatternBulletsFromText);
-    corePatternBullets = await hydrateCorePatternBulletsWithLlmCleanup({
-      corePatternBullets,
-      detectedType,
-      reportFileName: data?.reportFileName || null,
-      reportId: data?.id || null,
-      ingestionToken,
-    });
 
     if (!corePatternLines.length) {
       corePatternLines = corePatternBullets
@@ -3913,7 +3789,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       console.log("[strain] using parsed_profile_llm overall summary to avoid deterministic spillover");
     }
     let overallStrainSummary = hydrationAudit.resolve(
-      "strainWriteupCards",
+      "overallStrainSummary",
       [
         { source: "targeted_sections", value: targetedOverallStrainSummary },
         { source: "js_deterministic", value: jsOverallStrainSummaryCandidate },
@@ -3967,6 +3843,33 @@ async function ingestAssignedReportIntoDashboard(data) {
       spreadsheetFocuses?.motivationSummary,
     );
     hydrationAudit.record(
+      "instinctGoalSelfPres",
+      [
+        { source: "targeted_sections", value: targetedSpreadsheetFocuses?.instinctGoals?.selfPres },
+        { source: "js_deterministic", value: jsSpreadsheetFocuses?.instinctGoals?.selfPres },
+        { source: "parsed_profile_llm", value: parsedProfile?.spreadsheetFocuses?.instinctGoals?.selfPres },
+      ],
+      spreadsheetFocuses?.instinctGoals?.selfPres,
+    );
+    hydrationAudit.record(
+      "instinctGoalSocial",
+      [
+        { source: "targeted_sections", value: targetedSpreadsheetFocuses?.instinctGoals?.social },
+        { source: "js_deterministic", value: jsSpreadsheetFocuses?.instinctGoals?.social },
+        { source: "parsed_profile_llm", value: parsedProfile?.spreadsheetFocuses?.instinctGoals?.social },
+      ],
+      spreadsheetFocuses?.instinctGoals?.social,
+    );
+    hydrationAudit.record(
+      "instinctGoalOneOnOne",
+      [
+        { source: "targeted_sections", value: targetedSpreadsheetFocuses?.instinctGoals?.oneOnOne },
+        { source: "js_deterministic", value: jsSpreadsheetFocuses?.instinctGoals?.oneOnOne },
+        { source: "parsed_profile_llm", value: parsedProfile?.spreadsheetFocuses?.instinctGoals?.oneOnOne },
+      ],
+      spreadsheetFocuses?.instinctGoals?.oneOnOne,
+    );
+    hydrationAudit.record(
       "conflictResponseCopy",
       [
         { source: "targeted_sections", value: targetedSpreadsheetFocuses?.conflictResponseCopy },
@@ -3983,6 +3886,24 @@ async function ingestAssignedReportIntoDashboard(data) {
         { source: "parsed_profile_llm", value: parsedProfile?.spreadsheetFocuses?.decisionImpactCopy },
       ],
       spreadsheetFocuses?.decisionImpactCopy,
+    );
+    hydrationAudit.record(
+      "teamImpactCopy",
+      [
+        { source: "targeted_sections", value: targetedSpreadsheetFocuses?.teamImpactCopy },
+        { source: "js_deterministic", value: jsSpreadsheetFocuses?.teamImpactCopy },
+        { source: "parsed_profile_llm", value: parsedProfile?.spreadsheetFocuses?.teamImpactCopy },
+      ],
+      spreadsheetFocuses?.teamImpactCopy,
+    );
+    hydrationAudit.record(
+      "interdependenceCopy",
+      [
+        { source: "targeted_sections", value: targetedSpreadsheetFocuses?.interdependenceCopy },
+        { source: "js_deterministic", value: jsSpreadsheetFocuses?.interdependenceCopy },
+        { source: "parsed_profile_llm", value: parsedProfile?.spreadsheetFocuses?.interdependenceCopy },
+      ],
+      spreadsheetFocuses?.interdependenceCopy,
     );
     hydrationAudit.record(
       "coachingRelationshipCopy",
@@ -4046,6 +3967,7 @@ async function ingestAssignedReportIntoDashboard(data) {
     );
 
     const narrativeCleanupPayload = await hydrateDashboardNarrativesWithLlmCleanup({
+      corePatternBullets,
       strainQualitativeWriteups,
       feedbackGuideMatrix: resolvedFeedbackGuideMatrix,
       overallStrainSummary,
@@ -4057,6 +3979,9 @@ async function ingestAssignedReportIntoDashboard(data) {
       reportId: data?.id || null,
       ingestionToken,
     });
+    corePatternBullets = Array.isArray(narrativeCleanupPayload?.corePatternBullets)
+      ? mergeCorePatternBullets(narrativeCleanupPayload.corePatternBullets, corePatternBullets)
+      : corePatternBullets;
     resolvedFeedbackGuideMatrix = Array.isArray(narrativeCleanupPayload?.feedbackGuideMatrix)
       ? narrativeCleanupPayload.feedbackGuideMatrix
       : resolvedFeedbackGuideMatrix;
@@ -4098,6 +4023,14 @@ async function ingestAssignedReportIntoDashboard(data) {
         ...teamStageBreakdown,
         ...narrativeCleanupPayload.teamStageBreakdown,
       };
+    }
+    const corePatternLinesFromBullets = corePatternBullets
+      .map((row) => sanitizeSnippet(row?.text, null))
+      .filter(Boolean)
+      .filter((line) => !isMissingExtractedText(line))
+      .slice(0, 4);
+    if (corePatternLinesFromBullets.length) {
+      corePatternLines = corePatternLinesFromBullets;
     }
 
     const baseDataQualityDiagnostics = buildDataQualityDiagnostics({
@@ -8019,6 +7952,27 @@ function getReportPageTextByNumber(parsedProfile) {
   return map;
 }
 
+function createInstructionExtractionEngine(parsedProfile) {
+  const pageTextMap = getReportPageTextByNumber(parsedProfile);
+  const availablePages = Array.from(pageTextMap.keys()).sort((a, b) => a - b);
+  return {
+    pageTextMap,
+    availablePages,
+  };
+}
+
+function getInstructionExtractionEngine(parsedProfile) {
+  if (!parsedProfile || typeof parsedProfile !== "object") {
+    return createInstructionExtractionEngine(parsedProfile);
+  }
+  if (INSTRUCTION_EXTRACTION_ENGINE_CACHE.has(parsedProfile)) {
+    return INSTRUCTION_EXTRACTION_ENGINE_CACHE.get(parsedProfile);
+  }
+  const engine = createInstructionExtractionEngine(parsedProfile);
+  INSTRUCTION_EXTRACTION_ENGINE_CACHE.set(parsedProfile, engine);
+  return engine;
+}
+
 function normalizeInstructionAnchor(anchor) {
   const value = String(anchor || "").trim();
   if (!value) return "";
@@ -8070,8 +8024,13 @@ function findInstructionAnchorMatch(text, anchor, options = {}) {
 
 function extractInstructionTextFromReportContent(parsedProfile, rule, options = {}) {
   const safeRule = rule && typeof rule === "object" ? rule : {};
-  const pageTextMap = getReportPageTextByNumber(parsedProfile);
-  const availablePages = Array.from(pageTextMap.keys()).sort((a, b) => a - b);
+  const instructionEngine = getInstructionExtractionEngine(parsedProfile);
+  const pageTextMap = instructionEngine?.pageTextMap instanceof Map
+    ? instructionEngine.pageTextMap
+    : new Map();
+  const availablePages = Array.isArray(instructionEngine?.availablePages)
+    ? instructionEngine.availablePages
+    : Array.from(pageTextMap.keys()).sort((a, b) => a - b);
   if (!availablePages.length) return null;
 
   const basePages = Array.isArray(safeRule.pageNumbers)
@@ -8398,6 +8357,96 @@ function compactTargetedSectionText(value, options = {}) {
   return compactInsightSnippet(rows.join(joiner), maxLength);
 }
 
+function extractCoreIdentityFromTargetedSections(parsedProfile) {
+  const targeted = getTargetedSections(parsedProfile);
+  const coreIdentity = targeted?.core_identity && typeof targeted.core_identity === "object"
+    ? targeted.core_identity
+    : {};
+  const coreBeliefAndAttention = targeted?.core_belief_attention_pattern &&
+      typeof targeted.core_belief_attention_pattern === "object"
+    ? targeted.core_belief_attention_pattern
+    : {};
+  const coreType = targeted?.core_type && typeof targeted.core_type === "object"
+    ? targeted.core_type
+    : {};
+  const subtype = targeted?.subtype && typeof targeted.subtype === "object"
+    ? targeted.subtype
+    : {};
+
+  const pickIdentityText = (candidates, maxLength = 420) => {
+    const rows = Array.isArray(candidates) ? candidates : [candidates];
+    for (const candidate of rows) {
+      const text = compactTargetedSectionText(candidate, { maxItems: 6, maxLength });
+      if (text && !isMissingExtractedText(text)) return text;
+    }
+    return null;
+  };
+
+  const result = {
+    coreFear: pickIdentityText([
+      coreIdentity?.core_fear,
+      coreIdentity?.basic_fear,
+      coreType?.core_fear,
+      coreType?.basic_fear,
+      subtype?.core_fear,
+    ]),
+    basicDesire: pickIdentityText([
+      coreIdentity?.basic_desire,
+      coreIdentity?.core_desire,
+      coreType?.basic_desire,
+      coreType?.core_desire,
+      subtype?.basic_desire,
+      subtype?.core_desire,
+      coreIdentity?.gifts,
+      coreType?.gifts,
+    ]),
+    passion: pickIdentityText([
+      coreIdentity?.passion,
+      coreType?.passion,
+      subtype?.passion,
+      coreIdentity?.vices,
+      coreType?.vices,
+    ]),
+    selfTalk: pickIdentityText([
+      coreIdentity?.self_talk,
+      coreIdentity?.meta_message,
+      coreBeliefAndAttention?.self_talk,
+      coreBeliefAndAttention?.meta_message,
+      coreType?.self_talk,
+      subtype?.self_talk,
+    ], 320),
+    worldview: pickIdentityText([
+      coreIdentity?.worldview,
+      coreBeliefAndAttention?.worldview,
+      coreBeliefAndAttention?.core_belief,
+      coreType?.worldview,
+      subtype?.worldview,
+    ]),
+    focus: pickIdentityText([
+      coreIdentity?.focus_of_attention,
+      coreIdentity?.focus,
+      coreBeliefAndAttention?.focus_of_attention,
+      coreBeliefAndAttention?.focus,
+      coreType?.focus_of_attention,
+      coreType?.focus,
+      subtype?.focus_of_attention,
+      subtype?.focus,
+    ]),
+  };
+
+  console.log("[core-identity] targeted-section extraction", {
+    hasCoreFear: Boolean(result.coreFear),
+    hasBasicDesire: Boolean(result.basicDesire),
+    hasPassion: Boolean(result.passion),
+    hasSelfTalk: Boolean(result.selfTalk),
+    hasWorldview: Boolean(result.worldview),
+    hasFocus: Boolean(result.focus),
+  });
+
+  if (Object.values(result).every((value) => !value)) return null;
+  return result;
+}
+
 function extractTeamStageBreakdownFromTargetedSections(parsedProfile) {
   const teamDynamics = getTargetedSections(parsedProfile)?.team_dynamics;
   if (!teamDynamics || typeof teamDynamics !== "object") return null;
@@ -8527,6 +8576,7 @@ function extractDevelopmentExercisesFromTargetedSections(parsedProfile) {
 
 function extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile) {
   const targeted = getTargetedSections(parsedProfile);
+  const targetedCoreIdentity = extractCoreIdentityFromTargetedSections(parsedProfile);
   const decision = targeted?.decision_framework && typeof targeted.decision_framework === "object"
     ? targeted.decision_framework
     : {};
@@ -8539,6 +8589,11 @@ function extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile) {
   const development = targeted?.development_exercises && typeof targeted.development_exercises === "object"
     ? targeted.development_exercises
     : {};
+  const instinctGoalsSource = targeted?.subtypes_instincts && typeof targeted.subtypes_instincts === "object"
+    ? targeted.subtypes_instincts
+    : (targeted?.instinct_goals && typeof targeted.instinct_goals === "object"
+        ? targeted.instinct_goals
+        : {});
 
   const conflictRows = normalizeTargetedSectionRows(development.conflict, { maxItems: 8, maxLength: 220 });
   const strategicRows = [
@@ -8557,10 +8612,37 @@ function extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile) {
     ...normalizeTargetedSectionRows(decision.receiving_decisions, { maxItems: 6, maxLength: 220 }),
   ];
   const developingRows = normalizeTargetedSectionRows(development.subtype, { maxItems: 8, maxLength: 220 });
+  const targetedMotivationSummary = compactTargetedSectionText([
+    targeted?.core_type?.motivation,
+    targeted?.core_type?.motivations,
+    targeted?.subtype?.motivation,
+    targetedCoreIdentity?.basicDesire,
+    targetedCoreIdentity?.coreFear,
+    targetedCoreIdentity?.passion,
+  ], { maxItems: 6, maxLength: 420 });
+  const instinctGoals = {
+    selfPres: compactTargetedSectionText([
+      instinctGoalsSource?.self_preservation,
+      instinctGoalsSource?.self_pres,
+      instinctGoalsSource?.sp,
+      instinctGoalsSource?.selfPres,
+    ], { maxItems: 4, maxLength: 420 }),
+    social: compactTargetedSectionText([
+      instinctGoalsSource?.social,
+      instinctGoalsSource?.so,
+    ], { maxItems: 4, maxLength: 420 }),
+    oneOnOne: compactTargetedSectionText([
+      instinctGoalsSource?.one_on_one,
+      instinctGoalsSource?.oneOnOne,
+      instinctGoalsSource?.sexual,
+      instinctGoalsSource?.sx,
+    ], { maxItems: 4, maxLength: 420 }),
+  };
+  const hasInstinctGoals = Boolean(instinctGoals.selfPres || instinctGoals.social || instinctGoals.oneOnOne);
 
   const focused = {
-    motivationSummary: null,
-    instinctGoals: null,
+    motivationSummary: targetedMotivationSummary,
+    instinctGoals: hasInstinctGoals ? instinctGoals : null,
     developingAsCopy: compactTargetedSectionText(developingRows, { maxItems: 8, maxLength: 420 }),
     developingAsBullets: developingRows,
     bodyLanguageRows: normalizeTargetedSectionRows(targeted.body_language, { maxItems: 10, maxLength: 210 }),

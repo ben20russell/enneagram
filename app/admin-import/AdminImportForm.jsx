@@ -7,10 +7,6 @@ const API_REQUEST_TIMEOUT_MS = 90_000;
 const FINALIZE_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const UPLOAD_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const ASSIGN_REPORT_COMPLETE_SOUND_PATH = "/assign-report-complete.wav";
-const DASHBOARD_SANS_FONT_FAMILY =
-  "\"Plus Jakarta Sans\", system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif";
-const DASHBOARD_DISPLAY_FONT_FAMILY =
-  "\"Space Grotesk\", \"Plus Jakarta Sans\", system-ui, sans-serif";
 const REMEMBERED_EMAILS_STORAGE_KEY = "admin-import-remembered-emails";
 const REMEMBERED_EMAILS_LIMIT = 10;
 const EMAIL_SUGGESTIONS_DATALIST_ID = "admin-import-email-suggestions";
@@ -1185,14 +1181,13 @@ export default function AdminImportForm() {
     <div
       data-testid="admin-import-page"
       style={{
-        maxWidth: "900px",
-        margin: "0",
-        padding: "24px",
+        maxWidth: "980px",
+        margin: "0 auto",
+        padding: "20px",
         textAlign: "left",
-        fontFamily: DASHBOARD_SANS_FONT_FAMILY,
       }}
     >
-      <h1 data-testid="admin-import-title" style={{ fontFamily: DASHBOARD_DISPLAY_FONT_FAMILY }}>
+      <h1 data-testid="admin-import-title" style={{ margin: 0 }}>
         Manual Report Importer
       </h1>
       <audio
@@ -1203,7 +1198,7 @@ export default function AdminImportForm() {
         aria-hidden="true"
         style={{ display: "none" }}
       />
-      <p data-testid="admin-import-description" style={{ color: "#475569", marginTop: "8px" }}>
+      <p data-testid="admin-import-description" style={{ color: "#475569" }}>
         Use this hidden page to upload a PDF report and assign it to a specific user email.
       </p>
       {missingPublicEnvVars.length ? (

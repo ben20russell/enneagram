@@ -35,6 +35,11 @@ const SPREADSHEET_TEXT_KEYS = [
   "coachingRelationshipCopy",
 ];
 const TEAM_STAGE_KEYS = ["forming", "storming", "norming", "performing"];
+const CORE_PATTERN_BULLET_DEFINITIONS = [
+  { key: "action", label: "Typical Action Patterns" },
+  { key: "thinking", label: "Typical Thinking Patterns" },
+  { key: "feeling", label: "Typical Feeling Patterns" },
+];
 
 const DASHBOARD_COPY_CLEANUP_SYSTEM_PROMPT = `
 You clean jumbled Enneagram dashboard narrative copy during hydration.
@@ -51,6 +56,7 @@ You must:
 6. Remove heading spillover like "Development Exercise", "Exercise 1", "One-On-One - SX", "Social - SO", "Self-Preservation - SP" when they are artifacts.
 7. Return JSON only in the exact schema shape.
 8. If a field has no valid content after cleanup, return "${FALLBACK_TEXT}".
+9. For corePatternBullets, preserve exactly three rows labeled "Typical Action Patterns", "Typical Thinking Patterns", and "Typical Feeling Patterns".
 `.trim();
 
 function normalizeWhitespace(value) {
@@ -267,9 +273,36 @@ function normalizeTeamStageBreakdownInput(value) {
   };
 }
 
+function normalizeCorePatternBulletsInput(value) {
+  const safeRows = Array.isArray(value) ? value : [];
+  const byKey = new Map();
+  const byLabel = new Map();
+  safeRows.forEach((row) => {
+    if (!row || typeof row !== "object") return;
+    const key = normalizeText(row?.key, { fallback: null, maxChars: 80 });
+    const label = normalizeText(row?.label, { fallback: null, maxChars: 120 });
+    const text = normalizeText(row?.text, { fallback: null });
+    if (!text) return;
+    if (key) byKey.set(String(key).toLowerCase(), text);
+    if (label) byLabel.set(String(label).toLowerCase(), text);
+  });
+  return CORE_PATTERN_BULLET_DEFINITIONS.map((definition) => {
+    const text =
+      byKey.get(definition.key) ||
+      byLabel.get(String(definition.label).toLowerCase()) ||
+      null;
+    return {
+      key: definition.key,
+      label: definition.label,
+      text: normalizeText(text, { fallback: null }) || FALLBACK_TEXT,
+    };
+  });
+}
+
 function normalizeCleanupInput(value) {
   const safe = value && typeof value === "object" ? value : {};
   return {
+    corePatternBullets: normalizeCorePatternBulletsInput(safe?.corePatternBullets),
     strainQualitativeWriteups: normalizeStrainRowsInput(safe?.strainQualitativeWriteups),
     feedbackGuideMatrix: normalizeFeedbackGuideMatrixInput(safe?.feedbackGuideMatrix),
     overallStrainSummary: normalizeText(safe?.overallStrainSummary, { fallback: null }) || FALLBACK_TEXT,
@@ -282,6 +315,9 @@ function normalizeCleanupInput(value) {
 function hasInformativeInput(normalizedPayload) {
   if (!normalizedPayload || typeof normalizedPayload !== "object") return false;
   const rows = [];
+  rows.push(...(Array.isArray(normalizedPayload?.corePatternBullets)
+    ? normalizedPayload.corePatternBullets.map((row) => row?.text)
+    : []));
   rows.push(...(Array.isArray(normalizedPayload?.strainQualitativeWriteups)
     ? normalizedPayload.strainQualitativeWriteups.map((row) => row?.text)
     : []));
@@ -443,6 +479,7 @@ function buildOpenAiRequestPayload({ payload, detectedType, reportFileName, repo
           type: "object",
           additionalProperties: false,
           required: [
+            "corePatternBullets",
             "strainQualitativeWriteups",
             "feedbackGuideMatrix",
             "overallStrainSummary",
@@ -451,6 +488,21 @@ function buildOpenAiRequestPayload({ payload, detectedType, reportFileName, repo
             "teamStageBreakdown",
           ],
           properties: {
+            corePatternBullets: {
+              type: "array",
+              minItems: 3,
+              maxItems: 3,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["key", "label", "text"],
+                properties: {
+                  key: { type: "string", enum: CORE_PATTERN_BULLET_DEFINITIONS.map((row) => row.key) },
+                  label: { type: "string", enum: CORE_PATTERN_BULLET_DEFINITIONS.map((row) => row.label) },
+                  text: { type: "string" },
+                },
+              },
+            },
             strainQualitativeWriteups: {
               type: "array",
               minItems: 6,
@@ -656,6 +708,7 @@ export async function POST(request) {
     reportFileName,
     detectedType,
     informativeInput,
+    corePatternRows: normalizedInput.corePatternBullets.length,
     strainRows: normalizedInput.strainQualitativeWriteups.length,
     developmentExercises: normalizedInput.developmentExercises.length,
     feedbackRows: normalizedInput.feedbackGuideMatrix.length,
