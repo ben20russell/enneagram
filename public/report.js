@@ -2358,7 +2358,9 @@ function applyFallbackAssignedReportFromServerData(data) {
     insightComposite: parsedProfile?.insightComposite || null,
     feedbackGuideMatrix: Array.isArray(parsedProfile?.feedbackGuideMatrix) ? parsedProfile.feedbackGuideMatrix : [],
     strainQualitativeWriteups: Array.isArray(parsedProfile?.strainQualitativeWriteups) ? parsedProfile.strainQualitativeWriteups : [],
-    overallStrainSummary: sanitizeSnippet(parsedProfile?.overallStrainSummary, null),
+    overallStrainSummary:
+      extractOverallStrainSummaryFromLlmProfile(parsedProfile) ||
+      sanitizeSnippet(parsedProfile?.overallStrainSummary, null),
     developmentExercises: parsedDevelopmentExercises,
     spreadsheetFocuses:
       parsedProfile?.spreadsheetFocuses && typeof parsedProfile.spreadsheetFocuses === "object"
@@ -2961,19 +2963,25 @@ async function ingestAssignedReportIntoDashboard(data) {
     );
 
     const targetedOverallStrainSummary = extractOverallStrainSummaryFromTargetedSections(parsedProfile);
+    const deterministicOverallStrainSummary =
+      extractOverallStrainSummaryFromReportContent(parsedProfile) ||
+      extractOverallStrainSummaryFromPdfText(pdfText);
+    const llmOverallStrainSummary = extractOverallStrainSummaryFromLlmProfile(parsedProfile);
+    const jsOverallStrainSummaryCandidate =
+      hasOverallStrainBoundarySpillover(deterministicOverallStrainSummary) && llmOverallStrainSummary
+        ? null
+        : deterministicOverallStrainSummary;
+    if (!jsOverallStrainSummaryCandidate && deterministicOverallStrainSummary && llmOverallStrainSummary) {
+      console.log("[strain] using parsed_profile_llm overall summary to avoid deterministic spillover");
+    }
     const overallStrainSummary = hydrationAudit.resolve(
       "strainWriteupCards",
       [
         { source: "targeted_sections", value: targetedOverallStrainSummary },
-        {
-          source: "js_deterministic",
-          value:
-            extractOverallStrainSummaryFromReportContent(parsedProfile) ||
-            extractOverallStrainSummaryFromPdfText(pdfText),
-        },
-        { source: "parsed_profile_llm", value: parsedProfile?.overallStrainSummary },
+        { source: "js_deterministic", value: jsOverallStrainSummaryCandidate },
+        { source: "parsed_profile_llm", value: llmOverallStrainSummary },
       ],
-      { fallbackValue: extractOverallStrainSummaryFromPdfText(pdfText) || null },
+      { fallbackValue: llmOverallStrainSummary || extractOverallStrainSummaryFromPdfText(pdfText) || null },
     );
 
     const jsDevelopmentExercises = mergeDevelopmentExercises(
@@ -6468,7 +6476,7 @@ function summarizeOverallStrainText(rawText, options = {}) {
   }
 
   const overallSpilloverBoundary = normalized.match(
-    /\b(?:DEVELOPMENT\s*EXERCISE|Ben\s+your\s+perceived\s+level\s+of\s+(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+strain|(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+Strain)\b/i,
+    /\b(?:DEVELOPMENT\s*EXERCISE(?:S)?|Ben\s+your\s+perceived\s+level\s+of\s+(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+strain|(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+Strain)\b/i,
   );
   if (overallSpilloverBoundary?.index > 0) {
     console.log("[strain] trimming overall summary spillover boundary", {
@@ -6515,7 +6523,7 @@ function summarizeOverallStrainText(rawText, options = {}) {
       /\b(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+Strain\b[\s\S]*$/i,
       "",
     )
-    .replace(/\bDEVELOPMENT\s*EXERCISE\b[\s\S]*$/i, "")
+    .replace(/\bDEVELOPMENT\s*EXERCISE(?:S)?\b[\s\S]*$/i, "")
     .replace(/\s+/g, " ")
     .trim();
   if (!summary) return null;
@@ -6541,6 +6549,34 @@ function summarizeOverallStrainText(rawText, options = {}) {
     }
   }
   return summary;
+}
+
+function extractOverallStrainSummaryFromLlmProfile(parsedProfile) {
+  const overallFromAttachedProfile = parsedProfile?.attachedProfile?.strain_profile?.overall;
+  const overallFromAttachedProfileCamel = parsedProfile?.attachedProfile?.strainProfile?.overall;
+  const overallCandidates = [
+    parsedProfile?.overallStrainSummary,
+    parsedProfile?.strainProfile?.overall?.summary,
+    parsedProfile?.strain_profile?.overall?.summary,
+    parsedProfile?.attachedProfile?.strain_profile?.overall?.summary,
+    parsedProfile?.attachedProfile?.strainProfile?.overall?.summary,
+    typeof overallFromAttachedProfile === "string" ? overallFromAttachedProfile : null,
+    typeof overallFromAttachedProfileCamel === "string" ? overallFromAttachedProfileCamel : null,
+  ];
+
+  for (const candidate of overallCandidates) {
+    const normalizedSummary = summarizeOverallStrainText(candidate, { maxWords: 0 });
+    if (normalizedSummary) return normalizedSummary;
+  }
+  return null;
+}
+
+function hasOverallStrainBoundarySpillover(value) {
+  const normalized = normalizeExtractedText(value || "");
+  if (!normalized) return false;
+  return /\bDEVELOPMENT\s*EXERCISE(?:S)?\b|\b(?:Vocational|Environmental|Physical|Interpersonal|Psychological|Happiness)\s+Strain\b/i.test(
+    normalized,
+  );
 }
 
 function extractOverallStrainSummaryFromReportContent(parsedProfile) {

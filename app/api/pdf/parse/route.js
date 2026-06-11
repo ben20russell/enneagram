@@ -17,6 +17,83 @@ function toPositiveInteger(value) {
   return Math.floor(numeric);
 }
 
+function toNonNegativeInteger(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return Math.floor(numeric);
+}
+
+function toNonNegativeNumber(value, precision = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return Number(numeric.toFixed(precision));
+}
+
+function normalizeNoiseSeverity(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (
+    normalized === "unknown" ||
+    normalized === "minimal" ||
+    normalized === "low" ||
+    normalized === "moderate" ||
+    normalized === "high"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function deriveNoiseSeverity(controlNoisePer10kChars) {
+  if (!Number.isFinite(Number(controlNoisePer10kChars)) || Number(controlNoisePer10kChars) < 0) {
+    return "unknown";
+  }
+  const density = Number(controlNoisePer10kChars);
+  if (density < 1) return "minimal";
+  if (density < 5) return "low";
+  if (density < 20) return "moderate";
+  return "high";
+}
+
+function buildParseNoiseContract(parsed) {
+  const noiseSource =
+    parsed?.parseNoise && typeof parsed.parseNoise === "object"
+      ? parsed.parseNoise
+      : parsed?._parseDiagnostics?.noise && typeof parsed._parseDiagnostics.noise === "object"
+        ? parsed._parseDiagnostics.noise
+        : parsed?._parseDiagnostics?.verification?.noise &&
+            typeof parsed._parseDiagnostics.verification.noise === "object"
+          ? parsed._parseDiagnostics.verification.noise
+          : parsed?._parseDiagnostics?.verification?.python?.textNoise &&
+              typeof parsed._parseDiagnostics.verification.python.textNoise === "object"
+            ? parsed._parseDiagnostics.verification.python.textNoise
+            : null;
+  if (!noiseSource) return null;
+
+  const score = toNonNegativeInteger(noiseSource?.score);
+  const controlNoisePer10kChars = toNonNegativeNumber(noiseSource?.controlNoisePer10kChars, 2);
+  const severity = normalizeNoiseSeverity(noiseSource?.severity) || deriveNoiseSeverity(controlNoisePer10kChars);
+  const controlNoiseChars = toNonNegativeInteger(noiseSource?.controlNoiseChars);
+  const replacementChars = toNonNegativeInteger(noiseSource?.replacementChars);
+  const totalNoiseChars =
+    toNonNegativeInteger(noiseSource?.totalNoiseChars) ??
+    toNonNegativeInteger((controlNoiseChars || 0) + (replacementChars || 0));
+  const totalChars = toNonNegativeInteger(noiseSource?.totalChars);
+  const pagesWithControlNoise = toNonNegativeInteger(noiseSource?.pagesWithControlNoise);
+  const pageCount = toNonNegativeInteger(noiseSource?.pageCount);
+
+  return {
+    score: score == null && controlNoisePer10kChars != null ? Math.round(controlNoisePer10kChars) : score,
+    severity,
+    controlNoiseChars: controlNoiseChars ?? 0,
+    replacementChars: replacementChars ?? 0,
+    totalNoiseChars: totalNoiseChars ?? 0,
+    totalChars: totalChars ?? 0,
+    controlNoisePer10kChars: controlNoisePer10kChars ?? 0,
+    pagesWithControlNoise: pagesWithControlNoise ?? 0,
+    pageCount: pageCount ?? 0,
+  };
+}
+
 function buildParseContract(parsed) {
   const parsedPages = toPositiveInteger(
     parsed?.parseCoverage?.parsedPages ??
@@ -77,8 +154,9 @@ function buildParseContract(parsed) {
       parsed?._parseDiagnostics?.incompleteReason ??
       "",
   ).trim() || null;
+  const parseNoise = buildParseNoiseContract(parsed);
 
-  return { parseCoverage, verificationSummary, parseState, parseReason };
+  return { parseCoverage, verificationSummary, parseNoise, parseState, parseReason };
 }
 
 export async function POST(req) {
@@ -132,12 +210,13 @@ export async function POST(req) {
         : {}),
     });
     const parseStatus = parsed?._parseStatus || "complete";
-    const { parseCoverage, verificationSummary, parseState, parseReason } = buildParseContract(parsed);
+    const { parseCoverage, verificationSummary, parseNoise, parseState, parseReason } = buildParseContract(parsed);
 
     const result = {
       ...parsed,
       parseCoverage,
       verificationSummary,
+      parseNoise,
       parseState,
       parseReason,
       parsedAt: new Date().toISOString(),
@@ -154,6 +233,7 @@ export async function POST(req) {
           data: result,
           parseCoverage,
           verificationSummary,
+          parseNoise,
           parseState: parseState || "incomplete",
           parseReason: parseReason || incompleteReason,
         },
@@ -167,6 +247,7 @@ export async function POST(req) {
         data: result,
         parseCoverage,
         verificationSummary,
+        parseNoise,
         parseState: parseState || "complete",
         parseReason,
       },
@@ -190,6 +271,7 @@ export async function POST(req) {
           criticalMismatchCount: 0,
           criticalMismatchKeys: [],
         },
+        parseNoise: null,
         parseState: "failed",
         parseReason,
       },

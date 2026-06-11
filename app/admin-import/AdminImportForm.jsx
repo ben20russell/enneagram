@@ -176,6 +176,94 @@ function extractParseReason(data) {
   return value || null;
 }
 
+function normalizeNoiseSeverity(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (
+    normalized === "unknown" ||
+    normalized === "minimal" ||
+    normalized === "low" ||
+    normalized === "moderate" ||
+    normalized === "high"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function resolveNoiseSeverity(controlNoisePer10kChars) {
+  if (!Number.isFinite(Number(controlNoisePer10kChars)) || Number(controlNoisePer10kChars) < 0) {
+    return "unknown";
+  }
+  const density = Number(controlNoisePer10kChars);
+  if (density < 1) return "minimal";
+  if (density < 5) return "low";
+  if (density < 20) return "moderate";
+  return "high";
+}
+
+function toNonNegativeNumber(value, precision = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return Number(numeric.toFixed(precision));
+}
+
+function extractParseNoise(data) {
+  const noiseCandidates = [
+    data?.parseNoise,
+    data?.data?.parseNoise,
+    data?._parseDiagnostics?.noise,
+    data?.data?._parseDiagnostics?.noise,
+    data?.parsed?._parseDiagnostics?.noise,
+    data?._parseDiagnostics?.verification?.noise,
+    data?.data?._parseDiagnostics?.verification?.noise,
+    data?.parsed?._parseDiagnostics?.verification?.noise,
+    data?._parseDiagnostics?.verification?.python?.textNoise,
+    data?.data?._parseDiagnostics?.verification?.python?.textNoise,
+    data?.parsed?._parseDiagnostics?.verification?.python?.textNoise,
+  ];
+
+  for (const candidate of noiseCandidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const score = toNonNegativeInteger(candidate?.score);
+    const controlNoisePer10kChars = toNonNegativeNumber(candidate?.controlNoisePer10kChars, 2);
+    const severity =
+      normalizeNoiseSeverity(candidate?.severity) || resolveNoiseSeverity(controlNoisePer10kChars);
+    const controlNoiseChars = toNonNegativeInteger(candidate?.controlNoiseChars);
+    const replacementChars = toNonNegativeInteger(candidate?.replacementChars);
+    const totalNoiseChars =
+      toNonNegativeInteger(candidate?.totalNoiseChars) ??
+      toNonNegativeInteger((controlNoiseChars || 0) + (replacementChars || 0));
+    const totalChars = toNonNegativeInteger(candidate?.totalChars);
+    const pagesWithControlNoise = toNonNegativeInteger(candidate?.pagesWithControlNoise);
+    const pageCount = toNonNegativeInteger(candidate?.pageCount);
+
+    const hasSignal =
+      score != null ||
+      controlNoisePer10kChars != null ||
+      controlNoiseChars != null ||
+      replacementChars != null ||
+      totalNoiseChars != null ||
+      totalChars != null ||
+      pagesWithControlNoise != null ||
+      pageCount != null;
+    if (!hasSignal) continue;
+
+    return {
+      score: score == null && controlNoisePer10kChars != null ? Math.round(controlNoisePer10kChars) : score ?? 0,
+      severity,
+      controlNoiseChars: controlNoiseChars ?? 0,
+      replacementChars: replacementChars ?? 0,
+      totalNoiseChars: totalNoiseChars ?? 0,
+      totalChars: totalChars ?? 0,
+      controlNoisePer10kChars: controlNoisePer10kChars ?? 0,
+      pagesWithControlNoise: pagesWithControlNoise ?? 0,
+      pageCount: pageCount ?? 0,
+    };
+  }
+
+  return null;
+}
+
 function formatParsedPagesText(parsePages, parseTotalPages) {
   const parsePagesLabel = parsePages == null ? "?" : String(parsePages);
   const parseTotalPagesLabel = parseTotalPages == null ? "?" : String(parseTotalPages);
@@ -255,6 +343,7 @@ export default function AdminImportForm() {
   const [lastParseDurationMs, setLastParseDurationMs] = useState(null);
   const [parsePagesCount, setParsePagesCount] = useState(null);
   const [parseTotalPagesCount, setParseTotalPagesCount] = useState(null);
+  const [parseNoise, setParseNoise] = useState(null);
   const completionSoundRef = useRef(null);
   const completionSoundUnlockedRef = useRef(false);
 
@@ -395,6 +484,7 @@ export default function AdminImportForm() {
     setLastParseDurationMs(null);
     setParsePagesCount(null);
     setParseTotalPagesCount(null);
+    setParseNoise(null);
     setParseStatus("Parsing report now...");
     let parseOutcome = "failed";
     console.log("[admin-import-page] Parse timer started", {
@@ -590,7 +680,7 @@ export default function AdminImportForm() {
         console.log("[admin-import-page] Server parse attempts failed; trying PDF parse fallback", {
           reportId: normalizedReportId,
           sourceFileName: fallbackSourcePdf.name,
-          sourceFileSize: fallbackSourXTcePdf.size,
+          sourceFileSize: fallbackSourcePdf.size,
           sourceFileType: fallbackSourcePdf.type,
         });
 
@@ -697,12 +787,17 @@ export default function AdminImportForm() {
       const durationText = formatDurationText(elapsedMs);
       const { parsePages, parseTotalPages, isPageCoverageComplete } = extractParsePageProgress(data);
       const parsedPagesText = formatParsedPagesText(parsePages, parseTotalPages);
+      const detectedParseNoise = extractParseNoise(data);
       setParsePagesCount(parsePages);
       setParseTotalPagesCount(parseTotalPages);
+      setParseNoise(detectedParseNoise);
       console.log("[admin-import-page] Parse page coverage", {
         parsePages,
         parseTotalPages,
         isPageCoverageComplete,
+      });
+      console.log("[admin-import-page] Parse noise diagnostics", {
+        detectedParseNoise,
       });
 
       if (response?.ok) {
@@ -802,6 +897,7 @@ export default function AdminImportForm() {
     setLastParseDurationMs(null);
     setParsePagesCount(null);
     setParseTotalPagesCount(null);
+    setParseNoise(null);
     setIsSubmitting(true);
     setStatus("Preparing upload...");
     unlockCompletionSound();
@@ -1232,6 +1328,29 @@ export default function AdminImportForm() {
           {isParsing ? "Parsed pages:" : "Last parsed pages:"}{" "}
           {formatParsedPagesText(parsePagesCount, parseTotalPagesCount)}
           {parseTotalPagesCount > 0 && parsePagesCount >= parseTotalPagesCount ? " (complete)" : ""}
+        </p>
+      ) : null}
+
+      {parseNoise ? (
+        <p
+          data-testid="admin-import-parse-noise-indicator"
+          style={{
+            marginTop: "8px",
+            color:
+              parseNoise.severity === "high"
+                ? "#b91c1c"
+                : parseNoise.severity === "moderate"
+                  ? "#b45309"
+                  : "#334155",
+            fontWeight: 600,
+          }}
+        >
+          {isParsing ? "Current PDF noise:" : "Last PDF noise:"} {parseNoise.severity} ({parseNoise.score}/100,{" "}
+          {parseNoise.controlNoisePer10kChars} per 10k chars
+          {parseNoise.pageCount > 0
+            ? `, ${parseNoise.pagesWithControlNoise}/${parseNoise.pageCount} pages affected`
+            : ""}
+          )
         </p>
       ) : null}
 

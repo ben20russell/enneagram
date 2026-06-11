@@ -144,6 +144,81 @@ function resolveReportMinExpectedPages(fileName, fallbackMinExpectedPages) {
   });
 }
 
+function toNonNegativeInteger(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return Math.floor(numeric);
+}
+
+function toNonNegativeNumber(value, precision = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return Number(numeric.toFixed(precision));
+}
+
+function normalizeNoiseSeverity(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (
+    normalized === "unknown" ||
+    normalized === "minimal" ||
+    normalized === "low" ||
+    normalized === "moderate" ||
+    normalized === "high"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function deriveNoiseSeverity(controlNoisePer10kChars) {
+  if (!Number.isFinite(Number(controlNoisePer10kChars)) || Number(controlNoisePer10kChars) < 0) {
+    return "unknown";
+  }
+  const density = Number(controlNoisePer10kChars);
+  if (density < 1) return "minimal";
+  if (density < 5) return "low";
+  if (density < 20) return "moderate";
+  return "high";
+}
+
+function buildParseNoiseContract(diagnostics) {
+  const noiseSource =
+    diagnostics?.noise && typeof diagnostics.noise === "object"
+      ? diagnostics.noise
+      : diagnostics?.verification?.noise && typeof diagnostics.verification.noise === "object"
+        ? diagnostics.verification.noise
+        : diagnostics?.verification?.python?.textNoise &&
+            typeof diagnostics.verification.python.textNoise === "object"
+          ? diagnostics.verification.python.textNoise
+          : null;
+
+  if (!noiseSource) return null;
+
+  const score = toNonNegativeInteger(noiseSource?.score);
+  const controlNoisePer10kChars = toNonNegativeNumber(noiseSource?.controlNoisePer10kChars, 2);
+  const severity = normalizeNoiseSeverity(noiseSource?.severity) || deriveNoiseSeverity(controlNoisePer10kChars);
+  const controlNoiseChars = toNonNegativeInteger(noiseSource?.controlNoiseChars);
+  const replacementChars = toNonNegativeInteger(noiseSource?.replacementChars);
+  const totalNoiseChars =
+    toNonNegativeInteger(noiseSource?.totalNoiseChars) ??
+    toNonNegativeInteger((controlNoiseChars || 0) + (replacementChars || 0));
+  const totalChars = toNonNegativeInteger(noiseSource?.totalChars);
+  const pagesWithControlNoise = toNonNegativeInteger(noiseSource?.pagesWithControlNoise);
+  const pageCount = toNonNegativeInteger(noiseSource?.pageCount);
+
+  return {
+    score: score == null && controlNoisePer10kChars != null ? Math.round(controlNoisePer10kChars) : score,
+    severity,
+    controlNoiseChars: controlNoiseChars ?? 0,
+    replacementChars: replacementChars ?? 0,
+    totalNoiseChars: totalNoiseChars ?? 0,
+    totalChars: totalChars ?? 0,
+    controlNoisePer10kChars: controlNoisePer10kChars ?? 0,
+    pagesWithControlNoise: pagesWithControlNoise ?? 0,
+    pageCount: pageCount ?? 0,
+  };
+}
+
 function buildParseContract({ diagnostics, parseStatus, parseReason }) {
   const parsedPages = toPositiveInteger(diagnostics?.extraction?.pages ?? null);
   const detectedTotalPages = toPositiveInteger(diagnostics?.extraction?.detectedTotalPages ?? null);
@@ -165,9 +240,11 @@ function buildParseContract({ diagnostics, parseStatus, parseReason }) {
       ? diagnostics.verification.criticalMismatchKeys.filter(Boolean)
       : [],
   };
+  const parseNoise = buildParseNoiseContract(diagnostics);
   return {
     parseCoverage,
     verificationSummary,
+    parseNoise,
     parseState: parseStatus === "complete" ? "complete" : "incomplete",
     parseReason: parseReason || null,
   };
@@ -801,6 +878,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
     const {
       parseCoverage,
       verificationSummary,
+      parseNoise,
       parseState,
       parseReason: normalizedParseReason,
     } = buildParseContract({
@@ -821,6 +899,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
         parseDetectedTotalPages: nextDiagnostics?.extraction?.detectedTotalPages ?? null,
         parseCoverage,
         verificationSummary,
+        parseNoise,
         parseState,
         parseReason: normalizedParseReason,
       },
@@ -911,6 +990,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
           criticalMismatchCount: 0,
           criticalMismatchKeys: [],
         },
+        parseNoise: null,
         parseState: "failed",
         parseReason: details,
       },

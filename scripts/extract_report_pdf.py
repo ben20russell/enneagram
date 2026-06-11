@@ -19,6 +19,8 @@ OCR_WHITESPACE = r"[ \t\u00A0\u2000-\u200B\u202F\u205F\u3000]"
 OCR_INLINE_SPACING = rf"(?:{OCR_WHITESPACE}+)"
 OCR_MULTI_SPACING = rf"(?:{OCR_WHITESPACE}{{2,}})"
 OCR_WORD_GAP_MARKER = "\u0000"
+CONTROL_NOISE_PATTERN = re.compile(r"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]")
+REPLACEMENT_CHAR_PATTERN = re.compile(r"\uFFFD")
 
 
 def strip_control_noise_characters(text: str) -> str:
@@ -344,6 +346,51 @@ def normalize_trifix(value: str | None) -> str | None:
     return cleaned
 
 
+def compute_text_noise_metrics(page_texts: list[str]) -> dict[str, int | float | str]:
+    pages = page_texts if isinstance(page_texts, list) else []
+    joined_text = "\n".join(str(page or "") for page in pages)
+    total_chars = len(joined_text)
+    control_noise_chars = len(CONTROL_NOISE_PATTERN.findall(joined_text))
+    replacement_chars = len(REPLACEMENT_CHAR_PATTERN.findall(joined_text))
+    total_noise_chars = control_noise_chars + replacement_chars
+    pages_with_control_noise = 0
+
+    for page in pages:
+        page_text = str(page or "")
+        if CONTROL_NOISE_PATTERN.search(page_text) or REPLACEMENT_CHAR_PATTERN.search(page_text):
+            pages_with_control_noise += 1
+
+    if total_chars > 0:
+        control_noise_per_10k_chars = round((total_noise_chars / total_chars) * 10000, 2)
+        score = max(0, min(100, int(round(control_noise_per_10k_chars))))
+    else:
+        control_noise_per_10k_chars = 0.0
+        score = 0
+
+    if total_chars <= 0:
+        severity = "unknown"
+    elif control_noise_per_10k_chars < 1:
+        severity = "minimal"
+    elif control_noise_per_10k_chars < 5:
+        severity = "low"
+    elif control_noise_per_10k_chars < 20:
+        severity = "moderate"
+    else:
+        severity = "high"
+
+    return {
+        "score": score,
+        "severity": severity,
+        "controlNoiseChars": control_noise_chars,
+        "replacementChars": replacement_chars,
+        "totalNoiseChars": total_noise_chars,
+        "totalChars": total_chars,
+        "controlNoisePer10kChars": control_noise_per_10k_chars,
+        "pagesWithControlNoise": pages_with_control_noise,
+        "pageCount": len(pages),
+    }
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("Usage: python3 scripts/extract_report_pdf.py \"/path/to/report.pdf\"")
@@ -426,6 +473,7 @@ def main() -> int:
     )
     integration_level = title_case_level(integration_level)
     level_of_development = clean_metadata_value(level_of_development)
+    text_noise = compute_text_noise_metrics(page_texts)
 
     payload = {
         "source": "python_extract_report_pdf",
@@ -442,6 +490,7 @@ def main() -> int:
         "trifix": trifix,
         "levelOfDevelopment": level_of_development,
         "centreOfIntelligence": centre_of_intelligence,
+        "textNoise": text_noise,
         "containsMarkers": {
             "resonanceSentence": bool(
                 re.search(r"you\s+resonate\s+with\s+the\s+Enneagram\s+type\s*[1-9]\b", text, re.I)
