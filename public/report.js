@@ -100,6 +100,9 @@ const DEFAULT_EXAMPLE_REPORT_TYPE = "3";
 const CORE_PATTERN_HYDRATION_CLEANUP_ROUTE = "/api/report-hydration/core-patterns/cleanup";
 const CORE_PATTERN_HYDRATION_LLM_TIMEOUT_MS = 45_000;
 const CORE_PATTERN_HYDRATION_CACHE = new Map();
+const DASHBOARD_COPY_HYDRATION_CLEANUP_ROUTE = "/api/report-hydration/dashboard-copy/cleanup";
+const DASHBOARD_COPY_HYDRATION_LLM_TIMEOUT_MS = 75_000;
+const DASHBOARD_COPY_HYDRATION_CACHE = new Map();
 
 let assignedReportIngested = false;
 let exampleReportInitialized = false;
@@ -1182,6 +1185,733 @@ async function hydrateCorePatternBulletsWithLlmCleanup({
     });
     CORE_PATTERN_HYDRATION_CACHE.set(cacheKey, normalizedBullets);
     return normalizedBullets;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+const DASHBOARD_CLEANUP_STRAIN_CATEGORIES = [
+  "Happiness",
+  "Vocational",
+  "Interpersonal",
+  "Physical",
+  "Environmental",
+  "Psychological",
+];
+const DASHBOARD_CLEANUP_INSTINCT_GOAL_KEYS = ["selfPres", "social", "oneOnOne"];
+
+function normalizeDashboardNarrativeCleanupText(value, fallback = null) {
+  const cleaned = sanitizeSnippet(value || "", "");
+  if (!cleaned) return fallback;
+  return cleaned;
+}
+
+function normalizeDashboardNarrativeCleanupStrainRows(rows) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  return DASHBOARD_CLEANUP_STRAIN_CATEGORIES.map((category) => {
+    const matched = safeRows.find(
+      (row) => String(row?.category || "").trim().toLowerCase() === String(category).toLowerCase(),
+    );
+    const text = normalizeDashboardNarrativeCleanupText(matched?.text, null);
+    return {
+      category,
+      text: text || "Not detected in assigned PDF.",
+    };
+  });
+}
+
+function normalizeDashboardNarrativeCleanupDevelopmentExercises(rows, maxItems = 12) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const normalizedRows = [];
+  const seen = new Set();
+  const safeMaxItems = Number.isFinite(Number(maxItems)) ? Math.max(1, Number(maxItems)) : 12;
+
+  for (const row of safeRows) {
+    const text = normalizeDashboardNarrativeCleanupText(row?.text ?? row, null);
+    if (!text || isMissingExtractedText(text)) continue;
+    const key = normalizeExtractedText(text).toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    normalizedRows.push({
+      title: normalizeDashboardNarrativeCleanupText(row?.title, null) || `Exercise ${normalizedRows.length + 1}`,
+      text,
+    });
+    if (normalizedRows.length >= safeMaxItems) break;
+  }
+
+  if (!normalizedRows.length) {
+    return [{ title: "Exercise 1", text: "Not detected in assigned PDF." }];
+  }
+  return normalizedRows;
+}
+
+function normalizeDashboardNarrativeCleanupSpreadsheetFocuses(value) {
+  const safe = value && typeof value === "object" ? value : {};
+  const instinctGoals = safe?.instinctGoals && typeof safe.instinctGoals === "object" ? safe.instinctGoals : {};
+  const normalizedInstinctGoals = {
+    selfPres:
+      normalizeDashboardNarrativeCleanupText(instinctGoals?.selfPres, null) || "Not detected in assigned PDF.",
+    social:
+      normalizeDashboardNarrativeCleanupText(instinctGoals?.social, null) || "Not detected in assigned PDF.",
+    oneOnOne:
+      normalizeDashboardNarrativeCleanupText(instinctGoals?.oneOnOne, null) || "Not detected in assigned PDF.",
+  };
+
+  const developingAsCopy =
+    normalizeDashboardNarrativeCleanupText(safe?.developingAsCopy, null) || "Not detected in assigned PDF.";
+  const developingAsBullets = Array.from(
+    new Set(
+      (Array.isArray(safe?.developingAsBullets) ? safe.developingAsBullets : [])
+        .map((row) => normalizeDashboardNarrativeCleanupText(row, null))
+        .filter(Boolean)
+        .filter((row) => !isMissingExtractedText(row)),
+    ),
+  ).slice(0, 12);
+  const bodyLanguageRows = Array.from(
+    new Set(
+      (Array.isArray(safe?.bodyLanguageRows) ? safe.bodyLanguageRows : [])
+        .map((row) => normalizeDashboardNarrativeCleanupText(row, null))
+        .filter(Boolean)
+        .filter((row) => !isMissingExtractedText(row)),
+    ),
+  ).slice(0, 10);
+  const conflictTriggeredBullets = Array.from(
+    new Set(
+      (Array.isArray(safe?.conflictTriggeredBullets) ? safe.conflictTriggeredBullets : [])
+        .map((row) => normalizeDashboardNarrativeCleanupText(row, null))
+        .filter(Boolean)
+        .filter((row) => !isMissingExtractedText(row)),
+    ),
+  ).slice(0, 16);
+
+  return {
+    motivationSummary:
+      normalizeDashboardNarrativeCleanupText(safe?.motivationSummary, null) || "Not detected in assigned PDF.",
+    instinctGoals: normalizedInstinctGoals,
+    developingAsCopy,
+    developingAsBullets: developingAsBullets.length ? developingAsBullets : [developingAsCopy],
+    bodyLanguageRows: bodyLanguageRows.length ? bodyLanguageRows : ["Not detected in assigned PDF."],
+    conflictResponseCopy:
+      normalizeDashboardNarrativeCleanupText(safe?.conflictResponseCopy, null) || "Not detected in assigned PDF.",
+    conflictTriggeredCopy:
+      normalizeDashboardNarrativeCleanupText(safe?.conflictTriggeredCopy, null) || "Not detected in assigned PDF.",
+    conflictTriggeredBullets: conflictTriggeredBullets.length
+      ? conflictTriggeredBullets
+      : ["Not detected in assigned PDF."],
+    centeredDecisionCopy:
+      normalizeDashboardNarrativeCleanupText(safe?.centeredDecisionCopy, null) || "Not detected in assigned PDF.",
+    decisionImpactCopy:
+      normalizeDashboardNarrativeCleanupText(safe?.decisionImpactCopy, null) || "Not detected in assigned PDF.",
+    decisionStrainCopy:
+      normalizeDashboardNarrativeCleanupText(safe?.decisionStrainCopy, null) || "Not detected in assigned PDF.",
+    strategicLeadershipCopy:
+      normalizeDashboardNarrativeCleanupText(safe?.strategicLeadershipCopy, null) || "Not detected in assigned PDF.",
+    teamImpactCopy:
+      normalizeDashboardNarrativeCleanupText(safe?.teamImpactCopy, null) || "Not detected in assigned PDF.",
+    interdependenceCopy:
+      normalizeDashboardNarrativeCleanupText(safe?.interdependenceCopy, null) || "Not detected in assigned PDF.",
+    coachingRelationshipCopy:
+      normalizeDashboardNarrativeCleanupText(safe?.coachingRelationshipCopy, null) || "Not detected in assigned PDF.",
+  };
+}
+
+function normalizeDashboardNarrativeCleanupFeedbackRows(rows, maxItems = 9) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const output = [];
+  const safeMaxItems = Number.isFinite(Number(maxItems)) ? Math.max(1, Number(maxItems)) : 9;
+  for (const row of safeRows) {
+    const type = normalizeDashboardNarrativeCleanupText(row?.type, null) || `Type ${output.length + 1}`;
+    const label = normalizeDashboardNarrativeCleanupText(row?.label, null) || "";
+    const guidance =
+      normalizeDashboardNarrativeCleanupText(row?.guidance, null) || "Not detected in assigned PDF.";
+    output.push({ type, label, guidance });
+    if (output.length >= safeMaxItems) break;
+  }
+  if (!output.length) {
+    return Array.from({ length: 9 }, (_, index) => ({
+      type: `Type ${index + 1}`,
+      label: "",
+      guidance: "Not detected in assigned PDF.",
+    }));
+  }
+  return output;
+}
+
+function normalizeDashboardNarrativeCleanupTeamStageBreakdown(value) {
+  const safe = value && typeof value === "object" ? value : {};
+  return {
+    forming: normalizeDashboardNarrativeCleanupText(safe?.forming, null) || "Not detected in assigned PDF.",
+    storming: normalizeDashboardNarrativeCleanupText(safe?.storming, null) || "Not detected in assigned PDF.",
+    norming: normalizeDashboardNarrativeCleanupText(safe?.norming, null) || "Not detected in assigned PDF.",
+    performing: normalizeDashboardNarrativeCleanupText(safe?.performing, null) || "Not detected in assigned PDF.",
+  };
+}
+
+function normalizeDashboardNarrativeCleanupInput(payload) {
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  return {
+    strainQualitativeWriteups: normalizeDashboardNarrativeCleanupStrainRows(
+      safePayload?.strainQualitativeWriteups,
+    ),
+    developmentExercises: normalizeDashboardNarrativeCleanupDevelopmentExercises(
+      safePayload?.developmentExercises,
+      12,
+    ),
+    feedbackGuideMatrix: normalizeDashboardNarrativeCleanupFeedbackRows(
+      safePayload?.feedbackGuideMatrix,
+      9,
+    ),
+    overallStrainSummary:
+      normalizeDashboardNarrativeCleanupText(safePayload?.overallStrainSummary, null) ||
+      "Not detected in assigned PDF.",
+    spreadsheetFocuses: normalizeDashboardNarrativeCleanupSpreadsheetFocuses(
+      safePayload?.spreadsheetFocuses,
+    ),
+    teamStageBreakdown: normalizeDashboardNarrativeCleanupTeamStageBreakdown(
+      safePayload?.teamStageBreakdown,
+    ),
+  };
+}
+
+function hasDashboardInstinctGoalHeadingLeak(fieldKey, value) {
+  const key = String(fieldKey || "").trim().toLowerCase();
+  if (!key) return false;
+  const text = String(value || "");
+  if (!text) return false;
+
+  const hasOneOnOneHeading = /\bOne(?:-| )On(?:-| )One\s*-\s*SX\b/i.test(text);
+  const hasSocialHeading = /\bSocial\s*-\s*SO\b/i.test(text);
+  const hasSelfPresHeading = /\bSelf(?:-| )Preservation\s*-\s*SP\b/i.test(text);
+  const headingCount = [hasOneOnOneHeading, hasSocialHeading, hasSelfPresHeading].filter(Boolean).length;
+
+  if (key === "social") return hasOneOnOneHeading || hasSelfPresHeading || headingCount > 1;
+  if (key === "oneonone") return hasSocialHeading || hasSelfPresHeading || headingCount > 1;
+  if (key === "selfpres") return hasOneOnOneHeading || hasSocialHeading || headingCount > 1;
+  return false;
+}
+
+function dashboardNarrativeHasCleanupArtifacts(value, options = {}) {
+  const fieldKey = String(options?.fieldKey || "").trim();
+  const source = String(value || "");
+  const cleaned = normalizeDashboardNarrativeCleanupText(source, "");
+  if (!cleaned || isMissingExtractedText(cleaned)) return false;
+
+  if (/[≡]/.test(source)) return true;
+  if (hasDashboardInstinctGoalHeadingLeak(fieldKey, cleaned)) return true;
+  if (/\b(?:Development\s*Exercise|Developing\s+As)\b/i.test(cleaned)) return true;
+  if (/\bExercise\s*\d+\b/i.test(cleaned) && cleaned.split(/\s+/).filter(Boolean).length >= 10) return true;
+  if (/\b(?:SO|SP|SX)\s*[—-]?\s*[1-9]\b/i.test(cleaned)) return true;
+  if (/\b[a-z]{2,}(?:and|then|with|from|into|your|you|them|this|that|when|while|over|under|about|before|after|every|other|feel|move|work|take|make)[a-z]{2,}\b/i.test(cleaned)) {
+    return true;
+  }
+  if (/\b[A-Za-z]{24,}\b/.test(cleaned)) return true;
+  return false;
+}
+
+function shouldRequestDashboardNarrativesCleanup(payload) {
+  const normalized = normalizeDashboardNarrativeCleanupInput(payload);
+  const candidates = [
+    ...normalized.strainQualitativeWriteups.map((row) => ({
+      fieldKey: `strain:${String(row?.category || "").toLowerCase()}`,
+      text: row?.text,
+    })),
+    ...normalized.developmentExercises.map((row, index) => ({
+      fieldKey: `exercise:${index + 1}`,
+      text: row?.text,
+    })),
+    ...normalized.feedbackGuideMatrix.map((row, index) => ({
+      fieldKey: `feedback:${index + 1}`,
+      text: row?.guidance,
+    })),
+    {
+      fieldKey: "overallStrainSummary",
+      text: normalized.overallStrainSummary,
+    },
+    {
+      fieldKey: "motivationSummary",
+      text: normalized.spreadsheetFocuses?.motivationSummary,
+    },
+    {
+      fieldKey: "developingAsCopy",
+      text: normalized.spreadsheetFocuses?.developingAsCopy,
+    },
+    ...((Array.isArray(normalized.spreadsheetFocuses?.bodyLanguageRows)
+      ? normalized.spreadsheetFocuses.bodyLanguageRows
+      : []
+    ).map((row, index) => ({ fieldKey: `bodyLanguageRows:${index + 1}`, text: row }))),
+    {
+      fieldKey: "conflictResponseCopy",
+      text: normalized.spreadsheetFocuses?.conflictResponseCopy,
+    },
+    {
+      fieldKey: "conflictTriggeredCopy",
+      text: normalized.spreadsheetFocuses?.conflictTriggeredCopy,
+    },
+    ...((Array.isArray(normalized.spreadsheetFocuses?.conflictTriggeredBullets)
+      ? normalized.spreadsheetFocuses.conflictTriggeredBullets
+      : []
+    ).map((row, index) => ({ fieldKey: `conflictTriggeredBullets:${index + 1}`, text: row }))),
+    {
+      fieldKey: "centeredDecisionCopy",
+      text: normalized.spreadsheetFocuses?.centeredDecisionCopy,
+    },
+    {
+      fieldKey: "decisionImpactCopy",
+      text: normalized.spreadsheetFocuses?.decisionImpactCopy,
+    },
+    {
+      fieldKey: "decisionStrainCopy",
+      text: normalized.spreadsheetFocuses?.decisionStrainCopy,
+    },
+    {
+      fieldKey: "strategicLeadershipCopy",
+      text: normalized.spreadsheetFocuses?.strategicLeadershipCopy,
+    },
+    {
+      fieldKey: "teamImpactCopy",
+      text: normalized.spreadsheetFocuses?.teamImpactCopy,
+    },
+    {
+      fieldKey: "interdependenceCopy",
+      text: normalized.spreadsheetFocuses?.interdependenceCopy,
+    },
+    {
+      fieldKey: "coachingRelationshipCopy",
+      text: normalized.spreadsheetFocuses?.coachingRelationshipCopy,
+    },
+    ...((Array.isArray(normalized.spreadsheetFocuses?.developingAsBullets)
+      ? normalized.spreadsheetFocuses.developingAsBullets
+    : []
+    ).map((row, index) => ({ fieldKey: `developingAsBullets:${index + 1}`, text: row }))),
+    ...DASHBOARD_CLEANUP_INSTINCT_GOAL_KEYS.map((key) => ({
+      fieldKey: key,
+      text: normalized.spreadsheetFocuses?.instinctGoals?.[key],
+    })),
+    {
+      fieldKey: "teamStageForming",
+      text: normalized.teamStageBreakdown?.forming,
+    },
+    {
+      fieldKey: "teamStageStorming",
+      text: normalized.teamStageBreakdown?.storming,
+    },
+    {
+      fieldKey: "teamStageNorming",
+      text: normalized.teamStageBreakdown?.norming,
+    },
+    {
+      fieldKey: "teamStagePerforming",
+      text: normalized.teamStageBreakdown?.performing,
+    },
+  ];
+  const informativeCandidates = candidates.filter(
+    (candidate) => candidate?.text && !isMissingExtractedText(candidate.text),
+  );
+  if (!informativeCandidates.length) return false;
+  return true;
+}
+
+function buildDashboardNarrativesCleanupCacheKey({
+  strainQualitativeWriteups,
+  feedbackGuideMatrix,
+  overallStrainSummary,
+  developmentExercises,
+  spreadsheetFocuses,
+  teamStageBreakdown,
+  detectedType,
+  reportFileName,
+  reportId,
+}) {
+  const normalized = normalizeDashboardNarrativeCleanupInput({
+    strainQualitativeWriteups,
+    feedbackGuideMatrix,
+    overallStrainSummary,
+    developmentExercises,
+    spreadsheetFocuses,
+    teamStageBreakdown,
+  });
+  return JSON.stringify({
+    detectedType: String(detectedType || ""),
+    reportFileName: String(reportFileName || ""),
+    reportId: String(reportId || ""),
+    payload: normalized,
+  });
+}
+
+function mergeDashboardNarrativeCleanupPayload(preferredPayload, fallbackPayload) {
+  const preferred = normalizeDashboardNarrativeCleanupInput(preferredPayload);
+  const fallback = normalizeDashboardNarrativeCleanupInput(fallbackPayload);
+
+  const strainQualitativeWriteups = DASHBOARD_CLEANUP_STRAIN_CATEGORIES.map((category) => {
+    const preferredRow = preferred.strainQualitativeWriteups.find(
+      (row) => String(row?.category || "").toLowerCase() === String(category).toLowerCase(),
+    );
+    const fallbackRow = fallback.strainQualitativeWriteups.find(
+      (row) => String(row?.category || "").toLowerCase() === String(category).toLowerCase(),
+    );
+    const preferredText = normalizeDashboardNarrativeCleanupText(preferredRow?.text, null);
+    const fallbackText = normalizeDashboardNarrativeCleanupText(fallbackRow?.text, null);
+    const resolvedText =
+      (preferredText && !isMissingExtractedText(preferredText) ? preferredText : null) ||
+      (fallbackText && !isMissingExtractedText(fallbackText) ? fallbackText : null) ||
+      "Not detected in assigned PDF.";
+    return { category, text: resolvedText };
+  });
+
+  const mergedDevelopmentRows = [];
+  const developmentLength = Math.max(
+    preferred.developmentExercises.length,
+    fallback.developmentExercises.length,
+    1,
+  );
+  for (let index = 0; index < developmentLength; index += 1) {
+    const preferredRow = preferred.developmentExercises[index] || null;
+    const fallbackRow = fallback.developmentExercises[index] || null;
+    const preferredText = normalizeDashboardNarrativeCleanupText(preferredRow?.text, null);
+    const fallbackText = normalizeDashboardNarrativeCleanupText(fallbackRow?.text, null);
+    const resolvedText =
+      (preferredText && !isMissingExtractedText(preferredText) ? preferredText : null) ||
+      (fallbackText && !isMissingExtractedText(fallbackText) ? fallbackText : null) ||
+      "Not detected in assigned PDF.";
+    mergedDevelopmentRows.push({
+      title:
+        normalizeDashboardNarrativeCleanupText(preferredRow?.title, null) ||
+        normalizeDashboardNarrativeCleanupText(fallbackRow?.title, null) ||
+        `Exercise ${index + 1}`,
+      text: resolvedText,
+    });
+  }
+  const developmentExercises = normalizeDevelopmentExerciseRows(mergedDevelopmentRows, 12);
+
+  const mergeInstinctGoal = (key) => {
+    const preferredText = normalizeDashboardNarrativeCleanupText(
+      preferred.spreadsheetFocuses?.instinctGoals?.[key],
+      null,
+    );
+    const fallbackText = normalizeDashboardNarrativeCleanupText(
+      fallback.spreadsheetFocuses?.instinctGoals?.[key],
+      null,
+    );
+    return (
+      (preferredText && !isMissingExtractedText(preferredText) ? preferredText : null) ||
+      (fallbackText && !isMissingExtractedText(fallbackText) ? fallbackText : null) ||
+      "Not detected in assigned PDF."
+    );
+  };
+
+  const preferredDevelopingAsCopy = normalizeDashboardNarrativeCleanupText(
+    preferred.spreadsheetFocuses?.developingAsCopy,
+    null,
+  );
+  const fallbackDevelopingAsCopy = normalizeDashboardNarrativeCleanupText(
+    fallback.spreadsheetFocuses?.developingAsCopy,
+    null,
+  );
+  const developingAsCopy =
+    (preferredDevelopingAsCopy && !isMissingExtractedText(preferredDevelopingAsCopy)
+      ? preferredDevelopingAsCopy
+      : null) ||
+    (fallbackDevelopingAsCopy && !isMissingExtractedText(fallbackDevelopingAsCopy)
+      ? fallbackDevelopingAsCopy
+      : null) ||
+    "Not detected in assigned PDF.";
+
+  const preferredBullets = Array.from(
+    new Set(
+      (Array.isArray(preferred.spreadsheetFocuses?.developingAsBullets)
+        ? preferred.spreadsheetFocuses.developingAsBullets
+        : []
+      )
+        .map((row) => normalizeDashboardNarrativeCleanupText(row, null))
+        .filter(Boolean)
+        .filter((row) => !isMissingExtractedText(row)),
+    ),
+  ).slice(0, 12);
+  const fallbackBullets = Array.from(
+    new Set(
+      (Array.isArray(fallback.spreadsheetFocuses?.developingAsBullets)
+        ? fallback.spreadsheetFocuses.developingAsBullets
+        : []
+      )
+        .map((row) => normalizeDashboardNarrativeCleanupText(row, null))
+        .filter(Boolean)
+        .filter((row) => !isMissingExtractedText(row)),
+    ),
+  ).slice(0, 12);
+  let developingAsBullets = preferredBullets.length ? preferredBullets : fallbackBullets;
+  if (!developingAsBullets.length) {
+    developingAsBullets = extractNarrativeBulletItems(developingAsCopy, 12)
+      .map((row) => normalizeDashboardNarrativeCleanupText(row, null))
+      .filter(Boolean)
+      .filter((row) => !isMissingExtractedText(row))
+      .slice(0, 12);
+  }
+  if (!developingAsBullets.length) {
+    developingAsBullets = ["Not detected in assigned PDF."];
+  }
+
+  const mergeSimpleTextField = (path) => {
+    const preferredText = normalizeDashboardNarrativeCleanupText(
+      preferred?.spreadsheetFocuses?.[path],
+      null,
+    );
+    const fallbackText = normalizeDashboardNarrativeCleanupText(
+      fallback?.spreadsheetFocuses?.[path],
+      null,
+    );
+    return (
+      (preferredText && !isMissingExtractedText(preferredText) ? preferredText : null) ||
+      (fallbackText && !isMissingExtractedText(fallbackText) ? fallbackText : null) ||
+      "Not detected in assigned PDF."
+    );
+  };
+
+  const mergeSimpleTopLevelTextField = (key) => {
+    const preferredText = normalizeDashboardNarrativeCleanupText(preferred?.[key], null);
+    const fallbackText = normalizeDashboardNarrativeCleanupText(fallback?.[key], null);
+    return (
+      (preferredText && !isMissingExtractedText(preferredText) ? preferredText : null) ||
+      (fallbackText && !isMissingExtractedText(fallbackText) ? fallbackText : null) ||
+      "Not detected in assigned PDF."
+    );
+  };
+
+  const bodyLanguageRows = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(preferred.spreadsheetFocuses?.bodyLanguageRows)
+          ? preferred.spreadsheetFocuses.bodyLanguageRows
+          : []),
+        ...(Array.isArray(fallback.spreadsheetFocuses?.bodyLanguageRows)
+          ? fallback.spreadsheetFocuses.bodyLanguageRows
+          : []),
+      ]
+        .map((row) => normalizeDashboardNarrativeCleanupText(row, null))
+        .filter(Boolean)
+        .filter((row) => !isMissingExtractedText(row)),
+    ),
+  ).slice(0, 10);
+
+  const conflictTriggeredBullets = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(preferred.spreadsheetFocuses?.conflictTriggeredBullets)
+          ? preferred.spreadsheetFocuses.conflictTriggeredBullets
+          : []),
+        ...(Array.isArray(fallback.spreadsheetFocuses?.conflictTriggeredBullets)
+          ? fallback.spreadsheetFocuses.conflictTriggeredBullets
+          : []),
+      ]
+        .map((row) => normalizeDashboardNarrativeCleanupText(row, null))
+        .filter(Boolean)
+        .filter((row) => !isMissingExtractedText(row)),
+    ),
+  ).slice(0, 16);
+
+  const feedbackGuideMatrix = normalizeDashboardNarrativeCleanupFeedbackRows(
+    preferred.feedbackGuideMatrix.length ? preferred.feedbackGuideMatrix : fallback.feedbackGuideMatrix,
+    9,
+  );
+
+  const teamStageBreakdown = {
+    forming: (
+      (normalizeDashboardNarrativeCleanupText(preferred?.teamStageBreakdown?.forming, null) &&
+      !isMissingExtractedText(preferred?.teamStageBreakdown?.forming)
+        ? normalizeDashboardNarrativeCleanupText(preferred?.teamStageBreakdown?.forming, null)
+        : null) ||
+      (normalizeDashboardNarrativeCleanupText(fallback?.teamStageBreakdown?.forming, null) &&
+      !isMissingExtractedText(fallback?.teamStageBreakdown?.forming)
+        ? normalizeDashboardNarrativeCleanupText(fallback?.teamStageBreakdown?.forming, null)
+        : null) ||
+      "Not detected in assigned PDF."
+    ),
+    storming: (
+      (normalizeDashboardNarrativeCleanupText(preferred?.teamStageBreakdown?.storming, null) &&
+      !isMissingExtractedText(preferred?.teamStageBreakdown?.storming)
+        ? normalizeDashboardNarrativeCleanupText(preferred?.teamStageBreakdown?.storming, null)
+        : null) ||
+      (normalizeDashboardNarrativeCleanupText(fallback?.teamStageBreakdown?.storming, null) &&
+      !isMissingExtractedText(fallback?.teamStageBreakdown?.storming)
+        ? normalizeDashboardNarrativeCleanupText(fallback?.teamStageBreakdown?.storming, null)
+        : null) ||
+      "Not detected in assigned PDF."
+    ),
+    norming: (
+      (normalizeDashboardNarrativeCleanupText(preferred?.teamStageBreakdown?.norming, null) &&
+      !isMissingExtractedText(preferred?.teamStageBreakdown?.norming)
+        ? normalizeDashboardNarrativeCleanupText(preferred?.teamStageBreakdown?.norming, null)
+        : null) ||
+      (normalizeDashboardNarrativeCleanupText(fallback?.teamStageBreakdown?.norming, null) &&
+      !isMissingExtractedText(fallback?.teamStageBreakdown?.norming)
+        ? normalizeDashboardNarrativeCleanupText(fallback?.teamStageBreakdown?.norming, null)
+        : null) ||
+      "Not detected in assigned PDF."
+    ),
+    performing: (
+      (normalizeDashboardNarrativeCleanupText(preferred?.teamStageBreakdown?.performing, null) &&
+      !isMissingExtractedText(preferred?.teamStageBreakdown?.performing)
+        ? normalizeDashboardNarrativeCleanupText(preferred?.teamStageBreakdown?.performing, null)
+        : null) ||
+      (normalizeDashboardNarrativeCleanupText(fallback?.teamStageBreakdown?.performing, null) &&
+      !isMissingExtractedText(fallback?.teamStageBreakdown?.performing)
+        ? normalizeDashboardNarrativeCleanupText(fallback?.teamStageBreakdown?.performing, null)
+        : null) ||
+      "Not detected in assigned PDF."
+    ),
+  };
+
+  return {
+    strainQualitativeWriteups,
+    feedbackGuideMatrix,
+    overallStrainSummary: mergeSimpleTopLevelTextField("overallStrainSummary"),
+    developmentExercises: developmentExercises.length
+      ? developmentExercises
+      : [{ title: "Exercise 1", text: "Not detected in assigned PDF." }],
+    spreadsheetFocuses: {
+      motivationSummary: mergeSimpleTextField("motivationSummary"),
+      instinctGoals: {
+        selfPres: mergeInstinctGoal("selfPres"),
+        social: mergeInstinctGoal("social"),
+        oneOnOne: mergeInstinctGoal("oneOnOne"),
+      },
+      developingAsCopy,
+      developingAsBullets,
+      bodyLanguageRows: bodyLanguageRows.length ? bodyLanguageRows : ["Not detected in assigned PDF."],
+      conflictResponseCopy: mergeSimpleTextField("conflictResponseCopy"),
+      conflictTriggeredCopy: mergeSimpleTextField("conflictTriggeredCopy"),
+      conflictTriggeredBullets: conflictTriggeredBullets.length
+        ? conflictTriggeredBullets
+        : ["Not detected in assigned PDF."],
+      centeredDecisionCopy: mergeSimpleTextField("centeredDecisionCopy"),
+      decisionImpactCopy: mergeSimpleTextField("decisionImpactCopy"),
+      decisionStrainCopy: mergeSimpleTextField("decisionStrainCopy"),
+      strategicLeadershipCopy: mergeSimpleTextField("strategicLeadershipCopy"),
+      teamImpactCopy: mergeSimpleTextField("teamImpactCopy"),
+      interdependenceCopy: mergeSimpleTextField("interdependenceCopy"),
+      coachingRelationshipCopy: mergeSimpleTextField("coachingRelationshipCopy"),
+    },
+    teamStageBreakdown,
+  };
+}
+
+function resolveDashboardNarrativeCleanupPayload(value) {
+  return normalizeDashboardNarrativeCleanupInput(value);
+}
+
+async function hydrateDashboardNarrativesWithLlmCleanup({
+  strainQualitativeWriteups,
+  feedbackGuideMatrix,
+  overallStrainSummary,
+  developmentExercises,
+  spreadsheetFocuses,
+  teamStageBreakdown,
+  detectedType,
+  reportFileName,
+  reportId,
+  ingestionToken,
+}) {
+  const normalizedPayload = normalizeDashboardNarrativeCleanupInput({
+    strainQualitativeWriteups,
+    feedbackGuideMatrix,
+    overallStrainSummary,
+    developmentExercises,
+    spreadsheetFocuses,
+    teamStageBreakdown,
+  });
+  const shouldCleanup = shouldRequestDashboardNarrativesCleanup(normalizedPayload);
+  if (!shouldCleanup) {
+    return normalizedPayload;
+  }
+  if (typeof fetch !== "function") return normalizedPayload;
+
+  const cacheKey = buildDashboardNarrativesCleanupCacheKey({
+    strainQualitativeWriteups: normalizedPayload.strainQualitativeWriteups,
+    feedbackGuideMatrix: normalizedPayload.feedbackGuideMatrix,
+    overallStrainSummary: normalizedPayload.overallStrainSummary,
+    developmentExercises: normalizedPayload.developmentExercises,
+    spreadsheetFocuses: normalizedPayload.spreadsheetFocuses,
+    teamStageBreakdown: normalizedPayload.teamStageBreakdown,
+    detectedType,
+    reportFileName,
+    reportId,
+  });
+  if (DASHBOARD_COPY_HYDRATION_CACHE.has(cacheKey)) {
+    console.log("[report-ingest] Reusing cached dashboard narrative LLM cleanup result", {
+      ingestionToken,
+      reportId: reportId || null,
+      reportFileName: reportFileName || null,
+    });
+    return mergeDashboardNarrativeCleanupPayload(
+      DASHBOARD_COPY_HYDRATION_CACHE.get(cacheKey),
+      normalizedPayload,
+    );
+  }
+
+  const requestBody = {
+    detectedType: detectedType || null,
+    reportFileName: reportFileName || null,
+    reportId: reportId || null,
+    ...normalizedPayload,
+  };
+
+  const abortController = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    abortController.abort(new Error("dashboard narrative llm cleanup timeout"));
+  }, DASHBOARD_COPY_HYDRATION_LLM_TIMEOUT_MS);
+
+  try {
+    console.log("[report-ingest] Running dashboard narrative LLM hydration cleanup", {
+      ingestionToken,
+      detectedType: detectedType || null,
+      reportId: reportId || null,
+      reportFileName: reportFileName || null,
+      route: DASHBOARD_COPY_HYDRATION_CLEANUP_ROUTE,
+    });
+    const response = await fetch(DASHBOARD_COPY_HYDRATION_CLEANUP_ROUTE, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      cache: "no-store",
+      body: JSON.stringify(requestBody),
+      signal: abortController.signal,
+    });
+    if (!response.ok) {
+      const failureText = await response.text().catch(() => "");
+      console.log("[report-ingest] Dashboard narrative LLM cleanup route failed", {
+        ingestionToken,
+        status: response.status,
+        statusText: response.statusText,
+        responseTextPreview: String(failureText || "").slice(0, 400),
+      });
+      DASHBOARD_COPY_HYDRATION_CACHE.set(cacheKey, normalizedPayload);
+      return normalizedPayload;
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    const cleanedPayload = resolveDashboardNarrativeCleanupPayload(payload);
+    const mergedPayload = mergeDashboardNarrativeCleanupPayload(cleanedPayload, normalizedPayload);
+    DASHBOARD_COPY_HYDRATION_CACHE.set(cacheKey, mergedPayload);
+    console.log("[report-ingest] Dashboard narrative LLM hydration cleanup complete", {
+      ingestionToken,
+      reportId: reportId || null,
+      reportFileName: reportFileName || null,
+      usedFallback: payload?.success === false,
+      model: payload?.model || null,
+    });
+    return mergedPayload;
+  } catch (error) {
+    console.log("[report-ingest] Dashboard narrative LLM cleanup request failed; using deterministic copy", {
+      ingestionToken,
+      reportId: reportId || null,
+      reportFileName: reportFileName || null,
+      details: String(error?.message || "Unknown dashboard narrative cleanup error"),
+      stack: error?.stack,
+    });
+    DASHBOARD_COPY_HYDRATION_CACHE.set(cacheKey, normalizedPayload);
+    return normalizedPayload;
   } finally {
     window.clearTimeout(timeoutId);
   }
@@ -3155,7 +3885,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       jsStrainRows,
       strainCategories,
     );
-    const strainQualitativeWriteups = mergeCategoryWriteups(
+    let strainQualitativeWriteups = mergeCategoryWriteups(
       strainDeterministicRows,
       parsedProfileStrainRows,
       strainCategories,
@@ -3182,7 +3912,7 @@ async function ingestAssignedReportIntoDashboard(data) {
     if (!jsOverallStrainSummaryCandidate && deterministicOverallStrainSummary && llmOverallStrainSummary) {
       console.log("[strain] using parsed_profile_llm overall summary to avoid deterministic spillover");
     }
-    const overallStrainSummary = hydrationAudit.resolve(
+    let overallStrainSummary = hydrationAudit.resolve(
       "strainWriteupCards",
       [
         { source: "targeted_sections", value: targetedOverallStrainSummary },
@@ -3200,7 +3930,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       targetedDevelopmentExercises,
       jsDevelopmentExercises,
     );
-    const developmentExercises = mergeDevelopmentExercises(
+    let developmentExercises = mergeDevelopmentExercises(
       developmentExercisesDeterministic,
       parsedProfileDevelopmentExercises,
     );
@@ -3223,7 +3953,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       targetedSpreadsheetFocuses,
       jsSpreadsheetFocuses,
     );
-    const spreadsheetFocuses = mergeSpreadsheetSectionFocuses(
+    let spreadsheetFocuses = mergeSpreadsheetSectionFocuses(
       spreadsheetFocusesDeterministic,
       parsedProfile?.spreadsheetFocuses,
     );
@@ -3263,6 +3993,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       ],
       spreadsheetFocuses?.coachingRelationshipCopy,
     );
+    let resolvedFeedbackGuideMatrix = feedbackGuideMatrix;
 
     const targetedTeamStageBreakdown = extractTeamStageBreakdownFromTargetedSections(parsedProfile);
     const jsTeamStageBreakdown = mergeTeamStageBreakdown(
@@ -3273,7 +4004,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       targetedTeamStageBreakdown,
       jsTeamStageBreakdown,
     );
-    const teamStageBreakdown = mergeTeamStageBreakdown(
+    let teamStageBreakdown = mergeTeamStageBreakdown(
       teamStageDeterministicBreakdown,
       parsedProfile?.teamStageBreakdown,
     );
@@ -3314,10 +4045,65 @@ async function ingestAssignedReportIntoDashboard(data) {
       teamStageBreakdown?.performing,
     );
 
+    const narrativeCleanupPayload = await hydrateDashboardNarrativesWithLlmCleanup({
+      strainQualitativeWriteups,
+      feedbackGuideMatrix: resolvedFeedbackGuideMatrix,
+      overallStrainSummary,
+      developmentExercises,
+      spreadsheetFocuses,
+      teamStageBreakdown,
+      detectedType,
+      reportFileName: data?.reportFileName || null,
+      reportId: data?.id || null,
+      ingestionToken,
+    });
+    resolvedFeedbackGuideMatrix = Array.isArray(narrativeCleanupPayload?.feedbackGuideMatrix)
+      ? narrativeCleanupPayload.feedbackGuideMatrix
+      : resolvedFeedbackGuideMatrix;
+    strainQualitativeWriteups = Array.isArray(narrativeCleanupPayload?.strainQualitativeWriteups)
+      ? narrativeCleanupPayload.strainQualitativeWriteups
+      : strainQualitativeWriteups;
+    overallStrainSummary = normalizeDashboardNarrativeCleanupText(
+      narrativeCleanupPayload?.overallStrainSummary,
+      overallStrainSummary,
+    ) || overallStrainSummary;
+    developmentExercises = Array.isArray(narrativeCleanupPayload?.developmentExercises)
+      ? narrativeCleanupPayload.developmentExercises
+      : developmentExercises;
+    if (narrativeCleanupPayload?.spreadsheetFocuses && typeof narrativeCleanupPayload.spreadsheetFocuses === "object") {
+      spreadsheetFocuses = {
+        ...spreadsheetFocuses,
+        ...narrativeCleanupPayload.spreadsheetFocuses,
+        instinctGoals:
+          narrativeCleanupPayload.spreadsheetFocuses.instinctGoals || spreadsheetFocuses?.instinctGoals,
+        developingAsBullets: Array.isArray(narrativeCleanupPayload.spreadsheetFocuses.developingAsBullets)
+          ? narrativeCleanupPayload.spreadsheetFocuses.developingAsBullets
+          : (Array.isArray(spreadsheetFocuses?.developingAsBullets)
+              ? spreadsheetFocuses.developingAsBullets
+              : []),
+        bodyLanguageRows: Array.isArray(narrativeCleanupPayload.spreadsheetFocuses.bodyLanguageRows)
+          ? narrativeCleanupPayload.spreadsheetFocuses.bodyLanguageRows
+          : (Array.isArray(spreadsheetFocuses?.bodyLanguageRows)
+              ? spreadsheetFocuses.bodyLanguageRows
+              : []),
+        conflictTriggeredBullets: Array.isArray(narrativeCleanupPayload.spreadsheetFocuses.conflictTriggeredBullets)
+          ? narrativeCleanupPayload.spreadsheetFocuses.conflictTriggeredBullets
+          : (Array.isArray(spreadsheetFocuses?.conflictTriggeredBullets)
+              ? spreadsheetFocuses.conflictTriggeredBullets
+              : []),
+      };
+    }
+    if (narrativeCleanupPayload?.teamStageBreakdown && typeof narrativeCleanupPayload.teamStageBreakdown === "object") {
+      teamStageBreakdown = {
+        ...teamStageBreakdown,
+        ...narrativeCleanupPayload.teamStageBreakdown,
+      };
+    }
+
     const baseDataQualityDiagnostics = buildDataQualityDiagnostics({
       parsedProfile,
       parseDiagnostics,
-      feedbackGuideMatrix,
+      feedbackGuideMatrix: resolvedFeedbackGuideMatrix,
       strainQualitativeWriteups,
       developmentExercises,
     });
@@ -3385,7 +4171,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       insightCoachingRelationship: proInsights.coachingRelationship,
       insightFeedbackGuide: proInsights.feedbackGuide,
       insightComposite: proInsights.composite,
-      feedbackGuideMatrix,
+      feedbackGuideMatrix: resolvedFeedbackGuideMatrix,
       strainQualitativeWriteups,
       overallStrainSummary,
       developmentExercises,
@@ -7973,7 +8759,7 @@ function extractInstinctGoalDefinitions(rawText) {
   );
   const social = segmentFor(
     ["Social - SO", "Social instinct", "Social"],
-    ["Self-Preservation - SP", "Self Preservation - SP"],
+    ["One-On-One - SX", "One-On-One", "One to One", "Self-Preservation - SP", "Self Preservation - SP"],
   );
   const selfPres = segmentFor(
     ["Self-Preservation - SP", "Self Preservation - SP", "Self-Preservation instinct", "Self Preservation instinct"],
