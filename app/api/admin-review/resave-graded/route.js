@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../../lib/adminAccess";
+import { buildMlExtractionLearningContextFromReportRows } from "../../../../lib/mlExtractionLearning";
 import { applyMlScoreLearningToParsedProfile } from "../../../../lib/mlScoreLearning";
 import { extractClientNameFromReportFileName } from "../../../../lib/reportFileNameClientName";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../../lib/supabaseAdmin";
@@ -398,7 +399,13 @@ function buildBackfilledRow({
   };
 }
 
-async function runSanitizeAndParsePipeline({ row, table, supabase, parsePdf }) {
+async function runSanitizeAndParsePipeline({
+  row,
+  table,
+  supabase,
+  parsePdf,
+  extractionLearningContext,
+}) {
   const results = normalizeResultsData(row?.results_data);
   const bucket = normalizeOptionalString(
     row?.report_pdf?.bucket || results?.file?.bucket || getSupabaseStorageBucket(),
@@ -433,6 +440,7 @@ async function runSanitizeAndParsePipeline({ row, table, supabase, parsePdf }) {
     disableImageScoreRescue: true,
     allowLocalTextFallback: true,
     enablePythonCrossCheck: true,
+    extractionLearningContext,
   });
   const parsedWithSanitization = mergeSanitizationIntoParsedPayload(
     parsed,
@@ -511,6 +519,15 @@ export async function POST(req) {
   }
   const gradedRows = rows.filter((row) => shouldBackfillRow(row));
   const { parsePdf } = await import("../../../../lib/parsePdf.js");
+  const extractionLearningContext = buildMlExtractionLearningContextFromReportRows(gradedRows, {
+    minTrainingExamples: 3,
+  });
+  console.log("[admin-review:bulk-resave] Extraction learning context prepared", {
+    status: extractionLearningContext?.status || "unknown",
+    reason: extractionLearningContext?.reason || null,
+    trainingSamples: extractionLearningContext?.training?.trainingSampleCount ?? 0,
+    hints: extractionLearningContext?.hintCount ?? 0,
+  });
 
   let processedCount = 0;
   let updatedCount = 0;
@@ -527,6 +544,7 @@ export async function POST(req) {
         table,
         supabase,
         parsePdf,
+        extractionLearningContext,
       });
       const normalized = buildBackfilledRow({
         row,

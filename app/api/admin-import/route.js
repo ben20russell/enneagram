@@ -5,6 +5,7 @@ import { createReport, getReportById } from "../../../lib/reportsStore";
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../lib/supabaseAdmin";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { hasAdminAccess, normalizeEmail } from "../../../lib/adminAccess";
+import { buildMlExtractionLearningContext } from "../../../lib/mlExtractionLearning";
 import { applyMlScoreLearningToParsedProfile } from "../../../lib/mlScoreLearning";
 import { resolveMinExpectedPagesByReportType } from "../../../lib/reportTypePageThresholds";
 import { extractClientNameFromReportFileName } from "../../../lib/reportFileNameClientName";
@@ -559,6 +560,7 @@ async function finalizeImport({
     mimeType,
   });
   let parsedPrimaryType = inferTypeFromFileName(safeFileName).detectedType;
+  const reportsTable = process.env.SUPABASE_REPORTS_TABLE || "reports";
   const shouldParseOnFinalize =
     String(process.env.ADMIN_IMPORT_PARSE_ON_FINALIZE || "").toLowerCase() === "true";
 
@@ -596,17 +598,29 @@ async function finalizeImport({
         reason: sanitizedPdf?.diagnostics?.reason || null,
       });
       const { parsePdf } = await import("../../../lib/parsePdf.js");
+      const extractionLearningContext = await buildMlExtractionLearningContext({
+        supabase: supabaseAdmin,
+        table: reportsTable,
+        reportId,
+      });
+      console.log("[admin-import] Extraction learning context prepared for finalize parse", {
+        reportId,
+        status: extractionLearningContext?.status || "unknown",
+        reason: extractionLearningContext?.reason || null,
+        trainingSamples: extractionLearningContext?.training?.trainingSampleCount ?? 0,
+        hints: extractionLearningContext?.hintCount ?? 0,
+      });
       const parsed = await parsePdf(sanitizedPdf.buffer, {
         disableImagePipeline: true,
         disableImageScoreRescue: true,
         allowLocalTextFallback: true,
         enablePythonCrossCheck: true,
+        extractionLearningContext,
       });
       const parsedWithSanitization = mergeSanitizationIntoParsedPayload(
         parsed,
         sanitizedPdf?.diagnostics || null,
       );
-      const reportsTable = process.env.SUPABASE_REPORTS_TABLE || "reports";
       const mlLearningResult = await applyMlScoreLearningToParsedProfile({
         supabase: supabaseAdmin,
         table: reportsTable,
@@ -768,11 +782,24 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
       reason: sanitizedPdf?.diagnostics?.reason || null,
     });
     const { parsePdf } = await import("../../../lib/parsePdf.js");
+    const extractionLearningContext = await buildMlExtractionLearningContext({
+      supabase,
+      table: reportsTable,
+      reportId: report.id,
+    });
+    console.log("[admin-import] Extraction learning context prepared for reparse", {
+      reportId: report.id,
+      status: extractionLearningContext?.status || "unknown",
+      reason: extractionLearningContext?.reason || null,
+      trainingSamples: extractionLearningContext?.training?.trainingSampleCount ?? 0,
+      hints: extractionLearningContext?.hintCount ?? 0,
+    });
     const parsed = await parsePdf(sanitizedPdf.buffer, {
       disableImagePipeline: true,
       disableImageScoreRescue: true,
       allowLocalTextFallback: true,
       enablePythonCrossCheck: true,
+      extractionLearningContext,
     });
     const parsedWithSanitization = mergeSanitizationIntoParsedPayload(
       parsed,
