@@ -6,9 +6,24 @@ import { getSupabaseAdmin, getSupabaseStorageBucket } from "../../../../lib/supa
 import { applyMlScoreLearningToParsedProfile } from "../../../../lib/mlScoreLearning";
 import { resolveMinExpectedPagesByReportType } from "../../../../lib/reportTypePageThresholds";
 import { extractClientNameFromReportFileName } from "../../../../lib/reportFileNameClientName";
+import { resolvePdfSanitizeFormFieldMode, sanitizePdfForParsing } from "../../../../lib/pdfSanitize.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+function mergeSanitizationIntoParsedPayload(parsed, sanitizationDiagnostics) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  return {
+    ...parsed,
+    _parseDiagnostics: {
+      ...(parsed?._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
+        ? parsed._parseDiagnostics
+        : {}),
+      sanitization: sanitizationDiagnostics || null,
+    },
+    parseSanitization: sanitizationDiagnostics || null,
+  };
+}
 
 function getNonNullCount(obj) {
   if (!obj || typeof obj !== "object") return 0;
@@ -336,23 +351,49 @@ export async function POST(req) {
     }
 
     const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
+    const sanitizedPdf = await sanitizePdfForParsing(pdfBuffer, {
+      source: "/api/admin-import/reparse",
+      formFieldMode: resolvePdfSanitizeFormFieldMode(process.env.PDF_SANITIZE_FORM_FIELDS_MODE),
+      removeAnnotations: true,
+      stripNonContentExtras: true,
+      stripMetadata: true,
+    });
+    console.log("[admin-import:reparse] PDF sanitization completed", {
+      reportId: report.id,
+      inputBytes: sanitizedPdf?.diagnostics?.inputBytes ?? null,
+      outputBytes: sanitizedPdf?.diagnostics?.outputBytes ?? null,
+      sanitized: Boolean(sanitizedPdf?.sanitized),
+      formFieldMode: sanitizedPdf?.diagnostics?.formFieldMode ?? null,
+      annotationObjectsRemoved: sanitizedPdf?.diagnostics?.annotationObjectsRemoved ?? 0,
+      formFieldsRemoved: sanitizedPdf?.diagnostics?.formFieldsRemoved ?? 0,
+      formFieldsFlattened: sanitizedPdf?.diagnostics?.formFieldsFlattened ?? 0,
+      reason: sanitizedPdf?.diagnostics?.reason || null,
+    });
     const { parsePdf } = await import("../../../../lib/parsePdf.js");
-    const parsed = await parsePdf(pdfBuffer, {
+    const parsed = await parsePdf(sanitizedPdf.buffer, {
       disableImagePipeline: true,
       disableImageScoreRescue: true,
       allowLocalTextFallback: true,
       enablePythonCrossCheck: true,
     });
+    const parsedWithSanitization = mergeSanitizationIntoParsedPayload(
+      parsed,
+      sanitizedPdf?.diagnostics || null,
+    );
     const mlLearningResult = await applyMlScoreLearningToParsedProfile({
       supabase,
       table: reportsTable,
-      parsedProfile: parsed,
+      parsedProfile: parsedWithSanitization,
       reportId: report.id,
     });
-    const parsedForSave =
+    const parsedForSaveRaw =
       mlLearningResult?.parsedProfile && typeof mlLearningResult.parsedProfile === "object"
         ? mlLearningResult.parsedProfile
-        : parsed;
+        : parsedWithSanitization;
+    const parsedForSave = mergeSanitizationIntoParsedPayload(
+      parsedForSaveRaw,
+      sanitizedPdf?.diagnostics || null,
+    );
     const mlLearning = mlLearningResult?.ml && typeof mlLearningResult.ml === "object"
       ? mlLearningResult.ml
       : null;

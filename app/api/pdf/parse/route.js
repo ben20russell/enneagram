@@ -1,11 +1,26 @@
 import { NextResponse } from "next/server";
 import { parsePdf } from "../../../../lib/parsePdf.js";
+import { resolvePdfSanitizeFormFieldMode, sanitizePdfForParsing } from "../../../../lib/pdfSanitize.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
 const DEFAULT_ROUTE_IMAGE_PAGE_LIMIT = 24;
 const ADMIN_INLINE_SAFE_MODE = "admin-inline-safe";
+
+function mergeSanitizationIntoParsedPayload(parsed, sanitizationDiagnostics) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  return {
+    ...parsed,
+    _parseDiagnostics: {
+      ...(parsed?._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
+        ? parsed._parseDiagnostics
+        : {}),
+      sanitization: sanitizationDiagnostics || null,
+    },
+    parseSanitization: sanitizationDiagnostics || null,
+  };
+}
 
 function isPdfFile(file) {
   return file instanceof File && file.type === "application/pdf";
@@ -197,7 +212,26 @@ export async function POST(req) {
     const routeImagePageLimit = Number.isFinite(routeImagePageLimitRaw) && routeImagePageLimitRaw > 0
       ? Math.floor(routeImagePageLimitRaw)
       : DEFAULT_ROUTE_IMAGE_PAGE_LIMIT;
-    const parsed = await parsePdf(buffer, {
+    const sanitizedPdf = await sanitizePdfForParsing(buffer, {
+      source: "/api/pdf/parse",
+      formFieldMode: resolvePdfSanitizeFormFieldMode(process.env.PDF_SANITIZE_FORM_FIELDS_MODE),
+      removeAnnotations: true,
+      stripNonContentExtras: true,
+      stripMetadata: true,
+    });
+    console.log("[/api/pdf/parse] PDF sanitization completed", {
+      sourceFileName: report.name,
+      inputBytes: sanitizedPdf?.diagnostics?.inputBytes ?? null,
+      outputBytes: sanitizedPdf?.diagnostics?.outputBytes ?? null,
+      sanitized: Boolean(sanitizedPdf?.sanitized),
+      formFieldMode: sanitizedPdf?.diagnostics?.formFieldMode ?? null,
+      annotationObjectsRemoved: sanitizedPdf?.diagnostics?.annotationObjectsRemoved ?? 0,
+      formFieldsRemoved: sanitizedPdf?.diagnostics?.formFieldsRemoved ?? 0,
+      formFieldsFlattened: sanitizedPdf?.diagnostics?.formFieldsFlattened ?? 0,
+      reason: sanitizedPdf?.diagnostics?.reason || null,
+    });
+
+    const parsed = await parsePdf(sanitizedPdf.buffer, {
       imagePrimaryFullDocMaxPages: routeImagePageLimit,
       requireChartScoresForComplete: false,
       allowLocalTextFallback: true,
@@ -209,23 +243,28 @@ export async function POST(req) {
           }
         : {}),
     });
-    const parseStatus = parsed?._parseStatus || "complete";
-    const { parseCoverage, verificationSummary, parseNoise, parseState, parseReason } = buildParseContract(parsed);
+    const parsedWithSanitization = mergeSanitizationIntoParsedPayload(
+      parsed,
+      sanitizedPdf?.diagnostics || null,
+    );
+    const parseStatus = parsedWithSanitization?._parseStatus || "complete";
+    const { parseCoverage, verificationSummary, parseNoise, parseState, parseReason } = buildParseContract(parsedWithSanitization);
 
     const result = {
-      ...parsed,
+      ...parsedWithSanitization,
       parseCoverage,
       verificationSummary,
       parseNoise,
       parseState,
       parseReason,
+      parseSanitization: sanitizedPdf?.diagnostics || null,
       parsedAt: new Date().toISOString(),
       sourceFile: report.name,
       ...(clientId ? { clientId } : {}),
     };
 
     if (parseStatus !== "complete") {
-      const incompleteReason = String(parsed?._parseDiagnostics?.incompleteReason || "PDF parsed but marked incomplete");
+      const incompleteReason = String(parsedWithSanitization?._parseDiagnostics?.incompleteReason || "PDF parsed but marked incomplete");
       return NextResponse.json(
         {
           success: false,
@@ -234,6 +273,7 @@ export async function POST(req) {
           parseCoverage,
           verificationSummary,
           parseNoise,
+          parseSanitization: sanitizedPdf?.diagnostics || null,
           parseState: parseState || "incomplete",
           parseReason: parseReason || incompleteReason,
         },
@@ -248,6 +288,7 @@ export async function POST(req) {
         parseCoverage,
         verificationSummary,
         parseNoise,
+        parseSanitization: sanitizedPdf?.diagnostics || null,
         parseState: parseState || "complete",
         parseReason,
       },
