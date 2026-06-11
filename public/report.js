@@ -97,6 +97,9 @@ function canViewExampleReports({ email, isAuthenticated }) {
 const SHOW_EXAMPLE_REPORT_DROPDOWN = false;
 const SHOW_CLIENT_REPORT_DROPDOWN = true;
 const DEFAULT_EXAMPLE_REPORT_TYPE = "3";
+const CORE_PATTERN_HYDRATION_CLEANUP_ROUTE = "/api/report-hydration/core-patterns/cleanup";
+const CORE_PATTERN_HYDRATION_LLM_TIMEOUT_MS = 45_000;
+const CORE_PATTERN_HYDRATION_CACHE = new Map();
 
 let assignedReportIngested = false;
 let exampleReportInitialized = false;
@@ -984,6 +987,204 @@ function mergeCorePatternBullets(preferredBullets, fallbackBullets) {
       text,
     };
   });
+}
+
+const CORE_PATTERN_SECTION_BOUNDARY_MARKERS = [
+  "Blind Spots",
+  "BlindSpots",
+  "Worldview",
+  "World View",
+  "Detailed Enneagram Description",
+  "Your main Enneagram style",
+  "Focus of Attention",
+  "Core Fear",
+  "Self-Talk",
+  "Self Talk",
+  "Gifts",
+  "Vices",
+  "Development Exercise",
+  "DEVELOPMENT EXERCISE",
+];
+
+function stripCorePatternSectionBoundarySpillover(value) {
+  let cleaned = sanitizeSnippet(value, "");
+  if (!cleaned) return null;
+  cleaned = cleaned
+    .replace(/^\s*Typical\s*(?:Action|Thinking|Feeling)\s*Patterns?\s*[:\-]?\s*/i, "")
+    .trim();
+  if (!cleaned) return null;
+
+  const boundaryPattern = /\b(?:Blind\s*Spots?|BlindSpots|World\s*View|Worldview|Detailed\s+Enneagram\s+Description|Your\s+main\s+Enneagram\s+style|Focus\s+of\s+Attention|Core\s*Fear|Self[-\s]*Talk|Gifts?|Vices?|Development\s+Exercise)\b/i;
+  const spilloverMatch = boundaryPattern.exec(cleaned);
+  if (spilloverMatch) {
+    const boundaryIndex = Number(spilloverMatch.index || 0);
+    if (boundaryIndex === 0) return null;
+    cleaned = cleaned.slice(0, boundaryIndex).trim();
+  }
+
+  return cleaned || null;
+}
+
+function corePatternTextHasSectionSpillover(text) {
+  const cleaned = sanitizeSnippet(text, "");
+  if (!cleaned) return false;
+  return /\b(?:Blind\s*Spots?|BlindSpots|World\s*View|Worldview|Detailed\s+Enneagram\s+Description|Your\s+main\s+Enneagram\s+style|Focus\s+of\s+Attention|Core\s*Fear|Self[-\s]*Talk|Gifts?|Vices?|Development\s+Exercise)\b/i
+    .test(cleaned);
+}
+
+function corePatternTextHasJoinedWordArtifacts(text) {
+  const cleaned = sanitizeSnippet(text, "");
+  if (!cleaned) return false;
+  const longMergedConnectorWordPattern =
+    /\b[a-z]{2,}(?:and|then|with|from|into|your|you|them|this|that|when|while|over|under|about|before|after|every|other|feel|move|work|take|make)[a-z]{2,}\b/i;
+  const extraLongTokenPattern = /\b[A-Za-z]{22,}\b/;
+  const camelJoinPattern = /\b[a-z]{2,}[A-Z][a-z]{2,}\b/;
+  return (
+    longMergedConnectorWordPattern.test(cleaned) ||
+    extraLongTokenPattern.test(cleaned) ||
+    camelJoinPattern.test(cleaned)
+  );
+}
+
+function shouldRequestCorePatternHydrationCleanup(bullets) {
+  const rows = normalizeCorePatternBullets(bullets);
+  const informativeRows = rows.filter((row) => !isMissingExtractedText(row?.text));
+  if (!informativeRows.length) return false;
+  return informativeRows.some((row) => (
+    corePatternTextHasSectionSpillover(row?.text) ||
+    corePatternTextHasJoinedWordArtifacts(row?.text)
+  ));
+}
+
+function resolveHydratedCorePatternBullets(value) {
+  const normalizedRows = normalizeCorePatternBullets(value);
+  const cleanedRows = normalizedRows.map((row) => ({
+    key: row.key,
+    label: row.label,
+    text: stripCorePatternSectionBoundarySpillover(row?.text) || row?.text || null,
+  }));
+  return normalizeCorePatternBullets(cleanedRows);
+}
+
+function buildCorePatternHydrationCacheKey({ corePatternBullets, detectedType, reportFileName, reportId }) {
+  const rows = normalizeCorePatternBullets(corePatternBullets)
+    .map((row) => ({ key: row.key, text: sanitizeSnippet(row?.text, "") }))
+    .filter((row) => !isMissingExtractedText(row?.text));
+  return JSON.stringify({
+    detectedType: String(detectedType || ""),
+    reportFileName: String(reportFileName || ""),
+    reportId: String(reportId || ""),
+    rows,
+  });
+}
+
+async function hydrateCorePatternBulletsWithLlmCleanup({
+  corePatternBullets,
+  detectedType,
+  reportFileName,
+  reportId,
+  ingestionToken,
+}) {
+  const normalizedBullets = normalizeCorePatternBullets(corePatternBullets);
+  const shouldCleanup = shouldRequestCorePatternHydrationCleanup(normalizedBullets);
+  if (!shouldCleanup) {
+    return normalizedBullets;
+  }
+  if (typeof fetch !== "function") return normalizedBullets;
+
+  const cacheKey = buildCorePatternHydrationCacheKey({
+    corePatternBullets: normalizedBullets,
+    detectedType,
+    reportFileName,
+    reportId,
+  });
+  if (CORE_PATTERN_HYDRATION_CACHE.has(cacheKey)) {
+    const cachedRows = CORE_PATTERN_HYDRATION_CACHE.get(cacheKey);
+    console.log("[report-ingest] Reusing cached core-pattern LLM cleanup result", {
+      ingestionToken,
+      reportId: reportId || null,
+      reportFileName: reportFileName || null,
+    });
+    return mergeCorePatternBullets(cachedRows, normalizedBullets);
+  }
+
+  const requestBody = {
+    detectedType: detectedType || null,
+    reportFileName: reportFileName || null,
+    reportId: reportId || null,
+    bullets: normalizedBullets.map((row) => ({
+      key: row.key,
+      label: row.label,
+      text: isMissingExtractedText(row?.text) ? "" : String(row?.text || ""),
+    })),
+  };
+
+  const abortController = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    abortController.abort(new Error("core-pattern llm cleanup timeout"));
+  }, CORE_PATTERN_HYDRATION_LLM_TIMEOUT_MS);
+
+  try {
+    console.log("[report-ingest] Running core-pattern LLM hydration cleanup", {
+      ingestionToken,
+      detectedType: detectedType || null,
+      reportId: reportId || null,
+      reportFileName: reportFileName || null,
+      route: CORE_PATTERN_HYDRATION_CLEANUP_ROUTE,
+      boundaryMarkers: CORE_PATTERN_SECTION_BOUNDARY_MARKERS,
+    });
+    const response = await fetch(CORE_PATTERN_HYDRATION_CLEANUP_ROUTE, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      cache: "no-store",
+      body: JSON.stringify(requestBody),
+      signal: abortController.signal,
+    });
+    if (!response.ok) {
+      const failureText = await response.text().catch(() => "");
+      console.log("[report-ingest] Core-pattern LLM cleanup route failed", {
+        ingestionToken,
+        status: response.status,
+        statusText: response.statusText,
+        responseTextPreview: String(failureText || "").slice(0, 400),
+      });
+      CORE_PATTERN_HYDRATION_CACHE.set(cacheKey, normalizedBullets);
+      return normalizedBullets;
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    const cleanedRows = resolveHydratedCorePatternBullets(payload?.bullets);
+    const mergedRows = mergeCorePatternBullets(cleanedRows, normalizedBullets);
+    const changedKeys = mergedRows
+      .filter((row, index) => sanitizeSnippet(row?.text, "") !== sanitizeSnippet(normalizedBullets[index]?.text, ""))
+      .map((row) => row.key);
+    CORE_PATTERN_HYDRATION_CACHE.set(cacheKey, mergedRows);
+    console.log("[report-ingest] Core-pattern LLM hydration cleanup complete", {
+      ingestionToken,
+      reportId: reportId || null,
+      reportFileName: reportFileName || null,
+      changedKeys,
+      usedFallback: payload?.success === false,
+      model: payload?.model || null,
+    });
+    return mergedRows;
+  } catch (error) {
+    console.log("[report-ingest] Core-pattern LLM cleanup request failed; using deterministic bullets", {
+      ingestionToken,
+      reportId: reportId || null,
+      reportFileName: reportFileName || null,
+      details: String(error?.message || "Unknown core-pattern cleanup error"),
+      stack: error?.stack,
+    });
+    CORE_PATTERN_HYDRATION_CACHE.set(cacheKey, normalizedBullets);
+    return normalizedBullets;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function extractCorePatternSectionByAnchors(text, startAnchor, endAnchors = []) {
@@ -2881,6 +3082,13 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractCorePatternBulletsFromText(pdfText),
     );
     corePatternBullets = mergeCorePatternBullets(corePatternBullets, corePatternBulletsFromText);
+    corePatternBullets = await hydrateCorePatternBulletsWithLlmCleanup({
+      corePatternBullets,
+      detectedType,
+      reportFileName: data?.reportFileName || null,
+      reportId: data?.id || null,
+      ingestionToken,
+    });
 
     if (!corePatternLines.length) {
       corePatternLines = corePatternBullets
@@ -8778,6 +8986,74 @@ function buildGrowthCopyForDisplay(report) {
   };
 }
 
+function buildGrowthKeyChallenges(report) {
+  const typeNumber = String(report?.typeNumber || "?");
+  const typeLabel = `Type ${typeNumber}`;
+  const keyword = formatOptionalText(report?.keyword, "core pattern");
+  const vice = formatOptionalText(report?.vice, "reactive habit");
+  const conflictStyle = formatOptionalText(report?.conflictStyle, "adaptive");
+  const release = formatTypeLine(report?.release || "Type ?");
+  const stretch = formatTypeLine(report?.stretch || "Type ?");
+  const supportsIntegrationLevel = report?.supportsIntegrationLevel !== false;
+  const integrationLevel = supportsIntegrationLevel
+    ? normalizeIntegrationLevel(report?.integration)
+    : "steady";
+
+  return [
+    {
+      title: "Pause Before Force",
+      text: `${typeLabel} benefits from slowing the first reaction so urgency does not overrun context.`,
+    },
+    {
+      title: "Name Impact Clearly",
+      text: `Under ${String(conflictStyle).toLowerCase()} conflict pressure, name impact before intent to reduce escalation.`,
+    },
+    {
+      title: `Regulate ${vice}`,
+      text: `Watch how ${String(vice).toLowerCase()} shows up in tone, speed, and control needs when stakes rise.`,
+    },
+    {
+      title: "Share Ownership",
+      text: `Translate ${String(keyword).toLowerCase()} into explicit shared ownership so collaboration scales with execution.`,
+    },
+    {
+      title: `Practice ${stretch} Range`,
+      text: `Build stretch-point capacity through one weekly behavior that increases flexibility, empathy, or perspective.`,
+    },
+    {
+      title: `Recover Through ${release}`,
+      text: `Use release-point resets to sustain ${String(integrationLevel).toLowerCase()} integration habits and reduce reactivity loops.`,
+    },
+  ];
+}
+
+function renderGrowthKeyChallenges({ report, isExampleMode }) {
+  const growthKeyChallengesBox = document.getElementById("growthKeyChallengesBox");
+  if (growthKeyChallengesBox) {
+    growthKeyChallengesBox.style.display = isExampleMode ? "block" : "none";
+    growthKeyChallengesBox.dataset.mode = isExampleMode ? "example" : "assigned-or-client";
+  }
+
+  const growthKeyChallengesRows = buildGrowthKeyChallenges(report || {});
+  setHtml(
+    "growthKeyChallengesList",
+    growthKeyChallengesRows
+      .map(
+        (item) =>
+          `<div class="dev-item"><div class="dev-item-title">${escapeHtml(item?.title || "Key Challenge")}</div><p>${escapeHtml(
+            formatOptionalText(item?.text, "Not detected in assigned PDF."),
+          )}</p></div>`,
+      )
+      .join(""),
+  );
+
+  console.log("[growth] rendered key challenges", {
+    mode: isExampleMode ? "example" : "assigned-or-client",
+    typeNumber: String(report?.typeNumber || ""),
+    count: growthKeyChallengesRows.length,
+  });
+}
+
 function setIntegrationUiVisibility(isVisible) {
   const shouldShow = Boolean(isVisible);
   const rowNode = document.getElementById("integrationValueRow");
@@ -8801,14 +9077,7 @@ function setIntegrationUiVisibility(isVisible) {
 
 function renderReportFromState(isExampleMode) {
   const missingAssignedPdfText = "Not detected in assigned PDF.";
-  const growthKeyChallengesBox = document.getElementById('growthKeyChallengesBox');
-  if (growthKeyChallengesBox) {
-    growthKeyChallengesBox.style.display = isExampleMode ? "block" : "none";
-    console.log("[growth] toggled static key challenges panel", {
-      mode: isExampleMode ? "example" : "assigned-or-client",
-      visible: isExampleMode,
-    });
-  }
+  renderGrowthKeyChallenges({ report: REPORT, isExampleMode });
   setText('typeBadge', REPORT.typeNumber);
   setText('headerSubtitle', `Type ${REPORT.typeNumber} · ${REPORT.instinct}`);
   setText('reportTitle', isExampleMode ? `Type ${REPORT.typeNumber} Example Report` : `Type ${REPORT.typeNumber} Assigned PDF Report`);
@@ -9058,30 +9327,45 @@ function renderReportFromState(isExampleMode) {
   document.getElementById('languageTitle').innerHTML = `<span class="title-icon-chip"><span class="title-icon">${iconSvg('communication', 12, 'var(--blue)')}</span></span>Type ${REPORT.typeNumber} Communication Style`;
   setText('languageMeta', REPORT.meta);
   setText('refTypeTag', `Type ${REPORT.typeNumber} · ${String(REPORT.instinct || "").split(' — ')[0]}`);
-  renderAdaptiveSectionCopy(REPORT);
+  const adaptiveCopy = renderAdaptiveSectionCopy(REPORT);
+  const spreadsheetFocusFallbacks = isExampleMode ? buildSpreadsheetFocusFallbacks(REPORT, adaptiveCopy) : {};
   const spreadsheetFocusesFromReport = REPORT.spreadsheetFocuses && typeof REPORT.spreadsheetFocuses === "object"
     ? REPORT.spreadsheetFocuses
     : {};
-  const resolveSpreadsheetFocusText = (primaryText) => {
+  const resolveSpreadsheetFocusText = (primaryText, fallbackText = missingAssignedPdfText) => {
     const primary = formatOptionalText(primaryText, "");
     if (primary && !isMissingExtractedText(primary)) return primary;
+    const fallback = formatOptionalText(fallbackText, "");
+    if (fallback && !isMissingExtractedText(fallback)) return fallback;
     return missingAssignedPdfText;
   };
   setText(
     'motivationSummary',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.motivationSummary),
+    resolveSpreadsheetFocusText(
+      spreadsheetFocusesFromReport.motivationSummary,
+      spreadsheetFocusFallbacks.motivationSummary,
+    ),
   );
   setText(
     'instinctGoalSelfPres',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.selfPres),
+    resolveSpreadsheetFocusText(
+      spreadsheetFocusesFromReport?.instinctGoals?.selfPres,
+      spreadsheetFocusFallbacks?.instinctGoals?.selfPres,
+    ),
   );
   setText(
     'instinctGoalSocial',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.social),
+    resolveSpreadsheetFocusText(
+      spreadsheetFocusesFromReport?.instinctGoals?.social,
+      spreadsheetFocusFallbacks?.instinctGoals?.social,
+    ),
   );
   setText(
     'instinctGoalOneOnOne',
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport?.instinctGoals?.oneOnOne),
+    resolveSpreadsheetFocusText(
+      spreadsheetFocusesFromReport?.instinctGoals?.oneOnOne,
+      spreadsheetFocusFallbacks?.instinctGoals?.oneOnOne,
+    ),
   );
   const developingAsRows = (Array.isArray(spreadsheetFocusesFromReport.developingAsBullets)
     ? spreadsheetFocusesFromReport.developingAsBullets
@@ -9090,7 +9374,10 @@ function renderReportFromState(isExampleMode) {
     .filter(Boolean)
     .filter((row) => !isMissingExtractedText(row));
   const developingAsFallbackRows = extractNarrativeBulletItems(
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.developingAsCopy),
+    resolveSpreadsheetFocusText(
+      spreadsheetFocusesFromReport.developingAsCopy,
+      spreadsheetFocusFallbacks.developingAsCopy,
+    ),
     12,
   )
     .map((row) => cleanPdfExtractedValue(row))
@@ -9112,7 +9399,10 @@ function renderReportFromState(isExampleMode) {
   setHtml(
     'conflictResponseCopy',
     renderNarrativeBullets(
-      resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictResponseCopy),
+      resolveSpreadsheetFocusText(
+        spreadsheetFocusesFromReport.conflictResponseCopy,
+        spreadsheetFocusFallbacks.conflictResponseCopy,
+      ),
       { maxItems: 8 },
     ),
   );
@@ -9123,7 +9413,10 @@ function renderReportFromState(isExampleMode) {
     .filter(Boolean)
     .filter((row) => !isMissingExtractedText(row));
   const conflictTriggeredFallbackRows = extractNarrativeBulletItems(
-    resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.conflictTriggeredCopy),
+    resolveSpreadsheetFocusText(
+      spreadsheetFocusesFromReport.conflictTriggeredCopy,
+      spreadsheetFocusFallbacks.conflictTriggeredCopy,
+    ),
     16,
   )
     .map((row) => cleanPdfExtractedValue(row))
@@ -9144,36 +9437,83 @@ function renderReportFromState(isExampleMode) {
   );
   setHtml(
     'centeredDecisionCopy',
-    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.centeredDecisionCopy), { maxItems: 8 }),
+    renderNarrativeBullets(
+      resolveSpreadsheetFocusText(
+        spreadsheetFocusesFromReport.centeredDecisionCopy,
+        spreadsheetFocusFallbacks.centeredDecisionCopy,
+      ),
+      { maxItems: 8 },
+    ),
   );
   setHtml(
     'decisionImpactCopy',
-    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionImpactCopy), { maxItems: 10 }),
+    renderNarrativeBullets(
+      resolveSpreadsheetFocusText(
+        spreadsheetFocusesFromReport.decisionImpactCopy,
+        spreadsheetFocusFallbacks.decisionImpactCopy,
+      ),
+      { maxItems: 10 },
+    ),
   );
   setHtml(
     'decisionStrainCopy',
-    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.decisionStrainCopy), { maxItems: 8 }),
+    renderNarrativeBullets(
+      resolveSpreadsheetFocusText(
+        spreadsheetFocusesFromReport.decisionStrainCopy,
+        spreadsheetFocusFallbacks.decisionStrainCopy,
+      ),
+      { maxItems: 8 },
+    ),
   );
   setHtml(
     'strategicLeadershipCopy',
-    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.strategicLeadershipCopy), { maxItems: 10 }),
+    renderNarrativeBullets(
+      resolveSpreadsheetFocusText(
+        spreadsheetFocusesFromReport.strategicLeadershipCopy,
+        spreadsheetFocusFallbacks.strategicLeadershipCopy,
+      ),
+      { maxItems: 10 },
+    ),
   );
   setHtml(
     'teamImpactCopy',
-    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.teamImpactCopy), { maxItems: 10 }),
+    renderNarrativeBullets(
+      resolveSpreadsheetFocusText(
+        spreadsheetFocusesFromReport.teamImpactCopy,
+        spreadsheetFocusFallbacks.teamImpactCopy,
+      ),
+      { maxItems: 10 },
+    ),
   );
   setHtml(
     'interdependenceCopy',
-    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.interdependenceCopy), { maxItems: 6 }),
+    renderNarrativeBullets(
+      resolveSpreadsheetFocusText(
+        spreadsheetFocusesFromReport.interdependenceCopy,
+        spreadsheetFocusFallbacks.interdependenceCopy,
+      ),
+      { maxItems: 6 },
+    ),
   );
   setHtml(
     'coachingRelationshipCopy',
-    renderNarrativeBullets(resolveSpreadsheetFocusText(spreadsheetFocusesFromReport.coachingRelationshipCopy), { maxItems: 10 }),
+    renderNarrativeBullets(
+      resolveSpreadsheetFocusText(
+        spreadsheetFocusesFromReport.coachingRelationshipCopy,
+        spreadsheetFocusFallbacks.coachingRelationshipCopy,
+      ),
+      { maxItems: 10 },
+    ),
   );
   const bodyLanguageRows = Array.isArray(spreadsheetFocusesFromReport.bodyLanguageRows)
     ? spreadsheetFocusesFromReport.bodyLanguageRows.filter(Boolean)
     : [];
-  const resolvedBodyLanguageRows = bodyLanguageRows.length ? bodyLanguageRows : [missingAssignedPdfText];
+  const fallbackBodyLanguageRows = Array.isArray(spreadsheetFocusFallbacks.bodyLanguageRows)
+    ? spreadsheetFocusFallbacks.bodyLanguageRows.filter(Boolean)
+    : [];
+  const resolvedBodyLanguageRows = bodyLanguageRows.length
+    ? bodyLanguageRows
+    : (fallbackBodyLanguageRows.length ? fallbackBodyLanguageRows : [missingAssignedPdfText]);
   setHtml(
     'communicationBodyLanguageList',
     renderBodyLanguageRows(resolvedBodyLanguageRows) ||
@@ -9193,17 +9533,48 @@ function renderReportFromState(isExampleMode) {
   const teamStagesFromReport = REPORT.teamStageBreakdown && typeof REPORT.teamStageBreakdown === "object"
     ? REPORT.teamStageBreakdown
     : {};
-  const resolveTeamStageText = (primaryText) => {
-    const primary = formatOptionalText(primaryText, "");
-    if (primary && !isMissingExtractedText(primary)) return primary;
+  const teamStageFallbacks = isExampleMode ? (adaptiveCopy?.teamStages || {}) : {};
+  const resolveTeamStageText = (value) => {
+    const normalized = formatOptionalText(value, "");
+    if (normalized && !isMissingExtractedText(normalized)) return normalized;
     return missingAssignedPdfText;
   };
-  setHtml('teamStageForming', renderTeamStageBullets(resolveTeamStageText(teamStagesFromReport.forming)));
-  setHtml('teamStageStorming', renderTeamStageBullets(resolveTeamStageText(teamStagesFromReport.storming)));
-  setHtml('teamStageNorming', renderTeamStageBullets(resolveTeamStageText(teamStagesFromReport.norming)));
-  setHtml('teamStagePerforming', renderTeamStageBullets(resolveTeamStageText(teamStagesFromReport.performing)));
+  setHtml(
+    'teamStageForming',
+    renderTeamStageBullets(
+      resolveTeamStageText(
+        firstPresentSnippet([teamStagesFromReport.forming, teamStageFallbacks.forming], missingAssignedPdfText),
+      ),
+    ),
+  );
+  setHtml(
+    'teamStageStorming',
+    renderTeamStageBullets(
+      resolveTeamStageText(
+        firstPresentSnippet([teamStagesFromReport.storming, teamStageFallbacks.storming], missingAssignedPdfText),
+      ),
+    ),
+  );
+  setHtml(
+    'teamStageNorming',
+    renderTeamStageBullets(
+      resolveTeamStageText(
+        firstPresentSnippet([teamStagesFromReport.norming, teamStageFallbacks.norming], missingAssignedPdfText),
+      ),
+    ),
+  );
+  setHtml(
+    'teamStagePerforming',
+    renderTeamStageBullets(
+      resolveTeamStageText(
+        firstPresentSnippet([teamStagesFromReport.performing, teamStageFallbacks.performing], missingAssignedPdfText),
+      ),
+    ),
+  );
   console.log('[team-stage] rendered stage breakdown', {
-    source: Object.keys(teamStagesFromReport).length ? "report-content" : "not-detected",
+    source: Object.keys(teamStagesFromReport).length
+      ? "report-content"
+      : (Object.keys(teamStageFallbacks).length ? "example-fallback" : "not-detected"),
     forming: Boolean(teamStagesFromReport.forming),
     storming: Boolean(teamStagesFromReport.storming),
     norming: Boolean(teamStagesFromReport.norming),
