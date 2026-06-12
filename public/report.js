@@ -45,6 +45,26 @@ function getClientReportRefreshButton() {
   return document.getElementById("clientReportRefreshButton");
 }
 
+function getReportSwitchStatusNode() {
+  return document.getElementById("reportSwitchStatus");
+}
+
+function getReportRenderErrorBoundaryNode() {
+  return document.getElementById("reportRenderErrorBoundary");
+}
+
+function getReportRenderErrorMessageNode() {
+  return document.getElementById("reportRenderErrorMessage");
+}
+
+function getReportRenderRetryButtonNode() {
+  return document.getElementById("reportRenderRetryButton");
+}
+
+function getReportRenderRefreshButtonNode() {
+  return document.getElementById("reportRenderRefreshButton");
+}
+
 const ADMIN_EMAILS = new Set([
   "ben20russell@gmail.com",
   "corinne.aparis@gmail.com",
@@ -93,6 +113,12 @@ function setClientReportSwitchVisible(visible) {
   control.style.display = SHOW_CLIENT_REPORT_DROPDOWN && visible ? "flex" : "none";
 }
 
+function setClientReportRefreshButtonVisible(visible) {
+  const clientReportRefreshButton = getClientReportRefreshButton();
+  if (!clientReportRefreshButton) return;
+  clientReportRefreshButton.style.display = visible ? "inline-flex" : "none";
+}
+
 function canViewExampleReports({ email, isAuthenticated }) {
   if (!Boolean(isAuthenticated)) return true;
   return hasAdminAccess(email);
@@ -120,6 +146,228 @@ let activeAssignedIngestionToken = 0;
 let lastDashboardRehydrateNonce = null;
 let dashboardRehydrateListenersBound = false;
 let clientReportManualRefreshInFlight = false;
+let activeReportActiveRequestToken = 0;
+let activeReportActiveAbortController = null;
+let activeDashboardCleanupAbortController = null;
+let activeReportSelectionState = {
+  mode: "example",
+  exampleType: DEFAULT_EXAMPLE_REPORT_TYPE,
+  clientReportId: null,
+  reportId: null,
+  selectionKey: `example:${DEFAULT_EXAMPLE_REPORT_TYPE}`,
+  sequence: 0,
+  reason: "initial-state",
+};
+let lastCriticalRenderError = null;
+
+function buildReportSelectionKey({ mode, exampleType, clientReportId, reportId }) {
+  const normalizedMode = String(mode || "example").trim().toLowerCase();
+  if (normalizedMode === "example") {
+    const normalizedType = String(exampleType || DEFAULT_EXAMPLE_REPORT_TYPE).trim();
+    return `example:${/^[1-9]$/.test(normalizedType) ? normalizedType : DEFAULT_EXAMPLE_REPORT_TYPE}`;
+  }
+  if (normalizedMode === "client-report") {
+    const normalizedClientReportId = String(clientReportId || reportId || "").trim();
+    return `client-report:${normalizedClientReportId || "unknown"}`;
+  }
+  const normalizedReportId = String(reportId || "").trim();
+  return `assigned-report:${normalizedReportId || "self"}`;
+}
+
+function getActiveReportSelectionState() {
+  return activeReportSelectionState;
+}
+
+function setActiveReportSelectionState(nextState = {}, reason = "unknown") {
+  const previous = activeReportSelectionState;
+  const nextMode = String(nextState.mode || previous.mode || "example").trim();
+  const nextExampleType = String(nextState.exampleType || previous.exampleType || DEFAULT_EXAMPLE_REPORT_TYPE).trim();
+  const nextClientReportId = String(nextState.clientReportId || "").trim();
+  const nextReportId = String(nextState.reportId || "").trim();
+  const selectionKey = buildReportSelectionKey({
+    mode: nextMode,
+    exampleType: nextExampleType,
+    clientReportId: nextClientReportId,
+    reportId: nextReportId,
+  });
+  const sequence = Number(previous.sequence || 0) + 1;
+  activeReportSelectionState = {
+    mode: nextMode,
+    exampleType: nextExampleType,
+    clientReportId: nextClientReportId || null,
+    reportId: nextReportId || null,
+    selectionKey,
+    sequence,
+    reason: String(reason || "unknown"),
+  };
+  console.log("[report-switch] active selection updated", {
+    previousSelectionKey: previous?.selectionKey || null,
+    nextSelectionKey: selectionKey,
+    mode: nextMode,
+    exampleType: nextExampleType,
+    clientReportId: nextClientReportId || null,
+    reportId: nextReportId || null,
+    reason: String(reason || "unknown"),
+    sequence,
+  });
+  return activeReportSelectionState;
+}
+
+function getClientReportById(reportId) {
+  const normalizedReportId = String(reportId || "").trim();
+  if (!normalizedReportId) return null;
+  return latestAdminClientReportsById.get(normalizedReportId) || null;
+}
+
+function setReportSwitchStatus({ state = "idle", message = "", selectionKey = null, reason = "unknown" } = {}) {
+  const statusNode = getReportSwitchStatusNode();
+  if (!statusNode) return;
+  const normalizedState = String(state || "idle").trim().toLowerCase();
+  statusNode.dataset.state = normalizedState;
+  statusNode.textContent = String(message || "").trim();
+  statusNode.dataset.selectionKey = String(selectionKey || activeReportSelectionState.selectionKey || "");
+  statusNode.dataset.reason = String(reason || "unknown");
+}
+
+function resetReportScopedUiState(selectionKey) {
+  const normalizedSelectionKey =
+    String(selectionKey || activeReportSelectionState.selectionKey || "").trim() ||
+    buildReportSelectionKey(activeReportSelectionState);
+  if (document?.body) {
+    document.body.dataset.reportSelectionKey = normalizedSelectionKey;
+  }
+  document.querySelectorAll(".sec").forEach((sectionNode) => {
+    sectionNode.dataset.reportSelectionKey = normalizedSelectionKey;
+  });
+  document.querySelectorAll(".search-hit").forEach((node) => {
+    node.classList.remove("search-hit");
+  });
+  console.log("[report-switch] reset report-scoped UI state", {
+    selectionKey: normalizedSelectionKey,
+    mode: activeReportSelectionState.mode,
+    currentClientReportId,
+    currentReportViewMode,
+  });
+}
+
+function classifyCriticalRenderError(error) {
+  if (!error) return "unknown";
+  const message = String(error?.message || error).toLowerCase();
+  if (message.includes("aborted")) return "aborted";
+  if (message.includes("timeout")) return "timeout";
+  if (message.includes("network") || message.includes("failed to fetch")) return "network";
+  return "render_failure";
+}
+
+function hideReportRenderBoundary() {
+  const boundaryNode = getReportRenderErrorBoundaryNode();
+  if (!boundaryNode) return;
+  boundaryNode.dataset.visible = "false";
+  boundaryNode.setAttribute("aria-hidden", "true");
+}
+
+function showReportRenderBoundary({ message, selectionKey, errorClass = "render_failure" } = {}) {
+  const boundaryNode = getReportRenderErrorBoundaryNode();
+  const messageNode = getReportRenderErrorMessageNode();
+  const safeSelectionKey = String(selectionKey || activeReportSelectionState.selectionKey || "").trim() || null;
+  if (messageNode) {
+    messageNode.textContent =
+      String(message || "").trim() ||
+      "We hit a temporary issue while loading this report. You can retry the render or refresh report data.";
+  }
+  if (!boundaryNode) return;
+  boundaryNode.dataset.visible = "true";
+  boundaryNode.dataset.selectionKey = safeSelectionKey || "";
+  boundaryNode.dataset.errorClass = String(errorClass || "render_failure");
+  boundaryNode.setAttribute("aria-hidden", "false");
+}
+
+function handleCriticalReportRenderError(error, context = {}) {
+  const errorClass = classifyCriticalRenderError(error);
+  const safeSelectionKey =
+    String(context.selectionKey || activeReportSelectionState.selectionKey || "").trim() ||
+    buildReportSelectionKey(activeReportSelectionState);
+  lastCriticalRenderError = {
+    errorClass,
+    selectionKey: safeSelectionKey,
+    context: String(context?.context || "render"),
+    details: String(error?.message || error || "Unknown report render error"),
+    at: new Date().toISOString(),
+  };
+  console.log("[report-render] critical render error", {
+    errorClass,
+    selectionKey: safeSelectionKey,
+    context: context?.context || "render",
+    details: String(error?.message || error || "Unknown report render error"),
+    stack: error?.stack || null,
+  });
+  setReportSwitchStatus({
+    state: "error",
+    message: "Report load issue. Retry render or refresh data.",
+    selectionKey: safeSelectionKey,
+    reason: "critical-render-error",
+  });
+  showReportRenderBoundary({
+    selectionKey: safeSelectionKey,
+    errorClass,
+    message:
+      "We hit a temporary issue while loading this report. You can retry the render or refresh report data.",
+  });
+}
+
+function validateReportActivePayloadShape(payload) {
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  const issues = [];
+  if (!payload || typeof payload !== "object") {
+    issues.push("payload_not_object");
+  }
+  const rawClientReports = Array.isArray(safePayload.adminClientReports)
+    ? safePayload.adminClientReports
+    : [];
+  const normalizedClientReports = rawClientReports
+    .map((clientReport) => {
+      if (!clientReport || typeof clientReport !== "object") return null;
+      const reportId = String(clientReport?.id || "").trim();
+      if (!reportId) return null;
+      return {
+        ...clientReport,
+        id: reportId,
+        clientName: String(clientReport?.clientName || "").trim(),
+        userEmail: String(clientReport?.userEmail || "").trim(),
+      };
+    })
+    .filter(Boolean);
+  if (rawClientReports.length && normalizedClientReports.length !== rawClientReports.length) {
+    issues.push("client_reports_missing_id");
+  }
+  const validatedReportActivePayload = {
+    ...safePayload,
+    isAuthenticated: Boolean(safePayload?.isAuthenticated),
+    isReportActive: Boolean(safePayload?.isReportActive),
+    hasAssignedReport: Boolean(safePayload?.hasAssignedReport || safePayload?.reportFileName),
+    isPdfRenderable: safePayload?.isPdfRenderable !== false,
+    adminClientReports: normalizedClientReports,
+    __validationIssues: issues,
+  };
+  if (issues.length) {
+    console.log("[report-switch] report-active payload validation issues", {
+      issues,
+      rawClientReportCount: rawClientReports.length,
+      normalizedClientReportCount: normalizedClientReports.length,
+    });
+  }
+  return validatedReportActivePayload;
+}
+
+function abortActiveReportActiveRequest(reason = "unknown") {
+  if (!activeReportActiveAbortController) return;
+  try {
+    activeReportActiveAbortController.abort(new Error(`report-active request cancelled: ${String(reason || "unknown")}`));
+  } catch (_error) {
+    activeReportActiveAbortController.abort();
+  }
+  activeReportActiveAbortController = null;
+}
 
 function resetClientReportSelectorSelection() {
   const clientReportSelector = getClientReportSelector();
@@ -133,11 +381,31 @@ function clearAdminClientReportState() {
   currentClientReportId = null;
   populateClientReportSelector([]);
   setClientReportSwitchVisible(false);
+  setClientReportRefreshButtonVisible(false);
+  setActiveReportSelectionState(
+    {
+      mode: activeReportSelectionState.mode || "example",
+      exampleType: activeReportSelectionState.exampleType || DEFAULT_EXAMPLE_REPORT_TYPE,
+      clientReportId: null,
+      reportId: activeReportSelectionState.reportId || null,
+    },
+    "clear-admin-client-report-state",
+  );
 }
 
 function invalidateAssignedReportIngestion(reason = "unknown") {
   activeAssignedIngestionToken += 1;
   assignedReportIngested = false;
+  if (activeDashboardCleanupAbortController) {
+    try {
+      activeDashboardCleanupAbortController.abort(
+        new Error(`dashboard narrative cleanup cancelled: ${String(reason || "unknown")}`),
+      );
+    } catch (_error) {
+      activeDashboardCleanupAbortController.abort();
+    }
+    activeDashboardCleanupAbortController = null;
+  }
   console.log("[report-ingest] invalidated active ingestion token", {
     reason,
     activeAssignedIngestionToken,
@@ -221,6 +489,21 @@ function applyRandomExampleReport() {
   const reportSelector = document.getElementById("reportSelector");
   if (!reportSelector) return;
   reportSelector.value = DEFAULT_EXAMPLE_REPORT_TYPE;
+  setActiveReportSelectionState(
+    {
+      mode: "example",
+      exampleType: DEFAULT_EXAMPLE_REPORT_TYPE,
+      clientReportId: null,
+      reportId: null,
+    },
+    "apply-random-example-report",
+  );
+  setReportSwitchStatus({
+    state: "loading",
+    message: `Loading Type ${DEFAULT_EXAMPLE_REPORT_TYPE} example report...`,
+    selectionKey: activeReportSelectionState.selectionKey,
+    reason: "apply-random-example-report",
+  });
   console.log("[report-switch] applied default initial example report", DEFAULT_EXAMPLE_REPORT_TYPE);
   applyReport(DEFAULT_EXAMPLE_REPORT_TYPE);
   exampleReportInitialized = true;
@@ -236,6 +519,21 @@ function applySelectedExampleReportOrFallback() {
   resetClientReportSelectorSelection();
   currentReportViewMode = "example";
   latestAssignedPdfReport = null;
+  setActiveReportSelectionState(
+    {
+      mode: "example",
+      exampleType: nextType,
+      clientReportId: null,
+      reportId: null,
+    },
+    "apply-selected-example-report-or-fallback",
+  );
+  setReportSwitchStatus({
+    state: "loading",
+    message: `Loading Type ${nextType} example report...`,
+    selectionKey: activeReportSelectionState.selectionKey,
+    reason: "apply-selected-example-report-or-fallback",
+  });
   applyReport(nextType);
   exampleReportInitialized = true;
 }
@@ -1795,7 +2093,17 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
     ...normalizedPayload,
   };
 
+  if (activeDashboardCleanupAbortController) {
+    try {
+      activeDashboardCleanupAbortController.abort(
+        new Error("superseded dashboard narrative cleanup request"),
+      );
+    } catch (_error) {
+      activeDashboardCleanupAbortController.abort();
+    }
+  }
   const abortController = new AbortController();
+  activeDashboardCleanupAbortController = abortController;
   const timeoutId = window.setTimeout(() => {
     abortController.abort(new Error("dashboard narrative llm cleanup timeout"));
   }, DASHBOARD_COPY_HYDRATION_LLM_TIMEOUT_MS);
@@ -1844,6 +2152,19 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
     });
     return mergedPayload;
   } catch (error) {
+    const errorMessage = String(error?.message || "");
+    const isAbortError =
+      String(error?.name || "").toLowerCase() === "aborterror" ||
+      errorMessage.toLowerCase().includes("superseded dashboard narrative cleanup request") ||
+      errorMessage.toLowerCase().includes("dashboard narrative cleanup cancelled");
+    if (isAbortError) {
+      console.log("[report-ingest] Dashboard narrative LLM cleanup request aborted for a newer switch", {
+        ingestionToken,
+        reportId: reportId || null,
+        reportFileName: reportFileName || null,
+      });
+      return normalizedPayload;
+    }
     console.log("[report-ingest] Dashboard narrative LLM cleanup request failed; using deterministic copy", {
       ingestionToken,
       reportId: reportId || null,
@@ -1855,6 +2176,9 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
     return normalizedPayload;
   } finally {
     window.clearTimeout(timeoutId);
+    if (activeDashboardCleanupAbortController === abortController) {
+      activeDashboardCleanupAbortController = null;
+    }
   }
 }
 
@@ -3291,11 +3615,41 @@ async function ingestAssignedReportIntoDashboard(data) {
   const ingestionToken = activeAssignedIngestionToken + 1;
   activeAssignedIngestionToken = ingestionToken;
   assignedReportIngested = true;
+  const normalizedReportId = String(data?.id || data?.reportId || "").trim() || null;
+  if (currentReportViewMode === "client-report") {
+    setActiveReportSelectionState(
+      {
+        mode: "client-report",
+        exampleType: activeReportSelectionState.exampleType || lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE,
+        clientReportId: normalizedReportId || String(currentClientReportId || "").trim() || null,
+        reportId: normalizedReportId,
+      },
+      "ingest-assigned-client-report",
+    );
+  } else {
+    setActiveReportSelectionState(
+      {
+        mode: "assigned-report",
+        exampleType: activeReportSelectionState.exampleType || lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE,
+        clientReportId: null,
+        reportId: normalizedReportId,
+      },
+      "ingest-assigned-report",
+    );
+  }
+  setReportSwitchStatus({
+    state: "loading",
+    message: currentReportViewMode === "client-report" ? "Loading selected client report..." : "Loading assigned report...",
+    selectionKey: activeReportSelectionState.selectionKey,
+    reason: "ingest-assigned-report-start",
+  });
+  hideReportRenderBoundary();
   console.log("[report-ingest] Started assigned/client ingestion", {
     ingestionToken,
     currentReportViewMode,
     reportFileName: data?.reportFileName || null,
     reportId: data?.id || null,
+    selectionKey: activeReportSelectionState.selectionKey,
   });
 
   try {
@@ -4241,17 +4595,48 @@ async function ingestAssignedReportIntoDashboard(data) {
       reportFileName: data?.reportFileName || null,
       fallbackApplied,
     });
+    if (!fallbackApplied) {
+      handleCriticalReportRenderError(error, {
+        context: "ingestAssignedReportIntoDashboard",
+        selectionKey: activeReportSelectionState.selectionKey,
+      });
+    }
   }
 }
 
 async function refreshReportActiveUi() {
+  const requestToken = activeReportActiveRequestToken + 1;
+  activeReportActiveRequestToken = requestToken;
+  if (activeReportActiveAbortController) {
+    try {
+      activeReportActiveAbortController.abort(new Error("superseded report-active refresh request"));
+    } catch (_error) {
+      activeReportActiveAbortController.abort();
+    }
+  }
+  const requestAbortController = new AbortController();
+  activeReportActiveAbortController = requestAbortController;
+  setReportSwitchStatus({
+    state: "loading",
+    message: "Refreshing report data...",
+    selectionKey: activeReportSelectionState.selectionKey,
+    reason: "refresh-report-active-start",
+  });
   try {
     const response = await fetch("/api/report-active", {
       method: "GET",
       headers: { Accept: "application/json" },
       credentials: "include",
       cache: "no-store",
+      signal: requestAbortController.signal,
     });
+    if (requestToken !== activeReportActiveRequestToken) {
+      console.log("[report-switch] stale report-active response ignored", {
+        requestToken,
+        activeReportActiveRequestToken,
+      });
+      return;
+    }
 
     if (!response.ok) {
       latestReportActiveData = null;
@@ -4270,10 +4655,25 @@ async function refreshReportActiveUi() {
       } else if (!exampleReportInitialized) {
         applyRandomExampleReport();
       }
+      setReportSwitchStatus({
+        state: "idle",
+        message: "",
+        selectionKey: activeReportSelectionState.selectionKey,
+        reason: "refresh-report-active-http-fallback",
+      });
       return;
     }
 
-    const data = await response.json().catch(() => ({}));
+    const rawData = await response.json().catch(() => ({}));
+    if (requestToken !== activeReportActiveRequestToken) {
+      console.log("[report-switch] stale report-active json payload ignored", {
+        requestToken,
+        activeReportActiveRequestToken,
+      });
+      return;
+    }
+    const validatedReportActivePayload = validateReportActivePayloadShape(rawData);
+    const data = validatedReportActivePayload;
     const isReady = Boolean(data?.isAuthenticated) && Boolean(data?.isReportActive);
     const hasAssignedReportAvailable = isAssignedReportAvailable(data);
     latestReportActiveData = data;
@@ -4288,6 +4688,7 @@ async function refreshReportActiveUi() {
     );
     populateClientReportSelector(adminClientReports);
     setClientReportSwitchVisible((isAdmin || isLocalhostClientPreview) && adminClientReports.length > 0);
+    setClientReportRefreshButtonVisible(isAdmin && adminClientReports.length > 0);
     if (!(isAdmin || isLocalhostClientPreview)) {
       currentClientReportId = null;
     }
@@ -4298,20 +4699,40 @@ async function refreshReportActiveUi() {
     setReportActiveChipVisible(isReady);
     setReportSwitchVisible(shouldShowExampleReports);
     console.log("[report-switch] visibility refreshed", {
+      requestToken,
       isReady,
       hasAssignedReportAvailable,
       isAdmin,
       adminClientReportCount: adminClientReports.length,
+      refreshButtonVisible: isAdmin && adminClientReports.length > 0,
       shouldShowExampleReports,
+      selectionKey: activeReportSelectionState.selectionKey,
       ingestionStatus: data?.ingestionStatus || null,
       reviewStatus: data?.reviewStatus || null,
+      validationIssues: Array.isArray(data?.__validationIssues) ? data.__validationIssues : [],
     });
     if (currentClientReportId) {
-      const selectedClientReport = latestAdminClientReportsById.get(String(currentClientReportId).trim());
+      const selectedClientReport =
+        latestAdminClientReportsById.get(String(currentClientReportId || "").trim()) || null;
       if (selectedClientReport) {
         currentReportViewMode = "client-report";
         assignedReportIngested = false;
         latestAssignedPdfReport = null;
+        setActiveReportSelectionState(
+          {
+            mode: "client-report",
+            exampleType: activeReportSelectionState.exampleType || lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE,
+            clientReportId: String(currentClientReportId || "").trim(),
+            reportId: String(currentClientReportId || "").trim(),
+          },
+          "refresh-report-active-current-client",
+        );
+        setReportSwitchStatus({
+          state: "loading",
+          message: "Loading selected client report...",
+          selectionKey: activeReportSelectionState.selectionKey,
+          reason: "refresh-report-active-current-client",
+        });
         ingestAssignedReportIntoDashboard(selectedClientReport);
         return;
       }
@@ -4332,6 +4753,21 @@ async function refreshReportActiveUi() {
       currentReportViewMode = "client-report";
       assignedReportIngested = false;
       latestAssignedPdfReport = null;
+      setActiveReportSelectionState(
+        {
+          mode: "client-report",
+          exampleType: activeReportSelectionState.exampleType || lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE,
+          clientReportId: matchedReportId,
+          reportId: matchedReportId,
+        },
+        "refresh-report-active-email-matched-client",
+      );
+      setReportSwitchStatus({
+        state: "loading",
+        message: "Loading your client report...",
+        selectionKey: activeReportSelectionState.selectionKey,
+        reason: "refresh-report-active-email-matched-client",
+      });
       ingestAssignedReportIntoDashboard(emailMatchedClientReport);
       return;
     }
@@ -4341,6 +4777,21 @@ async function refreshReportActiveUi() {
       currentReportViewMode = "assigned-report";
       assignedReportIngested = false;
       latestAssignedPdfReport = null;
+      setActiveReportSelectionState(
+        {
+          mode: "assigned-report",
+          exampleType: activeReportSelectionState.exampleType || lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE,
+          clientReportId: null,
+          reportId: String(data?.id || data?.reportId || "").trim() || null,
+        },
+        "refresh-report-active-assigned-report",
+      );
+      setReportSwitchStatus({
+        state: "loading",
+        message: "Loading assigned report...",
+        selectionKey: activeReportSelectionState.selectionKey,
+        reason: "refresh-report-active-assigned-report",
+      });
       ingestAssignedReportIntoDashboard(data);
     } else {
       latestAssignedPdfReport = null;
@@ -4353,6 +4804,18 @@ async function refreshReportActiveUi() {
       }
     }
   } catch (error) {
+    const errorMessage = String(error?.message || "");
+    const isAbortError =
+      String(error?.name || "").toLowerCase() === "aborterror" ||
+      errorMessage.toLowerCase().includes("superseded report-active refresh request") ||
+      errorMessage.toLowerCase().includes("report-active request cancelled");
+    if (isAbortError) {
+      console.log("[report-switch] aborted stale report-active request", {
+        requestToken,
+        activeReportActiveRequestToken,
+      });
+      return;
+    }
     console.log("[auth] Failed to refresh report-active status:", error);
     latestReportActiveData = null;
     clearAdminClientReportState();
@@ -4370,7 +4833,93 @@ async function refreshReportActiveUi() {
     } else if (!exampleReportInitialized) {
       applyRandomExampleReport();
     }
+    showReportRenderBoundary({
+      selectionKey: activeReportSelectionState.selectionKey,
+      errorClass: "network",
+      message:
+        "We could not refresh your latest report data right now. You can retry render or refresh report data.",
+    });
+  } finally {
+    if (requestToken === activeReportActiveRequestToken) {
+      activeReportActiveAbortController = null;
+      const statusNode = getReportSwitchStatusNode();
+      const statusState = String(statusNode?.dataset?.state || "");
+      const statusReason = String(statusNode?.dataset?.reason || "");
+      if (statusState === "loading" && statusReason === "refresh-report-active-start") {
+        setReportSwitchStatus({
+          state: "idle",
+          message: "",
+          selectionKey: activeReportSelectionState.selectionKey,
+          reason: "refresh-report-active-finalize",
+        });
+      }
+    }
   }
+}
+
+function retryReportRenderFromActiveSelection() {
+  const selection = getActiveReportSelectionState();
+  hideReportRenderBoundary();
+  console.log("[report-render] retry requested from error boundary", {
+    selectionKey: selection.selectionKey,
+    mode: selection.mode,
+    lastCriticalRenderError,
+  });
+  if (selection.mode === "example") {
+    applyReport(selection.exampleType || lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE);
+    return;
+  }
+  if (selection.mode === "client-report") {
+    const selectedClientReport = getClientReportById(selection.clientReportId || currentClientReportId);
+    if (selectedClientReport) {
+      invalidateAssignedReportIngestion("retry-render-client-report");
+      assignedReportIngested = false;
+      currentReportViewMode = "client-report";
+      currentClientReportId = String(selection.clientReportId || currentClientReportId || "").trim() || null;
+      ingestAssignedReportIntoDashboard(selectedClientReport);
+      return;
+    }
+  }
+  invalidateAssignedReportIngestion("retry-render-refresh-report-active");
+  refreshReportActiveUi();
+}
+
+function refreshReportDataFromBoundary() {
+  hideReportRenderBoundary();
+  invalidateAssignedReportIngestion("error-boundary-refresh-data");
+  refreshReportActiveUi();
+}
+
+function bindReportRenderBoundaryActions() {
+  const retryButton = getReportRenderRetryButtonNode();
+  if (retryButton && retryButton.dataset.bound !== "1") {
+    retryButton.addEventListener("click", retryReportRenderFromActiveSelection);
+    retryButton.dataset.bound = "1";
+  }
+  const refreshButton = getReportRenderRefreshButtonNode();
+  if (refreshButton && refreshButton.dataset.bound !== "1") {
+    refreshButton.addEventListener("click", refreshReportDataFromBoundary);
+    refreshButton.dataset.bound = "1";
+  }
+}
+
+function registerGlobalReportRenderErrorHandlers() {
+  if (window.__reportRenderErrorHandlersBound) return;
+  window.__reportRenderErrorHandlersBound = true;
+  window.addEventListener("error", (event) => {
+    const message = String(event?.message || "").toLowerCase();
+    if (message.includes("resizeobserver loop limit exceeded")) return;
+    handleCriticalReportRenderError(event?.error || event?.message || "Window error", {
+      context: "window-error",
+      selectionKey: activeReportSelectionState.selectionKey,
+    });
+  });
+  window.addEventListener("unhandledrejection", (event) => {
+    handleCriticalReportRenderError(event?.reason || "Unhandled promise rejection", {
+      context: "window-unhandledrejection",
+      selectionKey: activeReportSelectionState.selectionKey,
+    });
+  });
 }
 
 function parseDashboardRehydrateSignal(value) {
@@ -4462,6 +5011,22 @@ function setSignedOutAuthUi() {
   setOverviewAdminDiagnosticsVisible(null);
   currentReportViewMode = "example";
   latestAssignedPdfReport = null;
+  setClientReportRefreshButtonVisible(false);
+  setActiveReportSelectionState(
+    {
+      mode: "example",
+      exampleType: lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE,
+      clientReportId: null,
+      reportId: null,
+    },
+    "set-signed-out-auth-ui",
+  );
+  setReportSwitchStatus({
+    state: "idle",
+    message: "",
+    selectionKey: activeReportSelectionState.selectionKey,
+    reason: "set-signed-out-auth-ui",
+  });
   hideAssignedIngestCard();
   invalidateAssignedReportIngestion("set-signed-out-auth-ui");
   if (!exampleReportInitialized) {
@@ -4493,7 +5058,14 @@ function setSignedInAuthUi(user) {
   setOverviewAdminDiagnosticsVisible(user?.email);
   setReportSwitchVisible(hasAdminAccess(user?.email));
   setClientReportSwitchVisible(false);
+  setClientReportRefreshButtonVisible(false);
   setExportPdfState({ visible: true, enabled: true });
+  setReportSwitchStatus({
+    state: "loading",
+    message: "Checking assigned report availability...",
+    selectionKey: activeReportSelectionState.selectionKey,
+    reason: "set-signed-in-auth-ui",
+  });
   button.classList.remove("google");
   button.classList.add("avatar");
   button.setAttribute("href", "#");
@@ -4829,7 +5401,11 @@ window.addEventListener("DOMContentLoaded", () => {
   setupReportSelectorHandler();
   setupClientReportSelectorHandler();
   setupClientReportRefreshHandler();
+  bindReportRenderBoundaryActions();
+  registerGlobalReportRenderErrorHandlers();
   registerDashboardRehydrateListeners();
+  hideReportRenderBoundary();
+  resetReportScopedUiState(activeReportSelectionState.selectionKey);
   const signOutButton = document.getElementById("authSignOutButton");
   const exportPdfButton = getExportPdfButton();
   if (signOutButton) {
@@ -9910,16 +10486,44 @@ function updateCharts() {
 function applyReport(typeId) {
   try {
     const normalizedTypeId = String(typeId || "").trim();
+    const nextTypeId = /^[1-9]$/.test(normalizedTypeId) ? normalizedTypeId : DEFAULT_EXAMPLE_REPORT_TYPE;
+    setActiveReportSelectionState(
+      {
+        mode: "example",
+        exampleType: nextTypeId,
+        clientReportId: null,
+        reportId: null,
+      },
+      "apply-report",
+    );
+    resetReportScopedUiState(activeReportSelectionState.selectionKey);
+    hideReportRenderBoundary();
+    setReportSwitchStatus({
+      state: "loading",
+      message: `Loading Type ${nextTypeId} example report...`,
+      selectionKey: activeReportSelectionState.selectionKey,
+      reason: "apply-report",
+    });
     console.log("[report-switch] applyReport requested", normalizedTypeId);
     REPORT = normalizeReportPoints({
-      ...(REPORT_EXAMPLES[normalizedTypeId] || REPORT_EXAMPLES[DEFAULT_EXAMPLE_REPORT_TYPE]),
+      ...(REPORT_EXAMPLES[nextTypeId] || REPORT_EXAMPLES[DEFAULT_EXAMPLE_REPORT_TYPE]),
     });
     lastAppliedExampleType = String(REPORT.typeNumber || DEFAULT_EXAMPLE_REPORT_TYPE);
     reflectionDeck = buildReflectionDeck(REPORT);
-    console.log('[report-switch] applying', REPORT.typeNumber, REPORT.typeName);
+    console.log("[report-switch] applying", REPORT.typeNumber, REPORT.typeName);
     renderReportFromState(true);
+    setReportSwitchStatus({
+      state: "idle",
+      message: "",
+      selectionKey: activeReportSelectionState.selectionKey,
+      reason: "apply-report-complete",
+    });
   } catch (error) {
-    console.log('[report-switch] failed', error);
+    handleCriticalReportRenderError(error, {
+      context: "applyReport",
+      selectionKey: activeReportSelectionState.selectionKey,
+    });
+    console.log("[report-switch] failed", error);
   }
 }
 
@@ -10205,6 +10809,20 @@ function setIntegrationUiVisibility(isVisible) {
 
 function renderReportFromState(isExampleMode) {
   const missingAssignedPdfText = "Not detected in assigned PDF.";
+  const activeSelectionSnapshot = getActiveReportSelectionState();
+  const activeSelectionKey = String(activeSelectionSnapshot?.selectionKey || "").trim() || null;
+  hideReportRenderBoundary();
+  resetReportScopedUiState(activeSelectionSnapshot.selectionKey);
+  console.log("[report-render] start", {
+    selectionKey: activeSelectionKey,
+    mode: activeSelectionSnapshot.mode,
+    isExampleMode: Boolean(isExampleMode),
+    reportTypeNumber: String(REPORT?.typeNumber || ""),
+    reportTypeName: String(REPORT?.typeName || ""),
+    currentReportViewMode,
+    currentClientReportId,
+  });
+  try {
   renderGrowthKeyChallenges({ report: REPORT, isExampleMode });
   setText('typeBadge', REPORT.typeNumber);
   setText('headerSubtitle', `Type ${REPORT.typeNumber} · ${REPORT.instinct}`);
@@ -10695,17 +11313,136 @@ function renderReportFromState(isExampleMode) {
   updateCharts();
   buildReportModuleIndex();
   genReflection();
+  console.log("[report-render] major section payloads", {
+    selectionKey: activeSelectionKey,
+    mode: activeSelectionSnapshot.mode,
+    overview: {
+      typeNumber: String(REPORT?.typeNumber || ""),
+      instinct: String(REPORT?.instinct || ""),
+      integration: String(REPORT?.integration || ""),
+      traitCount: Array.isArray(REPORT?.traits) ? REPORT.traits.length : 0,
+    },
+    centers: {
+      centerScoresRaw: REPORT?.centerScoresRaw || null,
+      instinctScoresRaw: REPORT?.instinctScoresRaw || null,
+      interactionScores: REPORT?.interactionScores || null,
+    },
+    leadership: {
+      teamStageKeys: Object.keys(REPORT?.teamStageBreakdown || {}),
+      hasConflictResponse: Boolean(REPORT?.spreadsheetFocuses?.conflictResponseCopy),
+      hasDecisionImpact: Boolean(REPORT?.spreadsheetFocuses?.decisionImpactCopy),
+    },
+    communication: {
+      hasCoachingRelationship: Boolean(REPORT?.spreadsheetFocuses?.coachingRelationshipCopy),
+      bodyLanguageRows: Array.isArray(REPORT?.spreadsheetFocuses?.bodyLanguageRows)
+        ? REPORT.spreadsheetFocuses.bodyLanguageRows.length
+        : 0,
+    },
+    strain: {
+      strainScoresRaw: REPORT?.strainScoresRaw || null,
+      qualitativeRows: Array.isArray(REPORT?.strainQualitativeWriteups)
+        ? REPORT.strainQualitativeWriteups.length
+        : 0,
+      hasOverallSummary: Boolean(REPORT?.overallStrainSummary),
+    },
+    growth: {
+      devExerciseCount: Array.isArray(REPORT?.developmentExercises) ? REPORT.developmentExercises.length : 0,
+      hasMotivationSummary: Boolean(REPORT?.spreadsheetFocuses?.motivationSummary),
+    },
+  });
+  setReportSwitchStatus({
+    state: "idle",
+    message: "",
+    selectionKey: activeSelectionKey,
+    reason: "render-report-from-state-complete",
+  });
+  } catch (error) {
+    handleCriticalReportRenderError(error, {
+      context: "renderReportFromState",
+      selectionKey: activeSelectionKey,
+    });
+  }
+}
+
+function validateAssignedDashboardPayloadShape(payload) {
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  const issues = [];
+  const normalizedTypeNumber = String(safePayload?.typeNumber || "").trim();
+  if (!/^[1-9]$/.test(normalizedTypeNumber)) {
+    issues.push("missing_type_number");
+  }
+  const normalizedClientName = String(safePayload?.clientName || "").trim();
+  const normalizedReportDate = String(safePayload?.reportDate || "").trim();
+  const normalizedPayload = {
+    ...safePayload,
+    typeNumber: /^[1-9]$/.test(normalizedTypeNumber) ? normalizedTypeNumber : DEFAULT_EXAMPLE_REPORT_TYPE,
+    clientName: normalizedClientName || "Not detected",
+    reportDate: normalizedReportDate || "Not detected",
+    feedbackGuideMatrix: Array.isArray(safePayload?.feedbackGuideMatrix) ? safePayload.feedbackGuideMatrix : [],
+    strainQualitativeWriteups: Array.isArray(safePayload?.strainQualitativeWriteups)
+      ? safePayload.strainQualitativeWriteups
+      : [],
+    developmentExercises: Array.isArray(safePayload?.developmentExercises) ? safePayload.developmentExercises : [],
+    spreadsheetFocuses:
+      safePayload?.spreadsheetFocuses && typeof safePayload.spreadsheetFocuses === "object"
+        ? safePayload.spreadsheetFocuses
+        : {},
+    teamStageBreakdown:
+      safePayload?.teamStageBreakdown && typeof safePayload.teamStageBreakdown === "object"
+        ? safePayload.teamStageBreakdown
+        : {},
+    __validationIssues: issues,
+  };
+  if (issues.length) {
+    console.log("[report-ingest] assigned payload validation issues", {
+      issues,
+      reportId: safePayload?.reportId || null,
+      reportFileName: safePayload?.reportFileName || null,
+    });
+  }
+  return normalizedPayload;
 }
 
 function applyAssignedPdfReport(payload) {
   try {
-    REPORT = buildPdfOnlyReport(payload);
+    const validatedPayload = validateAssignedDashboardPayloadShape(payload);
+    REPORT = buildPdfOnlyReport(validatedPayload);
     latestAssignedPdfReport = REPORT;
     const isClientReportView = currentReportViewMode === "client-report";
     currentReportViewMode = isClientReportView ? "client-report" : "assigned-report";
+    setActiveReportSelectionState(
+      {
+        mode: currentReportViewMode,
+        exampleType: activeReportSelectionState.exampleType || lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE,
+        clientReportId:
+          currentReportViewMode === "client-report"
+            ? String(currentClientReportId || validatedPayload?.reportId || "").trim() || null
+            : null,
+        reportId: String(validatedPayload?.reportId || "").trim() || null,
+      },
+      "apply-assigned-pdf-report",
+    );
+    resetReportScopedUiState(activeReportSelectionState.selectionKey);
+    hideReportRenderBoundary();
+    setReportSwitchStatus({
+      state: "loading",
+      message: "Loading assigned/client report...",
+      selectionKey: activeReportSelectionState.selectionKey,
+      reason: "apply-assigned-pdf-report",
+    });
     reflectionDeck = buildReflectionDeck(REPORT);
     renderReportFromState(false);
+    setReportSwitchStatus({
+      state: "idle",
+      message: "",
+      selectionKey: activeReportSelectionState.selectionKey,
+      reason: "apply-assigned-pdf-report-complete",
+    });
   } catch (error) {
+    handleCriticalReportRenderError(error, {
+      context: "applyAssignedPdfReport",
+      selectionKey: activeReportSelectionState.selectionKey,
+    });
     console.log("[report-ingest] Failed to apply assigned PDF dashboard content", error);
   }
 }
@@ -10751,6 +11488,12 @@ async function onClientReportRefreshClick(event) {
   }
   clientReportManualRefreshInFlight = true;
   const fallbackMarkerCountBefore = countAssignedPdfFallbackMarkers();
+  setReportSwitchStatus({
+    state: "loading",
+    message: "Refreshing client report data...",
+    selectionKey: activeReportSelectionState.selectionKey,
+    reason: "client-report-manual-refresh",
+  });
   console.log("[client-report-switch] manual refresh requested", {
     currentReportViewMode,
     currentClientReportId,
@@ -10779,9 +11522,21 @@ async function onClientReportRefreshClick(event) {
       details: String(error?.message || "Unknown client report refresh failure"),
       stack: error?.stack || null,
     });
+    handleCriticalReportRenderError(error, {
+      context: "client-report-manual-refresh",
+      selectionKey: activeReportSelectionState.selectionKey,
+    });
   } finally {
     clientReportManualRefreshInFlight = false;
     setClientReportRefreshButtonLoadingState(false);
+    if (getReportSwitchStatusNode()?.dataset?.state === "loading") {
+      setReportSwitchStatus({
+        state: "idle",
+        message: "",
+        selectionKey: activeReportSelectionState.selectionKey,
+        reason: "client-report-manual-refresh-finalize",
+      });
+    }
   }
 }
 
@@ -10838,7 +11593,7 @@ function syncSelectedExampleReport() {
 
 function onReportSelectorChange(event) {
   const selectedType = String(event?.target?.value || getReportSelector()?.value || "").trim();
-  console.log('[report-switch] selector changed to', selectedType);
+  console.log("[report-switch] selector changed to", selectedType);
   if (!/^[1-9]$/.test(selectedType)) {
     const fallbackType = String(lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE);
     if (event?.target) event.target.value = fallbackType;
@@ -10854,6 +11609,21 @@ function onReportSelectorChange(event) {
   resetClientReportSelectorSelection();
   currentReportViewMode = "example";
   latestAssignedPdfReport = null;
+  setActiveReportSelectionState(
+    {
+      mode: "example",
+      exampleType: selectedType,
+      clientReportId: null,
+      reportId: null,
+    },
+    "manual-example-selector-change",
+  );
+  setReportSwitchStatus({
+    state: "loading",
+    message: `Loading Type ${selectedType} example report...`,
+    selectionKey: activeReportSelectionState.selectionKey,
+    reason: "manual-example-selector-change",
+  });
   applyReport(selectedType);
 }
 
@@ -10867,15 +11637,26 @@ function onClientReportSelectorChange(event) {
   if (!selectedReportId) {
     invalidateAssignedReportIngestion("client-report-selection-cleared");
     currentClientReportId = null;
+    currentReportViewMode = "assigned-report";
+    setActiveReportSelectionState(
+      {
+        mode: "assigned-report",
+        exampleType: activeReportSelectionState.exampleType || lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE,
+        clientReportId: null,
+        reportId: null,
+      },
+      "client-report-selection-cleared",
+    );
     console.log("[client-report-switch] selection cleared", {
       currentReportViewMode,
       currentClientReportId,
       selectedReportId: null,
     });
+    refreshReportActiveUi();
     return;
   }
 
-  const selectedClientReport = latestAdminClientReportsById.get(selectedReportId);
+  const selectedClientReport = getClientReportById(selectedReportId);
   if (!selectedClientReport) {
     console.log("[client-report-switch] selected report id missing from cache", {
       selectedReportId,
@@ -10888,6 +11669,21 @@ function onClientReportSelectorChange(event) {
   currentReportViewMode = "client-report";
   assignedReportIngested = false;
   latestAssignedPdfReport = null;
+  setActiveReportSelectionState(
+    {
+      mode: "client-report",
+      exampleType: activeReportSelectionState.exampleType || lastAppliedExampleType || DEFAULT_EXAMPLE_REPORT_TYPE,
+      clientReportId: selectedReportId,
+      reportId: selectedReportId,
+    },
+    "client-report-selector-change",
+  );
+  setReportSwitchStatus({
+    state: "loading",
+    message: "Loading selected client report...",
+    selectionKey: activeReportSelectionState.selectionKey,
+    reason: "client-report-selector-change",
+  });
   console.log("[client-report-switch] applying selected client report", {
     selectedReportId,
     clientName: selectedClientReport?.clientName || null,
@@ -10922,6 +11718,7 @@ function toggleReflections(minimize) {
 
 window.addEventListener('load', () => {
   setupSearchPopoutHandlers();
+  bindReportRenderBoundaryActions();
   // Bind report selector first so it still works even if later setup code fails.
   setupReportSelectorHandler();
   setupClientReportSelectorHandler();

@@ -30,6 +30,9 @@ body{background:radial-gradient(circle at 5% 0%,#f7fbff 0,#eef4fb 44%,#e9f1fb 10
 .report-switch-label{font-size:var(--fs-label);font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)}
 .report-switch-select{border:1px solid var(--border2);border-radius:10px;background:#fff;color:var(--text);padding:7px 11px;font:600 var(--fs-meta) var(--font-sans);outline:none}
 .report-switch-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,102,216,.12)}
+.report-switch-status{font-size:11px;color:var(--text3);font-weight:600;line-height:1.35}
+.report-switch-status[data-state="loading"]{color:var(--blue)}
+.report-switch-status[data-state="error"]{color:var(--red)}
 .report-switch-refresh{
   border:1px solid var(--border2);
   border-radius:10px;
@@ -55,6 +58,29 @@ body{background:radial-gradient(circle at 5% 0%,#f7fbff 0,#eef4fb 44%,#e9f1fb 10
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .eyebrow-text{font-size:var(--fs-meta);font-weight:600;color:var(--text3);letter-spacing:.06em;text-transform:uppercase}
 .header-controls{margin-top:14px;padding-left:50px;display:flex;align-items:flex-end;flex-wrap:wrap;gap:10px 16px}
+.report-render-error-boundary{
+  display:none;
+  border:1px solid #fecaca;
+  border-left:4px solid var(--red);
+  border-radius:14px;
+  background:#fff5f5;
+  padding:12px 14px;
+  margin-bottom:18px;
+}
+.report-render-error-boundary[data-visible="true"]{display:block}
+.report-render-error-title{font:700 12px var(--font-sans);color:#991b1b;letter-spacing:.04em;text-transform:uppercase}
+.report-render-error-message{font:500 13px var(--font-sans);color:#7f1d1d;line-height:1.55;margin-top:6px}
+.report-render-error-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+.report-render-error-button{
+  border:1px solid #fca5a5;
+  background:#fff;
+  color:#7f1d1d;
+  border-radius:9px;
+  padding:7px 10px;
+  font:700 11px var(--font-sans);
+  cursor:pointer;
+}
+.report-render-error-button:hover{background:#fff1f2}
 h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:700;letter-spacing:-.03em;line-height:1.03;margin-bottom:8px}
 .header-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:var(--fs-meta);color:var(--text3);font-family:var(--font-mono)}
 .hdot{color:var(--surface3)}
@@ -490,6 +516,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           type="button"
           id="clientReportRefreshButton"
           data-testid="client-report-refresh-button"
+          style="display:none"
           title="Rehydrate dashboard copy from latest client report data"
           aria-label="Refresh client report data"
           data-loading="0"
@@ -503,6 +530,27 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
           </svg>
         </button>
       </div>
+      <span class="report-switch-status" id="reportSwitchStatus" data-testid="report-switch-status" data-state="idle" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+
+  <div
+    class="report-render-error-boundary"
+    id="reportRenderErrorBoundary"
+    data-testid="report-render-error-boundary"
+    data-visible="false"
+  >
+    <div class="report-render-error-title">Report Load Issue</div>
+    <p class="report-render-error-message" id="reportRenderErrorMessage" data-testid="report-render-error-message">
+      We hit a temporary issue while loading this report. You can retry the render or refresh report data.
+    </p>
+    <div class="report-render-error-actions">
+      <button class="report-render-error-button" type="button" id="reportRenderRetryButton" data-testid="report-render-retry-button">
+        Retry Render
+      </button>
+      <button class="report-render-error-button" type="button" id="reportRenderRefreshButton" data-testid="report-render-refresh-button">
+        Refresh Data
+      </button>
     </div>
   </div>
 
