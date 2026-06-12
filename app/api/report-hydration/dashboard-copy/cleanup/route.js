@@ -40,6 +40,27 @@ const CORE_PATTERN_BULLET_DEFINITIONS = [
   { key: "thinking", label: "Typical Thinking Patterns" },
   { key: "feeling", label: "Typical Feeling Patterns" },
 ];
+const COPY_CLEANUP_ISSUE_TYPES = [
+  "spelling",
+  "grammar",
+  "truncation",
+  "duplication",
+  "metadata_leak",
+  "style_inconsistency",
+  "tone_risk",
+  "formatting",
+  "other",
+];
+const COPY_CLEANUP_ISSUE_SEVERITIES = ["low", "medium", "high"];
+const COPY_CLEANUP_STATUS_VALUES = ["ok", "needs_review"];
+const COPY_CLEANUP_QUALITY_CHECK_KEYS = [
+  "noTruncatedWords",
+  "noMetadataLeakage",
+  "noDuplicates",
+  "grammarAndSpellingClean",
+  "fieldIsolationPreserved",
+  "schemaValid",
+];
 
 const DASHBOARD_COPY_CLEANUP_SYSTEM_PROMPT = `
 You clean jumbled Enneagram dashboard narrative copy during hydration.
@@ -57,6 +78,14 @@ You must:
 7. Return JSON only in the exact schema shape.
 8. If a field has no valid content after cleanup, return "${FALLBACK_TEXT}".
 9. For corePatternBullets, preserve exactly three rows labeled "Typical Action Patterns", "Typical Thinking Patterns", and "Typical Feeling Patterns".
+10. Return a top-level JSON object with exactly two keys:
+   - cleanedPayload: the cleaned dashboard payload object.
+   - validation: strict validation metadata.
+11. validation must include:
+   - issues: array of issue objects with type/severity/originalText/cleanedText/note.
+   - metadataRemoved: array of removed metadata tokens.
+   - qualityChecks: object with booleans for noTruncatedWords, noMetadataLeakage, noDuplicates, grammarAndSpellingClean, fieldIsolationPreserved, schemaValid.
+   - status: "ok" or "needs_review" (must be "needs_review" if any qualityChecks value is false).
 `.trim();
 
 function normalizeWhitespace(value) {
@@ -346,6 +375,255 @@ function hasInformativeInput(normalizedPayload) {
   });
 }
 
+function normalizeIssueType(value) {
+  const normalized = String(normalizeText(value, { fallback: "other", maxChars: 80 }) || "other")
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .trim();
+  if (COPY_CLEANUP_ISSUE_TYPES.includes(normalized)) return normalized;
+  return "other";
+}
+
+function normalizeIssueSeverity(value) {
+  const normalized = String(normalizeText(value, { fallback: "medium", maxChars: 20 }) || "medium")
+    .toLowerCase()
+    .trim();
+  if (COPY_CLEANUP_ISSUE_SEVERITIES.includes(normalized)) return normalized;
+  return "medium";
+}
+
+function normalizeValidationIssue(value) {
+  const safe = value && typeof value === "object" ? value : {};
+  const note = normalizeText(safe?.note, { fallback: null, maxChars: 320 });
+  return {
+    type: normalizeIssueType(safe?.type),
+    severity: normalizeIssueSeverity(safe?.severity),
+    originalText: normalizeText(safe?.originalText, { fallback: null, maxChars: 320 }) || "Not provided.",
+    cleanedText: normalizeText(safe?.cleanedText, { fallback: null, maxChars: 320 }) || "Not provided.",
+    note: note || "Issue detected during cleanup validation.",
+  };
+}
+
+function normalizeValidationStatus(value) {
+  const normalized = String(normalizeText(value, { fallback: "", maxChars: 40 }) || "")
+    .toLowerCase()
+    .trim();
+  if (COPY_CLEANUP_STATUS_VALUES.includes(normalized)) return normalized;
+  return null;
+}
+
+function normalizeValidationMetadataRemoved(value) {
+  const safeRows = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  safeRows.forEach((row) => {
+    const normalized = normalizeText(row, { fallback: null, maxChars: 120 });
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(normalized);
+  });
+  return out;
+}
+
+function normalizeValidationQualityChecks(value) {
+  const safe = value && typeof value === "object" ? value : {};
+  const out = {};
+  COPY_CLEANUP_QUALITY_CHECK_KEYS.forEach((key) => {
+    out[key] = typeof safe[key] === "boolean" ? safe[key] : null;
+  });
+  return out;
+}
+
+function collectCleanupTextRows(normalizedPayload) {
+  const rows = [];
+  if (!normalizedPayload || typeof normalizedPayload !== "object") return rows;
+
+  rows.push(...(Array.isArray(normalizedPayload?.corePatternBullets)
+    ? normalizedPayload.corePatternBullets.map((row) => row?.text)
+    : []));
+  rows.push(...(Array.isArray(normalizedPayload?.strainQualitativeWriteups)
+    ? normalizedPayload.strainQualitativeWriteups.map((row) => row?.text)
+    : []));
+  rows.push(...(Array.isArray(normalizedPayload?.feedbackGuideMatrix)
+    ? normalizedPayload.feedbackGuideMatrix.map((row) => row?.guidance)
+    : []));
+  rows.push(...(Array.isArray(normalizedPayload?.developmentExercises)
+    ? normalizedPayload.developmentExercises.map((row) => row?.text)
+    : []));
+  rows.push(normalizedPayload?.overallStrainSummary);
+  TEAM_STAGE_KEYS.forEach((key) => rows.push(normalizedPayload?.teamStageBreakdown?.[key]));
+  SPREADSHEET_TEXT_KEYS.forEach((key) => rows.push(normalizedPayload?.spreadsheetFocuses?.[key]));
+  INSTINCT_FIELDS.forEach((key) => rows.push(normalizedPayload?.spreadsheetFocuses?.instinctGoals?.[key]));
+  rows.push(...(Array.isArray(normalizedPayload?.spreadsheetFocuses?.developingAsBullets)
+    ? normalizedPayload.spreadsheetFocuses.developingAsBullets
+    : []));
+  rows.push(...(Array.isArray(normalizedPayload?.spreadsheetFocuses?.bodyLanguageRows)
+    ? normalizedPayload.spreadsheetFocuses.bodyLanguageRows
+    : []));
+  rows.push(...(Array.isArray(normalizedPayload?.spreadsheetFocuses?.conflictTriggeredBullets)
+    ? normalizedPayload.spreadsheetFocuses.conflictTriggeredBullets
+    : []));
+
+  return rows
+    .map((row) => normalizeText(row, { fallback: null }))
+    .filter(Boolean);
+}
+
+function looksLikeMetadataLeak(text) {
+  const normalized = normalizeText(text, { fallback: null });
+  if (!normalized) return false;
+  if (/\|/.test(normalized)) return true;
+  if (/\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i.test(normalized) && /\b\d{4}\b/.test(normalized)) {
+    return true;
+  }
+  if (/\b(?:english|french|spanish|german|italian|portuguese)\b/i.test(normalized) && /\b\d{4}\b/.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
+function looksLikeTruncatedLine(text) {
+  const normalized = normalizeText(text, { fallback: null });
+  if (!normalized) return false;
+  if (/[a-z]{2,}\.\.\.$/i.test(normalized)) return true;
+  if (/\b(?:impa|mistak|decisins)\b/i.test(normalized)) return true;
+  return false;
+}
+
+function detectDuplicateRows(rows) {
+  const duplicates = [];
+  const seen = new Set();
+  rows.forEach((row) => {
+    const normalized = normalizeText(row, { fallback: null });
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      duplicates.push(normalized);
+      return;
+    }
+    seen.add(key);
+  });
+  return duplicates;
+}
+
+function detectInstinctFieldIsolationIssues(normalizedPayload) {
+  const issues = [];
+  const selfPres = normalizeText(normalizedPayload?.spreadsheetFocuses?.instinctGoals?.selfPres, { fallback: "" }) || "";
+  const social = normalizeText(normalizedPayload?.spreadsheetFocuses?.instinctGoals?.social, { fallback: "" }) || "";
+  const oneOnOne = normalizeText(normalizedPayload?.spreadsheetFocuses?.instinctGoals?.oneOnOne, { fallback: "" }) || "";
+
+  if (/One(?:-| )On(?:-| )One\s*-\s*SX|Self(?:-| )Preservation\s*-\s*SP/i.test(social)) {
+    issues.push("Social field contains non-social instinct heading spillover.");
+  }
+  if (/Social\s*-\s*SO|Self(?:-| )Preservation\s*-\s*SP/i.test(oneOnOne)) {
+    issues.push("One-On-One field contains non-SX instinct heading spillover.");
+  }
+  if (/Social\s*-\s*SO|One(?:-| )On(?:-| )One\s*-\s*SX/i.test(selfPres)) {
+    issues.push("Self-Preservation field contains non-SP instinct heading spillover.");
+  }
+  return issues;
+}
+
+function buildDeterministicValidationResult(cleanedPayload, modelValidation = null) {
+  const normalizedPayload = normalizeCleanupInput(cleanedPayload);
+  const candidateValidation = modelValidation && typeof modelValidation === "object" ? modelValidation : {};
+  const rows = collectCleanupTextRows(normalizedPayload);
+  const duplicateRows = detectDuplicateRows(rows);
+  const metadataLeakRows = rows.filter((row) => looksLikeMetadataLeak(row));
+  const truncatedRows = rows.filter((row) => looksLikeTruncatedLine(row));
+  const isolationIssues = detectInstinctFieldIsolationIssues(normalizedPayload);
+
+  const qualityChecks = normalizeValidationQualityChecks(candidateValidation?.qualityChecks);
+  const resolvedQualityChecks = {
+    noTruncatedWords:
+      typeof qualityChecks.noTruncatedWords === "boolean"
+        ? qualityChecks.noTruncatedWords
+        : truncatedRows.length === 0,
+    noMetadataLeakage:
+      typeof qualityChecks.noMetadataLeakage === "boolean"
+        ? qualityChecks.noMetadataLeakage
+        : metadataLeakRows.length === 0,
+    noDuplicates:
+      typeof qualityChecks.noDuplicates === "boolean"
+        ? qualityChecks.noDuplicates
+        : duplicateRows.length === 0,
+    grammarAndSpellingClean:
+      typeof qualityChecks.grammarAndSpellingClean === "boolean"
+        ? qualityChecks.grammarAndSpellingClean
+        : truncatedRows.length === 0,
+    fieldIsolationPreserved:
+      typeof qualityChecks.fieldIsolationPreserved === "boolean"
+        ? qualityChecks.fieldIsolationPreserved
+        : isolationIssues.length === 0,
+    schemaValid:
+      typeof qualityChecks.schemaValid === "boolean"
+        ? qualityChecks.schemaValid
+        : true,
+  };
+
+  const issues = Array.isArray(candidateValidation?.issues)
+    ? candidateValidation.issues.map((issue) => normalizeValidationIssue(issue)).slice(0, 24)
+    : [];
+  if (truncatedRows.length) {
+    issues.push(
+      normalizeValidationIssue({
+        type: "truncation",
+        severity: "high",
+        originalText: truncatedRows[0],
+        cleanedText: truncatedRows[0],
+        note: "Detected likely truncated text artifact after cleanup.",
+      }),
+    );
+  }
+  if (metadataLeakRows.length) {
+    issues.push(
+      normalizeValidationIssue({
+        type: "metadata_leak",
+        severity: "high",
+        originalText: metadataLeakRows[0],
+        cleanedText: "",
+        note: "Detected likely metadata leakage in narrative output.",
+      }),
+    );
+  }
+  if (duplicateRows.length) {
+    issues.push(
+      normalizeValidationIssue({
+        type: "duplication",
+        severity: "medium",
+        originalText: duplicateRows[0],
+        cleanedText: duplicateRows[0],
+        note: "Detected duplicate narrative row in cleaned payload.",
+      }),
+    );
+  }
+  if (isolationIssues.length) {
+    issues.push(
+      normalizeValidationIssue({
+        type: "style_inconsistency",
+        severity: "high",
+        originalText: isolationIssues[0],
+        cleanedText: isolationIssues[0],
+        note: "Detected instinct field isolation spillover.",
+      }),
+    );
+  }
+
+  const metadataRemoved = normalizeValidationMetadataRemoved(candidateValidation?.metadataRemoved);
+  const statusFromModel = normalizeValidationStatus(candidateValidation?.status);
+  const hasFailedCheck = Object.values(resolvedQualityChecks).some((value) => value === false);
+  const status = hasFailedCheck ? "needs_review" : (statusFromModel || "ok");
+
+  return {
+    issues,
+    metadataRemoved,
+    qualityChecks: resolvedQualityChecks,
+    status,
+  };
+}
+
 function extractMessageContent(message) {
   if (!message) return "";
   if (typeof message?.content === "string") return message.content;
@@ -384,15 +662,29 @@ function parseJsonFromContent(content) {
   }
 }
 
+function resolveCleanupEnvelope(value) {
+  const safe = value && typeof value === "object" ? value : {};
+  const cleanedPayload = normalizeCleanupInput(
+    safe?.cleanedPayload && typeof safe.cleanedPayload === "object"
+      ? safe.cleanedPayload
+      : safe,
+  );
+  const copyCleanupValidation = buildDeterministicValidationResult(cleanedPayload, safe?.validation);
+  return { cleanedPayload, copyCleanupValidation };
+}
+
 function parseCleanupPayloadFromOpenAiResponse(payload) {
   const firstChoice = Array.isArray(payload?.choices) ? payload.choices[0] : null;
   const message = firstChoice?.message && typeof firstChoice.message === "object" ? firstChoice.message : null;
   if (message?.parsed && typeof message.parsed === "object") {
-    return normalizeCleanupInput(message.parsed);
+    return resolveCleanupEnvelope({
+      cleanedPayload: message?.parsed?.cleanedPayload ?? message.parsed,
+      validation: message?.parsed?.validation,
+    });
   }
   const content = extractMessageContent(message);
   const parsed = parseJsonFromContent(content);
-  return normalizeCleanupInput(parsed);
+  return resolveCleanupEnvelope(parsed);
 }
 
 function isRetryableStatus(status) {
@@ -452,6 +744,198 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function buildCleanedPayloadJsonSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "corePatternBullets",
+      "strainQualitativeWriteups",
+      "feedbackGuideMatrix",
+      "overallStrainSummary",
+      "developmentExercises",
+      "spreadsheetFocuses",
+      "teamStageBreakdown",
+    ],
+    properties: {
+      corePatternBullets: {
+        type: "array",
+        minItems: 3,
+        maxItems: 3,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["key", "label", "text"],
+          properties: {
+            key: { type: "string", enum: CORE_PATTERN_BULLET_DEFINITIONS.map((row) => row.key) },
+            label: { type: "string", enum: CORE_PATTERN_BULLET_DEFINITIONS.map((row) => row.label) },
+            text: { type: "string" },
+          },
+        },
+      },
+      strainQualitativeWriteups: {
+        type: "array",
+        minItems: 6,
+        maxItems: 6,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["category", "text"],
+          properties: {
+            category: { type: "string", enum: STRAIN_CATEGORIES },
+            text: { type: "string" },
+          },
+        },
+      },
+      feedbackGuideMatrix: {
+        type: "array",
+        minItems: 1,
+        maxItems: 9,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "label", "guidance"],
+          properties: {
+            type: { type: "string" },
+            label: { type: "string" },
+            guidance: { type: "string" },
+          },
+        },
+      },
+      overallStrainSummary: { type: "string" },
+      developmentExercises: {
+        type: "array",
+        minItems: 1,
+        maxItems: MAX_EXERCISE_ITEMS,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "text"],
+          properties: {
+            title: { type: "string" },
+            text: { type: "string" },
+          },
+        },
+      },
+      spreadsheetFocuses: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "motivationSummary",
+          "instinctGoals",
+          "developingAsCopy",
+          "developingAsBullets",
+          "bodyLanguageRows",
+          "conflictResponseCopy",
+          "conflictTriggeredCopy",
+          "conflictTriggeredBullets",
+          "centeredDecisionCopy",
+          "decisionImpactCopy",
+          "decisionStrainCopy",
+          "strategicLeadershipCopy",
+          "teamImpactCopy",
+          "interdependenceCopy",
+          "coachingRelationshipCopy",
+        ],
+        properties: {
+          motivationSummary: { type: "string" },
+          instinctGoals: {
+            type: "object",
+            additionalProperties: false,
+            required: ["selfPres", "social", "oneOnOne"],
+            properties: {
+              selfPres: { type: "string" },
+              social: { type: "string" },
+              oneOnOne: { type: "string" },
+            },
+          },
+          developingAsCopy: { type: "string" },
+          developingAsBullets: {
+            type: "array",
+            maxItems: MAX_BULLET_ITEMS,
+            items: { type: "string" },
+          },
+          bodyLanguageRows: {
+            type: "array",
+            maxItems: 10,
+            items: { type: "string" },
+          },
+          conflictResponseCopy: { type: "string" },
+          conflictTriggeredCopy: { type: "string" },
+          conflictTriggeredBullets: {
+            type: "array",
+            maxItems: MAX_BULLET_ITEMS,
+            items: { type: "string" },
+          },
+          centeredDecisionCopy: { type: "string" },
+          decisionImpactCopy: { type: "string" },
+          decisionStrainCopy: { type: "string" },
+          strategicLeadershipCopy: { type: "string" },
+          teamImpactCopy: { type: "string" },
+          interdependenceCopy: { type: "string" },
+          coachingRelationshipCopy: { type: "string" },
+        },
+      },
+      teamStageBreakdown: {
+        type: "object",
+        additionalProperties: false,
+        required: TEAM_STAGE_KEYS,
+        properties: {
+          forming: { type: "string" },
+          storming: { type: "string" },
+          norming: { type: "string" },
+          performing: { type: "string" },
+        },
+      },
+    },
+  };
+}
+
+function buildValidationJsonSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["issues", "metadataRemoved", "qualityChecks", "status"],
+    properties: {
+      issues: {
+        type: "array",
+        maxItems: 24,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "severity", "originalText", "cleanedText", "note"],
+          properties: {
+            type: { type: "string", enum: COPY_CLEANUP_ISSUE_TYPES },
+            severity: { type: "string", enum: COPY_CLEANUP_ISSUE_SEVERITIES },
+            originalText: { type: "string" },
+            cleanedText: { type: "string" },
+            note: { type: "string" },
+          },
+        },
+      },
+      metadataRemoved: {
+        type: "array",
+        maxItems: 24,
+        items: { type: "string" },
+      },
+      qualityChecks: {
+        type: "object",
+        additionalProperties: false,
+        required: COPY_CLEANUP_QUALITY_CHECK_KEYS,
+        properties: {
+          noTruncatedWords: { type: "boolean" },
+          noMetadataLeakage: { type: "boolean" },
+          noDuplicates: { type: "boolean" },
+          grammarAndSpellingClean: { type: "boolean" },
+          fieldIsolationPreserved: { type: "boolean" },
+          schemaValid: { type: "boolean" },
+        },
+      },
+      status: { type: "string", enum: COPY_CLEANUP_STATUS_VALUES },
+    },
+  };
+}
+
 function buildOpenAiRequestPayload({ payload, detectedType, reportFileName, reportId }) {
   const modelInput = {
     detectedType: normalizeText(detectedType, { fallback: null, maxChars: 40 }),
@@ -473,150 +957,15 @@ function buildOpenAiRequestPayload({ payload, detectedType, reportFileName, repo
     response_format: {
       type: "json_schema",
       json_schema: {
-        name: "dashboard_copy_hydration_cleanup",
+        name: "dashboard_copy_hydration_cleanup_strict",
         strict: true,
         schema: {
           type: "object",
           additionalProperties: false,
-          required: [
-            "corePatternBullets",
-            "strainQualitativeWriteups",
-            "feedbackGuideMatrix",
-            "overallStrainSummary",
-            "developmentExercises",
-            "spreadsheetFocuses",
-            "teamStageBreakdown",
-          ],
+          required: ["cleanedPayload", "validation"],
           properties: {
-            corePatternBullets: {
-              type: "array",
-              minItems: 3,
-              maxItems: 3,
-              items: {
-                type: "object",
-                additionalProperties: false,
-                required: ["key", "label", "text"],
-                properties: {
-                  key: { type: "string", enum: CORE_PATTERN_BULLET_DEFINITIONS.map((row) => row.key) },
-                  label: { type: "string", enum: CORE_PATTERN_BULLET_DEFINITIONS.map((row) => row.label) },
-                  text: { type: "string" },
-                },
-              },
-            },
-            strainQualitativeWriteups: {
-              type: "array",
-              minItems: 6,
-              maxItems: 6,
-              items: {
-                type: "object",
-                additionalProperties: false,
-                required: ["category", "text"],
-                properties: {
-                  category: { type: "string", enum: STRAIN_CATEGORIES },
-                  text: { type: "string" },
-                },
-              },
-            },
-            feedbackGuideMatrix: {
-              type: "array",
-              minItems: 1,
-              maxItems: 9,
-              items: {
-                type: "object",
-                additionalProperties: false,
-                required: ["type", "label", "guidance"],
-                properties: {
-                  type: { type: "string" },
-                  label: { type: "string" },
-                  guidance: { type: "string" },
-                },
-              },
-            },
-            overallStrainSummary: { type: "string" },
-            developmentExercises: {
-              type: "array",
-              minItems: 1,
-              maxItems: MAX_EXERCISE_ITEMS,
-              items: {
-                type: "object",
-                additionalProperties: false,
-                required: ["title", "text"],
-                properties: {
-                  title: { type: "string" },
-                  text: { type: "string" },
-                },
-              },
-            },
-            spreadsheetFocuses: {
-              type: "object",
-              additionalProperties: false,
-              required: [
-                "motivationSummary",
-                "instinctGoals",
-                "developingAsCopy",
-                "developingAsBullets",
-                "bodyLanguageRows",
-                "conflictResponseCopy",
-                "conflictTriggeredCopy",
-                "conflictTriggeredBullets",
-                "centeredDecisionCopy",
-                "decisionImpactCopy",
-                "decisionStrainCopy",
-                "strategicLeadershipCopy",
-                "teamImpactCopy",
-                "interdependenceCopy",
-                "coachingRelationshipCopy",
-              ],
-              properties: {
-                motivationSummary: { type: "string" },
-                instinctGoals: {
-                  type: "object",
-                  additionalProperties: false,
-                  required: ["selfPres", "social", "oneOnOne"],
-                  properties: {
-                    selfPres: { type: "string" },
-                    social: { type: "string" },
-                    oneOnOne: { type: "string" },
-                  },
-                },
-                developingAsCopy: { type: "string" },
-                developingAsBullets: {
-                  type: "array",
-                  maxItems: MAX_BULLET_ITEMS,
-                  items: { type: "string" },
-                },
-                bodyLanguageRows: {
-                  type: "array",
-                  maxItems: 10,
-                  items: { type: "string" },
-                },
-                conflictResponseCopy: { type: "string" },
-                conflictTriggeredCopy: { type: "string" },
-                conflictTriggeredBullets: {
-                  type: "array",
-                  maxItems: MAX_BULLET_ITEMS,
-                  items: { type: "string" },
-                },
-                centeredDecisionCopy: { type: "string" },
-                decisionImpactCopy: { type: "string" },
-                decisionStrainCopy: { type: "string" },
-                strategicLeadershipCopy: { type: "string" },
-                teamImpactCopy: { type: "string" },
-                interdependenceCopy: { type: "string" },
-                coachingRelationshipCopy: { type: "string" },
-              },
-            },
-            teamStageBreakdown: {
-              type: "object",
-              additionalProperties: false,
-              required: TEAM_STAGE_KEYS,
-              properties: {
-                forming: { type: "string" },
-                storming: { type: "string" },
-                norming: { type: "string" },
-                performing: { type: "string" },
-              },
-            },
+            cleanedPayload: buildCleanedPayloadJsonSchema(),
+            validation: buildValidationJsonSchema(),
           },
         },
       },
@@ -691,13 +1040,20 @@ export async function POST(request) {
   try {
     payload = await request.json();
   } catch (_error) {
+    const fallbackPayload = normalizeCleanupInput({});
     return NextResponse.json(
-      { success: false, error: "Invalid JSON body.", ...normalizeCleanupInput({}) },
+      {
+        success: false,
+        error: "Invalid JSON body.",
+        copyCleanupValidation: buildDeterministicValidationResult(fallbackPayload),
+        ...fallbackPayload,
+      },
       { status: 400 },
     );
   }
 
   const normalizedInput = normalizeCleanupInput(payload);
+  const deterministicValidation = buildDeterministicValidationResult(normalizedInput);
   const detectedType = normalizeText(payload?.detectedType, { fallback: null, maxChars: 40 });
   const reportFileName = normalizeText(payload?.reportFileName, { fallback: null, maxChars: 180 });
   const reportId = normalizeText(payload?.reportId, { fallback: null, maxChars: 180 });
@@ -720,6 +1076,7 @@ export async function POST(request) {
         success: false,
         usedFallback: true,
         reason: "no_informative_sections",
+        copyCleanupValidation: deterministicValidation,
         ...normalizedInput,
       },
       { status: 200 },
@@ -742,6 +1099,7 @@ export async function POST(request) {
         success: false,
         usedFallback: true,
         reason: "missing_openai_env",
+        copyCleanupValidation: deterministicValidation,
         ...normalizedInput,
       },
       { status: 200 },
@@ -762,14 +1120,22 @@ export async function POST(request) {
       apiKey,
       requestPayload: openAiRequestPayload,
     });
-    const cleanedPayload = parseCleanupPayloadFromOpenAiResponse(openAiPayload);
-    const resolvedPayload = normalizeCleanupInput(cleanedPayload);
+    const cleanedResult = parseCleanupPayloadFromOpenAiResponse(openAiPayload);
+    const resolvedPayload = normalizeCleanupInput(cleanedResult?.cleanedPayload);
+    const copyCleanupValidation =
+      cleanedResult?.copyCleanupValidation && typeof cleanedResult.copyCleanupValidation === "object"
+        ? cleanedResult.copyCleanupValidation
+        : buildDeterministicValidationResult(resolvedPayload);
     console.log("[dashboard-copy-hydration] LLM cleanup completed", {
       reportId,
       reportFileName,
       detectedType,
       model: String(openAiPayload?.model || deployment),
       hasInformativeOutput: hasInformativeInput(resolvedPayload),
+      validationStatus: copyCleanupValidation?.status,
+      validationIssues: Array.isArray(copyCleanupValidation?.issues)
+        ? copyCleanupValidation.issues.length
+        : 0,
     });
     return NextResponse.json(
       {
@@ -777,6 +1143,7 @@ export async function POST(request) {
         usedFallback: false,
         model: String(openAiPayload?.model || deployment),
         provider: `azure-openai:${deployment}`,
+        copyCleanupValidation,
         ...resolvedPayload,
       },
       { status: 200 },
@@ -796,6 +1163,7 @@ export async function POST(request) {
         usedFallback: true,
         reason: "openai_cleanup_failed",
         error: String(error?.message || "OpenAI cleanup failed"),
+        copyCleanupValidation: deterministicValidation,
         ...normalizedInput,
       },
       { status: 200 },

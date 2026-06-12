@@ -875,7 +875,6 @@ const ASSIGNED_HYDRATION_REQUIRED_SLOTS = Object.freeze([
   "decisionImpactCopy",
   "teamImpactCopy",
   "interdependenceCopy",
-  "coachingRelationshipCopy",
   "overallStrainSummary",
   "strainWriteupCards",
 ]);
@@ -2140,15 +2139,35 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
     }
 
     const payload = await response.json().catch(() => ({}));
+    const copyCleanupValidation =
+      payload?.copyCleanupValidation && typeof payload.copyCleanupValidation === "object"
+        ? payload.copyCleanupValidation
+        : null;
     const cleanedPayload = resolveDashboardNarrativeCleanupPayload(payload);
     const mergedPayload = mergeDashboardNarrativeCleanupPayload(cleanedPayload, normalizedPayload);
     DASHBOARD_COPY_HYDRATION_CACHE.set(cacheKey, mergedPayload);
+    if (copyCleanupValidation?.status === "needs_review") {
+      console.log("[report-ingest] Dashboard narrative LLM cleanup flagged for review", {
+        ingestionToken,
+        reportId: reportId || null,
+        reportFileName: reportFileName || null,
+        validationStatus: copyCleanupValidation?.status,
+        validationIssues: Array.isArray(copyCleanupValidation?.issues)
+          ? copyCleanupValidation.issues.length
+          : 0,
+        qualityChecks: copyCleanupValidation?.qualityChecks || null,
+      });
+    }
     console.log("[report-ingest] Dashboard narrative LLM hydration cleanup complete", {
       ingestionToken,
       reportId: reportId || null,
       reportFileName: reportFileName || null,
       usedFallback: payload?.success === false,
       model: payload?.model || null,
+      validationStatus: copyCleanupValidation?.status || null,
+      validationIssues: Array.isArray(copyCleanupValidation?.issues)
+        ? copyCleanupValidation.issues.length
+        : 0,
     });
     return mergedPayload;
   } catch (error) {
@@ -10913,7 +10932,6 @@ function renderReportFromState(isExampleMode) {
   setText('insightTeamDynamics', formatOptionalText(REPORT.insightTeamDynamics, 'Not detected in parsed PDF text.'));
   setText('insightDecisionFramework', formatOptionalText(REPORT.insightDecisionFramework, 'Not detected in parsed PDF text.'));
   setText('insightStrategicLeadership', formatOptionalText(REPORT.insightStrategicLeadership, 'Not detected in parsed PDF text.'));
-  setText('insightCoachingRelationship', formatOptionalText(REPORT.insightCoachingRelationship, 'Not detected in parsed PDF text.'));
   setText('insightFeedbackGuide', formatOptionalText(REPORT.insightFeedbackGuide, 'Not detected in parsed PDF text.'));
   setText('insightComposite', formatOptionalText(REPORT.insightComposite, 'Not detected in parsed PDF text.'));
 
@@ -11212,16 +11230,6 @@ function renderReportFromState(isExampleMode) {
       { maxItems: 6 },
     ),
   );
-  setHtml(
-    'coachingRelationshipCopy',
-    renderNarrativeBullets(
-      resolveSpreadsheetFocusText(
-        spreadsheetFocusesFromReport.coachingRelationshipCopy,
-        spreadsheetFocusFallbacks.coachingRelationshipCopy,
-      ),
-      { maxItems: 10 },
-    ),
-  );
   const bodyLanguageRows = Array.isArray(spreadsheetFocusesFromReport.bodyLanguageRows)
     ? spreadsheetFocusesFromReport.bodyLanguageRows.filter(Boolean)
     : [];
@@ -11245,7 +11253,6 @@ function renderReportFromState(isExampleMode) {
     hasCenteredDecision: Boolean(spreadsheetFocusesFromReport.centeredDecisionCopy),
     hasStrategicLeadership: Boolean(spreadsheetFocusesFromReport.strategicLeadershipCopy),
     hasTeamImpact: Boolean(spreadsheetFocusesFromReport.teamImpactCopy),
-    hasCoachingRelationship: Boolean(spreadsheetFocusesFromReport.coachingRelationshipCopy),
   });
   const teamStagesFromReport = REPORT.teamStageBreakdown && typeof REPORT.teamStageBreakdown === "object"
     ? REPORT.teamStageBreakdown
@@ -11333,7 +11340,6 @@ function renderReportFromState(isExampleMode) {
       hasDecisionImpact: Boolean(REPORT?.spreadsheetFocuses?.decisionImpactCopy),
     },
     communication: {
-      hasCoachingRelationship: Boolean(REPORT?.spreadsheetFocuses?.coachingRelationshipCopy),
       bodyLanguageRows: Array.isArray(REPORT?.spreadsheetFocuses?.bodyLanguageRows)
         ? REPORT.spreadsheetFocuses.bodyLanguageRows.length
         : 0,
