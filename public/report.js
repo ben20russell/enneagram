@@ -1472,11 +1472,17 @@ function normalizeDashboardNarrativeCleanupSpreadsheetFocuses(value) {
   const instinctGoals = safe?.instinctGoals && typeof safe.instinctGoals === "object" ? safe.instinctGoals : {};
   const normalizedInstinctGoals = {
     selfPres:
-      normalizeDashboardNarrativeCleanupText(instinctGoals?.selfPres, null) || "Not detected in assigned PDF.",
+      isolateInstinctGoalTopicText(instinctGoals?.selfPres, "selfPres") ||
+      normalizeDashboardNarrativeCleanupText(instinctGoals?.selfPres, null) ||
+      "Not detected in assigned PDF.",
     social:
-      normalizeDashboardNarrativeCleanupText(instinctGoals?.social, null) || "Not detected in assigned PDF.",
+      isolateInstinctGoalTopicText(instinctGoals?.social, "social") ||
+      normalizeDashboardNarrativeCleanupText(instinctGoals?.social, null) ||
+      "Not detected in assigned PDF.",
     oneOnOne:
-      normalizeDashboardNarrativeCleanupText(instinctGoals?.oneOnOne, null) || "Not detected in assigned PDF.",
+      isolateInstinctGoalTopicText(instinctGoals?.oneOnOne, "oneOnOne") ||
+      normalizeDashboardNarrativeCleanupText(instinctGoals?.oneOnOne, null) ||
+      "Not detected in assigned PDF.",
   };
 
   const developingAsCopy =
@@ -1818,14 +1824,18 @@ function mergeDashboardNarrativeCleanupPayload(preferredPayload, fallbackPayload
   const developmentExercises = normalizeDevelopmentExerciseRows(mergedDevelopmentRows, 12);
 
   const mergeInstinctGoal = (key) => {
-    const preferredText = normalizeDashboardNarrativeCleanupText(
-      preferred.spreadsheetFocuses?.instinctGoals?.[key],
-      null,
-    );
-    const fallbackText = normalizeDashboardNarrativeCleanupText(
-      fallback.spreadsheetFocuses?.instinctGoals?.[key],
-      null,
-    );
+    const preferredText =
+      isolateInstinctGoalTopicText(preferred.spreadsheetFocuses?.instinctGoals?.[key], key) ||
+      normalizeDashboardNarrativeCleanupText(
+        preferred.spreadsheetFocuses?.instinctGoals?.[key],
+        null,
+      );
+    const fallbackText =
+      isolateInstinctGoalTopicText(fallback.spreadsheetFocuses?.instinctGoals?.[key], key) ||
+      normalizeDashboardNarrativeCleanupText(
+        fallback.spreadsheetFocuses?.instinctGoals?.[key],
+        null,
+      );
     return (
       (preferredText && !isMissingExtractedText(preferredText) ? preferredText : null) ||
       (fallbackText && !isMissingExtractedText(fallbackText) ? fallbackText : null) ||
@@ -2499,6 +2509,10 @@ function supportsIntegrationLevelForAssignedReport(input) {
   return resolveAssignedReportType(input) !== "STD";
 }
 
+function supportsStrainProfileForAssignedReport(input) {
+  return resolveAssignedReportType(input) === "PRO";
+}
+
 function isCcFingerprintData({ profileScores, instinctScoresRaw, centerScoresRaw, interactionScores, strainScoresRaw }) {
   return (
     hasExactScoreFingerprint(profileScores, CC_FINGERPRINT.profileScores) ||
@@ -2847,7 +2861,22 @@ function extractIntegrationFromPdfText(pdfText) {
   return null;
 }
 
+function normalizeColonSpacing(value) {
+  return String(value || "").replace(
+    /:[\s\u00A0\u1680\u180E\u2000-\u200D\u2028\u2029\u202F\u205F\u2060\u3000\uFEFF]*(?=[A-Za-z])/g,
+    ": ",
+  );
+}
+
 function sanitizeSnippet(value, fallback) {
+  const applyColonSpacing =
+    typeof normalizeColonSpacing === "function"
+      ? normalizeColonSpacing
+      : (textValue) =>
+          String(textValue || "").replace(
+            /:[\s\u00A0\u1680\u180E\u2000-\u200D\u2028\u2029\u202F\u205F\u2060\u3000\uFEFF]*(?=[A-Za-z])/g,
+            ": ",
+          );
   const rawValue = String(value || "");
   const rawHasControlNoise = /[\u0000-\u001F\u007F-\u009F]/.test(rawValue);
   const wordGapMarker = "\u0000";
@@ -3215,6 +3244,8 @@ function sanitizeSnippet(value, fallback) {
     .replace(/\s+/g, " ")
     .trim();
 
+  cleaned = applyColonSpacing(cleaned);
+
   if (!cleaned) return fallback;
   const normalizedForNoise = String(cleaned || "").replace(/\s+/g, " ").trim();
   const noiseTokens = normalizedForNoise
@@ -3503,6 +3534,39 @@ function applyFallbackAssignedReportFromServerData(data) {
     sanitizeSnippet(parsedProfile?.integrationLevel || parsedProfile?.integration, "") ||
     sanitizeSnippet(serverContext?.integrationLevel || serverContext?.integration, "") ||
     sanitizeSnippet(fallbackExample?.integration, "");
+  const fallbackLikelyProReport = isLikelyProReport({
+    reportFileName: data?.reportFileName,
+    parsedProfile,
+    reportContentText: "",
+  });
+  const fallbackResolvedReportType =
+    resolveAssignedReportType({
+      reportFileName: data?.reportFileName,
+      parseDiagnostics: data?.parseDiagnostics,
+      parsedProfile,
+      reportContentText: "",
+      likelyProReport: fallbackLikelyProReport,
+    }) || sanitizeSnippet(parsedProfile?.reportType, null);
+  const fallbackSupportsIntegrationLevel =
+    parsedProfile?.supportsIntegrationLevel === false
+      ? false
+      : supportsIntegrationLevelForAssignedReport({
+          reportFileName: data?.reportFileName,
+          parseDiagnostics: data?.parseDiagnostics,
+          parsedProfile,
+          reportContentText: "",
+          likelyProReport: fallbackLikelyProReport,
+        });
+  const fallbackSupportsStrainProfile =
+    parsedProfile?.supportsStrainProfile === false
+      ? false
+      : supportsStrainProfileForAssignedReport({
+          reportFileName: data?.reportFileName,
+          parseDiagnostics: data?.parseDiagnostics,
+          parsedProfile,
+          reportContentText: "",
+          likelyProReport: fallbackLikelyProReport,
+        });
 
   const parsedDevelopmentExercises = Array.isArray(parsedProfile?.developmentExercises)
     ? parsedProfile.developmentExercises
@@ -3529,8 +3593,9 @@ function applyFallbackAssignedReportFromServerData(data) {
     connectedLineA: fallbackConnectedLineA,
     connectedLineB: fallbackConnectedLineB,
     integrationLevel: fallbackIntegrationLevel,
-    supportsIntegrationLevel: parsedProfile?.supportsIntegrationLevel !== false,
-    reportType: sanitizeSnippet(parsedProfile?.reportType, null),
+    supportsIntegrationLevel: fallbackSupportsIntegrationLevel,
+    supportsStrainProfile: fallbackSupportsStrainProfile,
+    reportType: fallbackResolvedReportType,
     profileScores: buildProfileScoresFromTypeScores(parsedProfile?.typeScores || null),
     basicFear: parsedProfile?.coreFear || serverContext?.basicFear || null,
     basicDesire: parsedProfile?.coreDesire || serverContext?.basicDesire || null,
@@ -3786,6 +3851,13 @@ async function ingestAssignedReportIntoDashboard(data) {
       likelyProReport,
     });
     const supportsIntegrationLevel = supportsIntegrationLevelForAssignedReport({
+      reportFileName: data?.reportFileName,
+      parseDiagnostics,
+      parsedProfile,
+      reportContentText,
+      likelyProReport,
+    });
+    const supportsStrainProfile = supportsStrainProfileForAssignedReport({
       reportFileName: data?.reportFileName,
       parseDiagnostics,
       parsedProfile,
@@ -4520,6 +4592,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       connectedLineB,
       integrationLevel,
       supportsIntegrationLevel,
+      supportsStrainProfile,
       reportType: resolvedReportType,
       profileScores,
       basicFear,
@@ -4570,6 +4643,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       detectedTypeSource,
       resolvedReportType,
       supportsIntegrationLevel,
+      supportsStrainProfile,
       hasProfileScores: Boolean(profileScores),
     });
 
@@ -5835,6 +5909,7 @@ function buildReportModuleIndex() {
   document.querySelectorAll('.sec').forEach(section => {
     const sectionId = section.id.replace('sec-', '');
     if (!sectionId || sectionId === 'focus' || sectionId === 'search') return;
+    if (section.style.display === 'none') return;
     if (sectionId === 'test' && !hasAdminAccess(currentSignedInUser?.email)) return;
     if (sectionId === 'test' && section.style.display === 'none') return;
 
@@ -6348,7 +6423,15 @@ function formatScoreObject(labelMap, scores) {
 }
 
 function formatOptionalText(value, fallback = "Not detected") {
-  const normalized = String(value == null ? "" : value).trim();
+  const applyColonSpacing =
+    typeof normalizeColonSpacing === "function"
+      ? normalizeColonSpacing
+      : (textValue) =>
+          String(textValue || "").replace(
+            /:[\s\u00A0\u1680\u180E\u2000-\u200D\u2028\u2029\u202F\u205F\u2060\u3000\uFEFF]*(?=[A-Za-z])/g,
+            ": ",
+          );
+  const normalized = applyColonSpacing(String(value == null ? "" : value).trim());
   return normalized || fallback;
 }
 
@@ -9458,22 +9541,31 @@ function extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile) {
     targetedCoreIdentity?.passion,
   ], { maxItems: 6, maxLength: 420 });
   const instinctGoals = {
-    selfPres: compactTargetedSectionText([
-      instinctGoalsSource?.self_preservation,
-      instinctGoalsSource?.self_pres,
-      instinctGoalsSource?.sp,
-      instinctGoalsSource?.selfPres,
-    ], { maxItems: 4, maxLength: 1200 }),
-    social: compactTargetedSectionText([
-      instinctGoalsSource?.social,
-      instinctGoalsSource?.so,
-    ], { maxItems: 4, maxLength: 1200 }),
-    oneOnOne: compactTargetedSectionText([
-      instinctGoalsSource?.one_on_one,
-      instinctGoalsSource?.oneOnOne,
-      instinctGoalsSource?.sexual,
-      instinctGoalsSource?.sx,
-    ], { maxItems: 4, maxLength: 1200 }),
+    selfPres: isolateInstinctGoalTopicText(
+      compactTargetedSectionText([
+        instinctGoalsSource?.self_preservation,
+        instinctGoalsSource?.self_pres,
+        instinctGoalsSource?.sp,
+        instinctGoalsSource?.selfPres,
+      ], { maxItems: 4, maxLength: 1200 }),
+      "selfPres",
+    ),
+    social: isolateInstinctGoalTopicText(
+      compactTargetedSectionText([
+        instinctGoalsSource?.social,
+        instinctGoalsSource?.so,
+      ], { maxItems: 4, maxLength: 1200 }),
+      "social",
+    ),
+    oneOnOne: isolateInstinctGoalTopicText(
+      compactTargetedSectionText([
+        instinctGoalsSource?.one_on_one,
+        instinctGoalsSource?.oneOnOne,
+        instinctGoalsSource?.sexual,
+        instinctGoalsSource?.sx,
+      ], { maxItems: 4, maxLength: 1200 }),
+      "oneOnOne",
+    ),
   };
   const hasInstinctGoals = Boolean(instinctGoals.selfPres || instinctGoals.social || instinctGoals.oneOnOne);
 
@@ -9657,6 +9749,116 @@ function extractMotivationalNeedSummary(rawText, maxLength = 420) {
   return prioritizedSentence;
 }
 
+function isolateInstinctGoalTopicText(value, instinctKey) {
+  const key = String(instinctKey || "").trim().toLowerCase();
+  const normalizedKey = key === "selfpres" || key === "social" || key === "oneonone" ? key : "";
+  let cleaned = cleanPdfExtractedValue(value || "");
+  if (!cleaned) return null;
+
+  const toSentences = (text) => String(text || "")
+    .replace(/\s*[•●▪◦·]\s+/g, ". ")
+    .split(/(?<=[.?!])\s+/)
+    .map((sentence) => cleanPdfExtractedValue(sentence || ""))
+    .filter(Boolean);
+
+  cleaned = cleaned
+    .replace(/^\s*Definitions\s+of\s+the\s+three\s+instinctual\s+goals\s*[:\-]?\s*/i, "")
+    .trim();
+  if (!cleaned) return null;
+
+  const headingPattern = /\b(?:One(?:-| )On(?:-| )One\s*-\s*SX|Social\s*-\s*SO|Self(?:-| )Preservation\s*-\s*SP)\b/gi;
+  const headingKeyFor = (heading) => {
+    const source = String(heading || "").toLowerCase();
+    if (/one(?:-| )on(?:-| )one\s*-\s*sx/.test(source)) return "oneonone";
+    if (/social\s*-\s*so/.test(source)) return "social";
+    if (/self(?:-| )preservation\s*-\s*sp/.test(source)) return "selfpres";
+    return "";
+  };
+  const findFirstHeading = (text, startIndex = 0) => {
+    const matcher = new RegExp(headingPattern.source, "gi");
+    matcher.lastIndex = Math.max(0, Number(startIndex) || 0);
+    const match = matcher.exec(String(text || ""));
+    if (!match) return null;
+    return {
+      index: Number(match.index || 0),
+      length: String(match[0] || "").length,
+      key: headingKeyFor(match[0]),
+    };
+  };
+
+  const firstHeading = findFirstHeading(cleaned, 0);
+  if (firstHeading) {
+    if (firstHeading.index > 0) {
+      cleaned = cleaned.slice(0, firstHeading.index).trim();
+    } else if (normalizedKey && firstHeading.key && firstHeading.key !== normalizedKey) {
+      return null;
+    } else {
+      cleaned = cleaned
+        .slice(firstHeading.length)
+        .replace(/^\s*[:\-]?\s*/, "")
+        .trim();
+      const nextHeading = findFirstHeading(cleaned, 0);
+      if (nextHeading && nextHeading.index >= 0) {
+        cleaned = cleaned.slice(0, nextHeading.index).trim();
+      }
+    }
+  }
+  if (!cleaned) return null;
+
+  const foreignMarkersByKey = {
+    selfpres: [
+      /(?:^|[^A-Za-z])(SO|SX)(?:[^A-Za-z]|$)/,
+      /social\s+instinct/i,
+      /one(?:-| )on(?:-| )one\s+instinct/i,
+      /one(?:-| )to(?:-| )one\s+instinct/i,
+      /sexual\s+instinct/i,
+    ],
+    social: [
+      /(?:^|[^A-Za-z])(SP|SX)(?:[^A-Za-z]|$)/,
+      /self(?:-| )preservation\s+instinct/i,
+      /one(?:-| )on(?:-| )one\s+instinct/i,
+      /one(?:-| )to(?:-| )one\s+instinct/i,
+      /sexual\s+instinct/i,
+    ],
+    oneonone: [
+      /(?:^|[^A-Za-z])(SO|SP)(?:[^A-Za-z]|$)/,
+      /self(?:-| )preservation\s+instinct/i,
+      /social\s+instinct/i,
+    ],
+  };
+  const foreignMarkers = Array.isArray(foreignMarkersByKey[normalizedKey])
+    ? foreignMarkersByKey[normalizedKey]
+    : [];
+  if (foreignMarkers.length) {
+    const sentences = toSentences(cleaned);
+    const isForeign = (text) => foreignMarkers.some((pattern) => pattern.test(String(text || "")));
+    const filtered = sentences.filter((sentence) => !isForeign(sentence));
+    if (filtered.length && filtered.length < sentences.length) {
+      cleaned = cleanPdfExtractedValue(filtered.join(" ")) || "";
+    } else if (!filtered.length && isForeign(cleaned)) {
+      return null;
+    }
+  }
+
+  const trimmedSentences = toSentences(cleaned);
+  while (trimmedSentences.length > 1) {
+    const tail = String(trimmedSentences[trimmedSentences.length - 1] || "").trim();
+    if (!tail) {
+      trimmedSentences.pop();
+      continue;
+    }
+    const danglingTailPattern =
+      /(?:\b(?:with|and|or|to|for|from|than|into|through|between|across|versus|vs)\s*)$/i;
+    const danglingTail = !/[.?!]$/.test(tail) && danglingTailPattern.test(tail);
+    if (!danglingTail) break;
+    trimmedSentences.pop();
+  }
+  cleaned = cleanPdfExtractedValue(trimmedSentences.join(" ")) || "";
+  if (!cleaned) return null;
+
+  return cleaned || null;
+}
+
 function extractInstinctGoalDefinitions(rawText) {
   const normalized = normalizeExtractedText(rawText || "");
   if (!normalized) return null;
@@ -9671,7 +9873,7 @@ function extractInstinctGoalDefinitions(rawText) {
     "Development Exercise",
     "Copyright",
   ];
-  const segmentFor = (labels, stopLabels = []) => {
+  const segmentFor = (instinctKey, labels, stopLabels = []) => {
     const startPattern = labels.map((value) => buildFlexiblePhrasePattern(value)).join("|");
     const boundaryLabels = Array.from(new Set([
       ...(Array.isArray(stopLabels) ? stopLabels : []),
@@ -9686,19 +9888,22 @@ function extractInstinctGoalDefinitions(rawText) {
         "i",
       ),
     );
-    const extracted = cleanPdfExtractedValue(match?.[1] || "");
+    const extracted = isolateInstinctGoalTopicText(match?.[1] || "", instinctKey);
     return extracted || null;
   };
 
   const oneOnOne = segmentFor(
+    "oneOnOne",
     ["One-On-One - SX", "One-On-One", "Sexual Instinct", "One-to-One instinct", "One-On-One instinct"],
     ["Social - SO", "Self-Preservation - SP", "Self Preservation - SP"],
   );
   const social = segmentFor(
+    "social",
     ["Social - SO", "Social instinct"],
     ["One-On-One - SX", "One-On-One", "One to One", "Self-Preservation - SP", "Self Preservation - SP"],
   );
   const selfPres = segmentFor(
+    "selfPres",
     ["Self-Preservation - SP", "Self Preservation - SP", "Self-Preservation instinct", "Self Preservation instinct"],
     [],
   );
@@ -9987,17 +10192,17 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
     ),
   };
   const instinctGoalsFromAnchoredParagraphs = {
-    oneOnOne: cleanPdfExtractedValue(instinctOneOnOneInstructionText || "") || null,
-    social: cleanPdfExtractedValue(instinctSocialInstructionText || "") || null,
-    selfPres: cleanPdfExtractedValue(instinctSelfPresInstructionText || "") || null,
+    oneOnOne: isolateInstinctGoalTopicText(instinctOneOnOneInstructionText || "", "oneOnOne"),
+    social: isolateInstinctGoalTopicText(instinctSocialInstructionText || "", "social"),
+    selfPres: isolateInstinctGoalTopicText(instinctSelfPresInstructionText || "", "selfPres"),
   };
   const instinctGoalsFromDefinitionsBlock = extractInstinctGoalDefinitions(subtypesText);
   const instinctGoalsFromFallback = extractInstinctGoalDefinitions(
     normalizeExtractedText(`${instinctInstructionText || ""} ${subtypesText || ""}`),
   );
-  const pickInstinctGoal = (...values) => {
+  const pickInstinctGoal = (instinctKey, ...values) => {
     for (const value of values) {
-      const snippet = sanitizeSnippet(value || "", "");
+      const snippet = isolateInstinctGoalTopicText(value || "", instinctKey);
       if (!snippet) continue;
       if (isMissingExtractedText(snippet)) continue;
       return snippet;
@@ -10006,16 +10211,19 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
   };
   focused.instinctGoals = {
     selfPres: pickInstinctGoal(
+      "selfPres",
       instinctGoalsFromAnchoredParagraphs.selfPres,
       instinctGoalsFromDefinitionsBlock?.selfPres,
       instinctGoalsFromFallback?.selfPres,
     ),
     social: pickInstinctGoal(
+      "social",
       instinctGoalsFromAnchoredParagraphs.social,
       instinctGoalsFromDefinitionsBlock?.social,
       instinctGoalsFromFallback?.social,
     ),
     oneOnOne: pickInstinctGoal(
+      "oneOnOne",
       instinctGoalsFromAnchoredParagraphs.oneOnOne,
       instinctGoalsFromDefinitionsBlock?.oneOnOne,
       instinctGoalsFromFallback?.oneOnOne,
@@ -10106,7 +10314,19 @@ function mergeSpreadsheetSectionFocuses(structuredFocuses, pdfFocuses) {
     }
     return fallback;
   };
-  const mergeGoal = (key) => pickHydratedSnippet([structured?.instinctGoals?.[key], pdf?.instinctGoals?.[key]]);
+  const mergeGoal = (key) => {
+    const candidates = [structured?.instinctGoals?.[key], pdf?.instinctGoals?.[key]];
+    for (const value of candidates) {
+      const isolated = isolateInstinctGoalTopicText(value || "", key);
+      if (!isolated || isMissingExtractedText(isolated)) continue;
+      return isolated;
+    }
+    for (const value of candidates) {
+      const isolated = isolateInstinctGoalTopicText(value || "", key);
+      if (isolated) return isolated;
+    }
+    return fallback;
+  };
   const bulletRowsFromSnippet = (snippet, maxItems = 10) => {
     const normalized = sanitizeSnippet(snippet || "", "");
     if (!normalized || isMissingExtractedText(normalized)) return [];
@@ -10567,7 +10787,12 @@ function buildPdfOnlyReport(payload) {
   const keyword = sanitizeSnippet(payload?.subtypeKeyword, fallbackText);
   const release = formatTypeLine(sanitizeSnippet(payload?.connectedLineA, "Not detected"));
   const stretch = formatTypeLine(sanitizeSnippet(payload?.connectedLineB, "Not detected"));
+  const resolvedReportType = sanitizeSnippet(payload?.reportType, null);
   const supportsIntegrationLevel = payload?.supportsIntegrationLevel !== false;
+  const supportsStrainProfile =
+    typeof payload?.supportsStrainProfile === "boolean"
+      ? payload.supportsStrainProfile
+      : String(resolvedReportType || "").toUpperCase() === "PRO";
   const integration = supportsIntegrationLevel
     ? sanitizeSnippet(payload?.integrationLevel || payload?.integration, fallbackText)
     : null;
@@ -10622,8 +10847,9 @@ function buildPdfOnlyReport(payload) {
   return {
     typeNumber,
     typeName,
-    reportType: sanitizeSnippet(payload?.reportType, null),
+    reportType: resolvedReportType,
     supportsIntegrationLevel,
+    supportsStrainProfile,
     instinct,
     keyword,
     release,
@@ -10826,6 +11052,24 @@ function setIntegrationUiVisibility(isVisible) {
   }
 }
 
+function setStrainUiVisibility(isVisible) {
+  const shouldShow = Boolean(isVisible);
+  const strainSectionNode = document.getElementById("sec-strain");
+  if (strainSectionNode) strainSectionNode.style.display = shouldShow ? "" : "none";
+
+  const strainButtons = document.querySelectorAll('.nav button[data-sec="strain"],.mobile-menu-item[data-sec="strain"]');
+  strainButtons.forEach((button) => {
+    button.style.display = shouldShow ? "" : "none";
+    if (!shouldShow) {
+      button.classList.remove("active");
+    }
+  });
+
+  if (!shouldShow && strainSectionNode?.classList.contains("active")) {
+    showSec("overview");
+  }
+}
+
 function renderReportFromState(isExampleMode) {
   const missingAssignedPdfText = "Not detected in assigned PDF.";
   const activeSelectionSnapshot = getActiveReportSelectionState();
@@ -10836,6 +11080,7 @@ function renderReportFromState(isExampleMode) {
     selectionKey: activeSelectionKey,
     mode: activeSelectionSnapshot.mode,
     isExampleMode: Boolean(isExampleMode),
+    reportType: String(REPORT?.reportType || ""),
     reportTypeNumber: String(REPORT?.typeNumber || ""),
     reportTypeName: String(REPORT?.typeName || ""),
     currentReportViewMode,
@@ -10866,8 +11111,18 @@ function renderReportFromState(isExampleMode) {
   }
   setText('releaseValue', formatTypeLine(REPORT.release));
   setText('stretchValue', formatTypeLine(REPORT.stretch));
+  const supportsStrainProfile = REPORT?.supportsStrainProfile !== false;
+  setStrainUiVisibility(supportsStrainProfile);
   const supportsIntegrationLevel = REPORT?.supportsIntegrationLevel !== false;
   setIntegrationUiVisibility(supportsIntegrationLevel);
+  console.log('[report-render] section visibility support flags', {
+    reportType: String(REPORT?.reportType || ""),
+    supportsStrainProfile,
+    supportsIntegrationLevel,
+    selectionKey: activeSelectionKey,
+    currentReportViewMode,
+    currentClientReportId,
+  });
   if (supportsIntegrationLevel) {
     const normalizedIntegrationLevel = normalizeIntegrationLevel(REPORT.integration);
     setText('integrationValue', normalizedIntegrationLevel);
@@ -11374,6 +11629,11 @@ function validateAssignedDashboardPayloadShape(payload) {
   const safePayload = payload && typeof payload === "object" ? payload : {};
   const issues = [];
   const normalizedTypeNumber = String(safePayload?.typeNumber || "").trim();
+  const normalizedReportType = String(safePayload?.reportType || "").trim().toUpperCase();
+  const supportsStrainProfile =
+    typeof safePayload?.supportsStrainProfile === "boolean"
+      ? safePayload.supportsStrainProfile
+      : normalizedReportType === "PRO";
   if (!/^[1-9]$/.test(normalizedTypeNumber)) {
     issues.push("missing_type_number");
   }
@@ -11397,6 +11657,7 @@ function validateAssignedDashboardPayloadShape(payload) {
       safePayload?.teamStageBreakdown && typeof safePayload.teamStageBreakdown === "object"
         ? safePayload.teamStageBreakdown
         : {},
+    supportsStrainProfile,
     __validationIssues: issues,
   };
   if (issues.length) {

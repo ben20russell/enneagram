@@ -21,6 +21,36 @@ const STRAIN_CATEGORIES = [
   "Psychological",
 ];
 const INSTINCT_FIELDS = ["selfPres", "social", "oneOnOne"];
+const INSTINCT_FOREIGN_REFERENCE_PATTERNS = Object.freeze({
+  selfPres: [
+    /One(?:-| )On(?:-| )One\s*-\s*SX/i,
+    /Social\s*-\s*SO/i,
+    /\bSX\b/,
+    /\bSO\b/,
+    /sexual\s+instinct/i,
+    /one(?:-| )on(?:-| )one\s+instinct/i,
+    /one(?:-| )to(?:-| )one\s+instinct/i,
+    /social\s+instinct/i,
+  ],
+  social: [
+    /One(?:-| )On(?:-| )One\s*-\s*SX/i,
+    /Self(?:-| )Preservation\s*-\s*SP/i,
+    /\bSX\b/,
+    /\bSP\b/,
+    /sexual\s+instinct/i,
+    /one(?:-| )on(?:-| )one\s+instinct/i,
+    /one(?:-| )to(?:-| )one\s+instinct/i,
+    /self(?:-| )preservation\s+instinct/i,
+  ],
+  oneOnOne: [
+    /Social\s*-\s*SO/i,
+    /Self(?:-| )Preservation\s*-\s*SP/i,
+    /\bSO\b/,
+    /\bSP\b/,
+    /social\s+instinct/i,
+    /self(?:-| )preservation\s+instinct/i,
+  ],
+});
 const SPREADSHEET_TEXT_KEYS = [
   "motivationSummary",
   "developingAsCopy",
@@ -292,6 +322,142 @@ function normalizeSpreadsheetFocusesInput(value) {
   return normalized;
 }
 
+function getInstinctForeignReferencePatterns(fieldKey) {
+  const key = String(fieldKey || "").trim();
+  return Array.isArray(INSTINCT_FOREIGN_REFERENCE_PATTERNS[key])
+    ? INSTINCT_FOREIGN_REFERENCE_PATTERNS[key]
+    : [];
+}
+
+function hasInstinctForeignReference(text, fieldKey) {
+  const normalized = normalizeText(text, { fallback: null });
+  if (!normalized) return false;
+  const patterns = getInstinctForeignReferencePatterns(fieldKey);
+  if (!patterns.length) return false;
+  return patterns.some((pattern) => pattern.test(normalized));
+}
+
+function findFirstInstinctForeignReferenceIndex(text, fieldKey) {
+  const normalized = normalizeText(text, { fallback: null });
+  if (!normalized) return -1;
+  const patterns = getInstinctForeignReferencePatterns(fieldKey);
+  if (!patterns.length) return -1;
+  let earliest = -1;
+  patterns.forEach((pattern) => {
+    const flags = String(pattern.flags || "").replace(/g/g, "");
+    const matcher = new RegExp(pattern.source, flags);
+    const match = matcher.exec(normalized);
+    if (!match) return;
+    const index = Number(match.index || 0);
+    if (earliest === -1 || index < earliest) earliest = index;
+  });
+  return earliest;
+}
+
+function pruneInstinctGoalFieldText(value, fieldKey) {
+  let normalized =
+    truncateAtFirstHeadingLeak(value, { fieldKey }) ||
+    normalizeText(value, { fallback: null });
+  if (!normalized) return null;
+
+  const foreignIndex = findFirstInstinctForeignReferenceIndex(normalized, fieldKey);
+  if (foreignIndex > 0) {
+    normalized = normalizeText(normalized.slice(0, foreignIndex), { fallback: null });
+  }
+  if (!normalized) return null;
+
+  const sentenceRows = String(normalized || "")
+    .replace(/\s*[•●▪◦·]\s+/g, ". ")
+    .split(/(?<=[.?!])\s+/)
+    .map((row) => normalizeText(row, { fallback: null }))
+    .filter(Boolean);
+  if (sentenceRows.length > 1) {
+    const filteredRows = sentenceRows.filter((row) => !hasInstinctForeignReference(row, fieldKey));
+    if (filteredRows.length && filteredRows.length < sentenceRows.length) {
+      normalized = normalizeText(filteredRows.join(" "), { fallback: null });
+    } else if (!filteredRows.length) {
+      normalized = null;
+    }
+  }
+  return normalized || null;
+}
+
+function resolveInstinctGoalFieldGuard({ fieldKey, preferredValue, fallbackValue }) {
+  const preferred = pruneInstinctGoalFieldText(preferredValue, fieldKey);
+  const fallback = pruneInstinctGoalFieldText(fallbackValue, fieldKey);
+  const preferredHasForeign = hasInstinctForeignReference(preferred, fieldKey);
+  const fallbackHasForeign = hasInstinctForeignReference(fallback, fieldKey);
+  const preferredInformative = preferred && !isMissingText(preferred);
+  const fallbackInformative = fallback && !isMissingText(fallback);
+
+  if (preferredInformative && !preferredHasForeign) {
+    return {
+      value: preferred,
+      downRanked: false,
+      usedFallback: false,
+      reason: null,
+    };
+  }
+  if (fallbackInformative && !fallbackHasForeign) {
+    return {
+      value: fallback,
+      downRanked: Boolean(preferredInformative || preferredHasForeign),
+      usedFallback: true,
+      reason: preferredHasForeign ? "preferred_foreign_reference" : "preferred_missing",
+    };
+  }
+  if (preferred && !preferredHasForeign && !isMissingText(preferred)) {
+    return {
+      value: preferred,
+      downRanked: false,
+      usedFallback: false,
+      reason: null,
+    };
+  }
+  if (fallback && !fallbackHasForeign && !isMissingText(fallback)) {
+    return {
+      value: fallback,
+      downRanked: true,
+      usedFallback: true,
+      reason: "fallback_non_missing",
+    };
+  }
+  return {
+    value: FALLBACK_TEXT,
+    downRanked: preferredHasForeign || fallbackHasForeign,
+    usedFallback: false,
+    reason: preferredHasForeign || fallbackHasForeign ? "foreign_reference_unresolved" : "missing_content",
+  };
+}
+
+function applyInstinctFieldIsolationGuard(cleanedPayload, fallbackPayload = null) {
+  const preferredPayload = normalizeCleanupInput(cleanedPayload);
+  const fallbackSource = fallbackPayload == null ? preferredPayload : normalizeCleanupInput(fallbackPayload);
+  const guardedPayload = normalizeCleanupInput(preferredPayload);
+  const downRankedFields = [];
+
+  INSTINCT_FIELDS.forEach((fieldKey) => {
+    const guard = resolveInstinctGoalFieldGuard({
+      fieldKey,
+      preferredValue: preferredPayload?.spreadsheetFocuses?.instinctGoals?.[fieldKey],
+      fallbackValue: fallbackSource?.spreadsheetFocuses?.instinctGoals?.[fieldKey],
+    });
+    guardedPayload.spreadsheetFocuses.instinctGoals[fieldKey] = guard.value || FALLBACK_TEXT;
+    if (guard.downRanked) {
+      downRankedFields.push({
+        fieldKey,
+        reason: guard.reason || "guard_applied",
+        usedFallback: Boolean(guard.usedFallback),
+      });
+    }
+  });
+
+  return {
+    cleanedPayload: guardedPayload,
+    downRankedFields,
+  };
+}
+
 function normalizeTeamStageBreakdownInput(value) {
   const safe = value && typeof value === "object" ? value : {};
   return {
@@ -514,13 +680,13 @@ function detectInstinctFieldIsolationIssues(normalizedPayload) {
   const social = normalizeText(normalizedPayload?.spreadsheetFocuses?.instinctGoals?.social, { fallback: "" }) || "";
   const oneOnOne = normalizeText(normalizedPayload?.spreadsheetFocuses?.instinctGoals?.oneOnOne, { fallback: "" }) || "";
 
-  if (/One(?:-| )On(?:-| )One\s*-\s*SX|Self(?:-| )Preservation\s*-\s*SP/i.test(social)) {
+  if (hasInstinctForeignReference(social, "social")) {
     issues.push("Social field contains non-social instinct heading spillover.");
   }
-  if (/Social\s*-\s*SO|Self(?:-| )Preservation\s*-\s*SP/i.test(oneOnOne)) {
+  if (hasInstinctForeignReference(oneOnOne, "oneOnOne")) {
     issues.push("One-On-One field contains non-SX instinct heading spillover.");
   }
-  if (/Social\s*-\s*SO|One(?:-| )On(?:-| )One\s*-\s*SX/i.test(selfPres)) {
+  if (hasInstinctForeignReference(selfPres, "selfPres")) {
     issues.push("Self-Preservation field contains non-SP instinct heading spillover.");
   }
   return issues;
@@ -1041,33 +1207,40 @@ export async function POST(request) {
     payload = await request.json();
   } catch (_error) {
     const fallbackPayload = normalizeCleanupInput({});
+    const fallbackGuard = applyInstinctFieldIsolationGuard(fallbackPayload, fallbackPayload);
     return NextResponse.json(
       {
         success: false,
         error: "Invalid JSON body.",
-        copyCleanupValidation: buildDeterministicValidationResult(fallbackPayload),
-        ...fallbackPayload,
+        copyCleanupValidation: buildDeterministicValidationResult(fallbackGuard.cleanedPayload),
+        instinctFieldGuard: {
+          downRankedFields: fallbackGuard.downRankedFields,
+        },
+        ...fallbackGuard.cleanedPayload,
       },
       { status: 400 },
     );
   }
 
   const normalizedInput = normalizeCleanupInput(payload);
-  const deterministicValidation = buildDeterministicValidationResult(normalizedInput);
+  const inputGuardResult = applyInstinctFieldIsolationGuard(normalizedInput, normalizedInput);
+  const guardedInputPayload = inputGuardResult.cleanedPayload;
+  const deterministicValidation = buildDeterministicValidationResult(guardedInputPayload);
   const detectedType = normalizeText(payload?.detectedType, { fallback: null, maxChars: 40 });
   const reportFileName = normalizeText(payload?.reportFileName, { fallback: null, maxChars: 180 });
   const reportId = normalizeText(payload?.reportId, { fallback: null, maxChars: 180 });
-  const informativeInput = hasInformativeInput(normalizedInput);
+  const informativeInput = hasInformativeInput(guardedInputPayload);
 
   console.log("[dashboard-copy-hydration] Received LLM cleanup request", {
     reportId,
     reportFileName,
     detectedType,
     informativeInput,
-    corePatternRows: normalizedInput.corePatternBullets.length,
-    strainRows: normalizedInput.strainQualitativeWriteups.length,
-    developmentExercises: normalizedInput.developmentExercises.length,
-    feedbackRows: normalizedInput.feedbackGuideMatrix.length,
+    corePatternRows: guardedInputPayload.corePatternBullets.length,
+    strainRows: guardedInputPayload.strainQualitativeWriteups.length,
+    developmentExercises: guardedInputPayload.developmentExercises.length,
+    feedbackRows: guardedInputPayload.feedbackGuideMatrix.length,
+    downRankedInstinctFields: inputGuardResult.downRankedFields.length,
   });
 
   if (!informativeInput) {
@@ -1077,7 +1250,10 @@ export async function POST(request) {
         usedFallback: true,
         reason: "no_informative_sections",
         copyCleanupValidation: deterministicValidation,
-        ...normalizedInput,
+        instinctFieldGuard: {
+          downRankedFields: inputGuardResult.downRankedFields,
+        },
+        ...guardedInputPayload,
       },
       { status: 200 },
     );
@@ -1100,7 +1276,10 @@ export async function POST(request) {
         usedFallback: true,
         reason: "missing_openai_env",
         copyCleanupValidation: deterministicValidation,
-        ...normalizedInput,
+        instinctFieldGuard: {
+          downRankedFields: inputGuardResult.downRankedFields,
+        },
+        ...guardedInputPayload,
       },
       { status: 200 },
     );
@@ -1108,7 +1287,7 @@ export async function POST(request) {
 
   const openAiUrl = `${endpoint.replace(/\/$/, "")}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
   const openAiRequestPayload = buildOpenAiRequestPayload({
-    payload: normalizedInput,
+    payload: guardedInputPayload,
     detectedType,
     reportFileName,
     reportId,
@@ -1122,16 +1301,21 @@ export async function POST(request) {
     });
     const cleanedResult = parseCleanupPayloadFromOpenAiResponse(openAiPayload);
     const resolvedPayload = normalizeCleanupInput(cleanedResult?.cleanedPayload);
-    const copyCleanupValidation =
+    const outputGuardResult = applyInstinctFieldIsolationGuard(resolvedPayload, guardedInputPayload);
+    const guardedOutputPayload = outputGuardResult.cleanedPayload;
+    const copyCleanupValidation = buildDeterministicValidationResult(
+      guardedOutputPayload,
       cleanedResult?.copyCleanupValidation && typeof cleanedResult.copyCleanupValidation === "object"
         ? cleanedResult.copyCleanupValidation
-        : buildDeterministicValidationResult(resolvedPayload);
+        : null,
+    );
     console.log("[dashboard-copy-hydration] LLM cleanup completed", {
       reportId,
       reportFileName,
       detectedType,
       model: String(openAiPayload?.model || deployment),
-      hasInformativeOutput: hasInformativeInput(resolvedPayload),
+      hasInformativeOutput: hasInformativeInput(guardedOutputPayload),
+      downRankedInstinctFields: outputGuardResult.downRankedFields.length,
       validationStatus: copyCleanupValidation?.status,
       validationIssues: Array.isArray(copyCleanupValidation?.issues)
         ? copyCleanupValidation.issues.length
@@ -1144,7 +1328,10 @@ export async function POST(request) {
         model: String(openAiPayload?.model || deployment),
         provider: `azure-openai:${deployment}`,
         copyCleanupValidation,
-        ...resolvedPayload,
+        instinctFieldGuard: {
+          downRankedFields: outputGuardResult.downRankedFields,
+        },
+        ...guardedOutputPayload,
       },
       { status: 200 },
     );
@@ -1164,7 +1351,10 @@ export async function POST(request) {
         reason: "openai_cleanup_failed",
         error: String(error?.message || "OpenAI cleanup failed"),
         copyCleanupValidation: deterministicValidation,
-        ...normalizedInput,
+        instinctFieldGuard: {
+          downRankedFields: inputGuardResult.downRankedFields,
+        },
+        ...guardedInputPayload,
       },
       { status: 200 },
     );
