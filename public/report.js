@@ -41,6 +41,10 @@ function getClientReportSelector() {
   return document.getElementById("clientReportSelector");
 }
 
+function getClientReportRefreshButton() {
+  return document.getElementById("clientReportRefreshButton");
+}
+
 const ADMIN_EMAILS = new Set([
   "ben20russell@gmail.com",
   "corinne.aparis@gmail.com",
@@ -115,6 +119,7 @@ let currentClientReportId = null;
 let activeAssignedIngestionToken = 0;
 let lastDashboardRehydrateNonce = null;
 let dashboardRehydrateListenersBound = false;
+let clientReportManualRefreshInFlight = false;
 
 function resetClientReportSelectorSelection() {
   const clientReportSelector = getClientReportSelector();
@@ -183,6 +188,15 @@ function populateClientReportSelector(clientReports) {
     (clientReport) => String(clientReport?.id || "").trim() === previousValue,
   );
   clientReportSelector.value = hasPreviousValue ? previousValue : "";
+
+  const clientReportRefreshButton = getClientReportRefreshButton();
+  if (clientReportRefreshButton && clientReportRefreshButton.dataset.loading !== "1") {
+    const hasRefreshableClientReports = safeClientReports.length > 0;
+    clientReportRefreshButton.disabled = !hasRefreshableClientReports;
+    clientReportRefreshButton.title = hasRefreshableClientReports
+      ? "Rehydrate dashboard copy from latest client report data"
+      : "No client reports available to refresh";
+  }
 }
 
 function findClientReportForSignedInUser(clientReports, signedInUserEmail) {
@@ -3974,9 +3988,13 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractTeamStageBreakdownFromReportContent(parsedProfile),
       extractTeamStageBreakdownFromPdfText(pdfText),
     );
+    const legacyTeamStageBreakdown = extractTeamStageBreakdownFromLegacyFields(parsedProfile);
     const teamStageDeterministicBreakdown = mergeTeamStageBreakdown(
       targetedTeamStageBreakdown,
-      jsTeamStageBreakdown,
+      mergeTeamStageBreakdown(
+        jsTeamStageBreakdown,
+        legacyTeamStageBreakdown,
+      ),
     );
     let teamStageBreakdown = mergeTeamStageBreakdown(
       teamStageDeterministicBreakdown,
@@ -3987,6 +4005,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       [
         { source: "targeted_sections", value: targetedTeamStageBreakdown?.forming },
         { source: "js_deterministic", value: jsTeamStageBreakdown?.forming },
+        { source: "legacy_fields", value: legacyTeamStageBreakdown?.forming },
         { source: "parsed_profile_llm", value: parsedProfile?.teamStageBreakdown?.forming },
       ],
       teamStageBreakdown?.forming,
@@ -3996,6 +4015,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       [
         { source: "targeted_sections", value: targetedTeamStageBreakdown?.storming },
         { source: "js_deterministic", value: jsTeamStageBreakdown?.storming },
+        { source: "legacy_fields", value: legacyTeamStageBreakdown?.storming },
         { source: "parsed_profile_llm", value: parsedProfile?.teamStageBreakdown?.storming },
       ],
       teamStageBreakdown?.storming,
@@ -4005,6 +4025,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       [
         { source: "targeted_sections", value: targetedTeamStageBreakdown?.norming },
         { source: "js_deterministic", value: jsTeamStageBreakdown?.norming },
+        { source: "legacy_fields", value: legacyTeamStageBreakdown?.norming },
         { source: "parsed_profile_llm", value: parsedProfile?.teamStageBreakdown?.norming },
       ],
       teamStageBreakdown?.norming,
@@ -4014,6 +4035,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       [
         { source: "targeted_sections", value: targetedTeamStageBreakdown?.performing },
         { source: "js_deterministic", value: jsTeamStageBreakdown?.performing },
+        { source: "legacy_fields", value: legacyTeamStageBreakdown?.performing },
         { source: "parsed_profile_llm", value: parsedProfile?.teamStageBreakdown?.performing },
       ],
       teamStageBreakdown?.performing,
@@ -4806,6 +4828,7 @@ window.addEventListener("DOMContentLoaded", () => {
   setupSearchPopoutHandlers();
   setupReportSelectorHandler();
   setupClientReportSelectorHandler();
+  setupClientReportRefreshHandler();
   registerDashboardRehydrateListeners();
   const signOutButton = document.getElementById("authSignOutButton");
   const exportPdfButton = getExportPdfButton();
@@ -6731,6 +6754,39 @@ function extractNarrativeBulletItems(text, maxItems = 8) {
   return fallback ? [fallback] : [];
 }
 
+function normalizeNarrativeBulletRows(rows, maxItems = 16) {
+  const limit = Number.isFinite(Number(maxItems)) ? Math.max(1, Number(maxItems)) : 16;
+  if (!Array.isArray(rows) || !rows.length) return [];
+
+  const normalizedRows = [];
+  rows.forEach((row) => {
+    const normalizedRow = cleanPdfExtractedValue(row == null ? "" : String(row));
+    if (!normalizedRow) return;
+    const hasInlineBulletSymbols = /[•●▪◦·]/.test(normalizedRow);
+    const symbolSplitRows = hasInlineBulletSymbols
+      ? normalizedRow
+          .split(/[•●▪◦·]\s*/g)
+          .map((item) => cleanPdfExtractedValue(item))
+          .filter(Boolean)
+          .filter((item) => item.length >= 12)
+      : [];
+    const splitRows = extractNarrativeBulletItems(normalizedRow, limit)
+      .map((item) => cleanPdfExtractedValue(item))
+      .filter(Boolean);
+    const preferredRows = symbolSplitRows.length > splitRows.length ? symbolSplitRows : splitRows;
+    if (preferredRows.length) {
+      normalizedRows.push(...preferredRows);
+      return;
+    }
+    normalizedRows.push(normalizedRow);
+  });
+
+  return Array.from(new Set(normalizedRows))
+    .map((row) => cleanPdfExtractedValue(row))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
 function renderNarrativeBullets(text, options = {}) {
   const safeOptions = options && typeof options === "object" ? options : {};
   const maxItems = Number.isFinite(Number(safeOptions.maxItems)) ? Number(safeOptions.maxItems) : 8;
@@ -8417,6 +8473,130 @@ function compactTargetedSectionText(value, options = {}) {
   const rows = normalizeTargetedSectionRows(value, { maxItems, maxLength });
   if (!rows.length) return null;
   return compactInsightSnippet(rows.join(joiner), maxLength);
+}
+
+function extractTeamStageBreakdownFromLegacyFields(parsedProfile) {
+  const stageLabels = ["Forming", "Storming", "Norming", "Performing"];
+  const stageKeys = ["forming", "storming", "norming", "performing"];
+  const toStageTitleCase = (key) => `${String(key || "").charAt(0).toUpperCase()}${String(key || "").slice(1)}`;
+  const sanitizeLegacyStageValue = (value) => {
+    if (value == null) return null;
+    if (Array.isArray(value)) {
+      const combined = value
+        .map((entry) => sanitizeLegacyStageValue(entry) || "")
+        .filter(Boolean)
+        .join(" ");
+      const cleaned = cleanPdfExtractedValue(combined || "");
+      return cleaned || null;
+    }
+    if (typeof value === "object") {
+      try {
+        const cleaned = cleanPdfExtractedValue(JSON.stringify(value));
+        return cleaned || null;
+      } catch (_error) {
+        return null;
+      }
+    }
+    const cleaned = cleanPdfExtractedValue(String(value));
+    return cleaned || null;
+  };
+  const parseLegacyObjectCandidate = (value) => {
+    const raw = String(value || "").trim();
+    const firstCodePoint = raw.charCodeAt(0);
+    const startsWithObjectToken = firstCodePoint === 123 || firstCodePoint === 91;
+    if (!raw || !startsWithObjectToken) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (_error) {
+      return null;
+    }
+  };
+  const buildFromStageObject = (candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+    const result = stageKeys.reduce((acc, stageKey) => {
+      const titleCaseKey = toStageTitleCase(stageKey);
+      const stageValue =
+        candidate?.[stageKey] ??
+        candidate?.[titleCaseKey] ??
+        candidate?.[stageKey.toUpperCase()] ??
+        candidate?.[`teamStage${titleCaseKey}`];
+      acc[stageKey] = sanitizeLegacyStageValue(stageValue);
+      return acc;
+    }, {});
+    if (Object.values(result).every((value) => !value)) return null;
+    return result;
+  };
+
+  const directObjectCandidates = [
+    parsedProfile?.teamStageBreakdown,
+    parsedProfile?.teamDynamics,
+    parsedProfile?.team_dynamics,
+    parsedProfile?.targetedSections?.team_dynamics,
+  ];
+  for (const candidate of directObjectCandidates) {
+    const parsedCandidate =
+      typeof candidate === "string"
+        ? parseLegacyObjectCandidate(candidate)
+        : candidate;
+    const extracted = buildFromStageObject(parsedCandidate);
+    if (!extracted) continue;
+    console.log("[team-stage] extracted from legacy stage object", {
+      hasForming: Boolean(extracted.forming),
+      hasStorming: Boolean(extracted.storming),
+      hasNorming: Boolean(extracted.norming),
+      hasPerforming: Boolean(extracted.performing),
+    });
+    return extracted;
+  }
+
+  const legacyTextCandidates = [
+    parsedProfile?.spreadsheetFocuses?.teamBehaviour,
+    parsedProfile?.insightTeamDynamics,
+    parsedProfile?.insightComposite,
+    parsedProfile?.reportContent?.teamDynamicsText,
+  ];
+  for (const candidate of legacyTextCandidates) {
+    if (candidate == null) continue;
+    const parsedCandidate =
+      typeof candidate === "string"
+        ? parseLegacyObjectCandidate(candidate)
+        : null;
+    const extractedFromSerializedObject = buildFromStageObject(parsedCandidate);
+    if (extractedFromSerializedObject) {
+      console.log("[team-stage] extracted from serialized legacy team-behaviour payload", {
+        hasForming: Boolean(extractedFromSerializedObject.forming),
+        hasStorming: Boolean(extractedFromSerializedObject.storming),
+        hasNorming: Boolean(extractedFromSerializedObject.norming),
+        hasPerforming: Boolean(extractedFromSerializedObject.performing),
+      });
+      return extractedFromSerializedObject;
+    }
+
+    const normalizedCandidateText = normalizeExtractedText(
+      Array.isArray(candidate)
+        ? candidate.map((entry) => sanitizeLegacyStageValue(entry) || "").join(" ")
+        : sanitizeLegacyStageValue(candidate) || "",
+    );
+    if (!normalizedCandidateText) continue;
+
+    const result = {
+      forming: extractTeamStageSnippet(normalizedCandidateText, stageLabels[0], stageLabels.slice(1)),
+      storming: extractTeamStageSnippet(normalizedCandidateText, stageLabels[1], stageLabels.slice(2)),
+      norming: extractTeamStageSnippet(normalizedCandidateText, stageLabels[2], stageLabels.slice(3)),
+      performing: extractTeamStageSnippet(normalizedCandidateText, stageLabels[3], []),
+    };
+    if (Object.values(result).every((value) => !value)) continue;
+    console.log("[team-stage] extracted stage snippets from legacy text fallback", {
+      hasForming: Boolean(result.forming),
+      hasStorming: Boolean(result.storming),
+      hasNorming: Boolean(result.norming),
+      hasPerforming: Boolean(result.performing),
+    });
+    return result;
+  }
+
+  return null;
 }
 
 function extractCoreIdentityFromTargetedSections(parsedProfile) {
@@ -10325,12 +10505,12 @@ function renderReportFromState(isExampleMode) {
       { maxItems: 8 },
     ),
   );
-  const conflictTriggeredRows = (Array.isArray(spreadsheetFocusesFromReport.conflictTriggeredBullets)
-    ? spreadsheetFocusesFromReport.conflictTriggeredBullets
-    : [])
-    .map((row) => cleanPdfExtractedValue(formatOptionalText(row, "")))
-    .filter(Boolean)
-    .filter((row) => !isMissingExtractedText(row));
+  const conflictTriggeredRows = normalizeNarrativeBulletRows(
+    Array.isArray(spreadsheetFocusesFromReport.conflictTriggeredBullets)
+      ? spreadsheetFocusesFromReport.conflictTriggeredBullets
+      : [],
+    16,
+  ).filter((row) => !isMissingExtractedText(row));
   const conflictTriggeredFallbackRows = extractNarrativeBulletItems(
     resolveSpreadsheetFocusText(
       spreadsheetFocusesFromReport.conflictTriggeredCopy,
@@ -10530,6 +10710,81 @@ function applyAssignedPdfReport(payload) {
   }
 }
 
+function countAssignedPdfFallbackMarkers() {
+  const fallbackNeedle = "not detected in assigned pdf.";
+  const nodes = document.querySelectorAll(".tt, .stage p, #sec-overview p, #sec-leadership p, #sec-communication p, #sec-strain p, #sec-growth p, td, li");
+  let fallbackMarkerCount = 0;
+  nodes.forEach((node) => {
+    const text = String(node?.textContent || "").trim().toLowerCase();
+    if (!text) return;
+    if (!text.includes(fallbackNeedle)) return;
+    fallbackMarkerCount += 1;
+  });
+  return fallbackMarkerCount;
+}
+
+function setClientReportRefreshButtonLoadingState(isLoading) {
+  const clientReportRefreshButton = getClientReportRefreshButton();
+  if (!clientReportRefreshButton) return;
+  clientReportRefreshButton.dataset.loading = isLoading ? "1" : "0";
+  clientReportRefreshButton.setAttribute("aria-busy", isLoading ? "true" : "false");
+  if (isLoading) {
+    clientReportRefreshButton.disabled = true;
+    clientReportRefreshButton.title = "Refreshing dashboard hydration...";
+    return;
+  }
+  const hasRefreshableClientReports = latestAdminClientReports.length > 0;
+  clientReportRefreshButton.disabled = !hasRefreshableClientReports;
+  clientReportRefreshButton.title = hasRefreshableClientReports
+    ? "Rehydrate dashboard copy from latest client report data"
+    : "No client reports available to refresh";
+}
+
+async function onClientReportRefreshClick(event) {
+  event?.preventDefault?.();
+  if (clientReportManualRefreshInFlight) {
+    console.log("[client-report-switch] manual refresh ignored because a refresh is already in flight", {
+      currentReportViewMode,
+      currentClientReportId,
+    });
+    return;
+  }
+  clientReportManualRefreshInFlight = true;
+  const fallbackMarkerCountBefore = countAssignedPdfFallbackMarkers();
+  console.log("[client-report-switch] manual refresh requested", {
+    currentReportViewMode,
+    currentClientReportId,
+    selectedClientReportId: String(getClientReportSelector()?.value || "").trim() || null,
+    assignedReportIngested,
+    fallbackMarkerCountBefore,
+    shouldRehydrateForMissingCopy: fallbackMarkerCountBefore > 0,
+  });
+  setClientReportRefreshButtonLoadingState(true);
+  try {
+    invalidateAssignedReportIngestion("manual-client-report-refresh");
+    await refreshReportActiveUi();
+    const fallbackMarkerCountAfter = countAssignedPdfFallbackMarkers();
+    console.log("[client-report-switch] manual refresh completed", {
+      currentReportViewMode,
+      currentClientReportId,
+      selectedClientReportId: String(getClientReportSelector()?.value || "").trim() || null,
+      fallbackMarkerCountBefore,
+      fallbackMarkerCountAfter,
+      refreshedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.log("[client-report-switch] manual refresh failed", {
+      currentReportViewMode,
+      currentClientReportId,
+      details: String(error?.message || "Unknown client report refresh failure"),
+      stack: error?.stack || null,
+    });
+  } finally {
+    clientReportManualRefreshInFlight = false;
+    setClientReportRefreshButtonLoadingState(false);
+  }
+}
+
 function setupReportSelectorHandler() {
   const reportSelector = document.getElementById('reportSelector');
   if (!reportSelector) return;
@@ -10550,6 +10805,17 @@ function setupClientReportSelectorHandler() {
   clientReportSelector.addEventListener("input", onClientReportSelectorChange);
   console.log("[client-report-switch] bound selector listeners");
   clientReportSelector.dataset.bound = "1";
+}
+
+function setupClientReportRefreshHandler() {
+  const clientReportRefreshButton = getClientReportRefreshButton();
+  if (!clientReportRefreshButton) return;
+  if (clientReportRefreshButton.dataset.bound === "1") return;
+
+  clientReportRefreshButton.addEventListener("click", onClientReportRefreshClick);
+  clientReportRefreshButton.dataset.bound = "1";
+  setClientReportRefreshButtonLoadingState(false);
+  console.log("[client-report-switch] bound manual refresh button listener");
 }
 
 function syncSelectedExampleReport() {
@@ -10593,9 +10859,19 @@ function onReportSelectorChange(event) {
 
 function onClientReportSelectorChange(event) {
   const selectedReportId = String(event?.target?.value || getClientReportSelector()?.value || "").trim();
+  console.log("[client-report-switch] selector changed", {
+    selectedReportId: selectedReportId || null,
+    currentReportViewMode,
+    currentClientReportId,
+  });
   if (!selectedReportId) {
     invalidateAssignedReportIngestion("client-report-selection-cleared");
     currentClientReportId = null;
+    console.log("[client-report-switch] selection cleared", {
+      currentReportViewMode,
+      currentClientReportId,
+      selectedReportId: null,
+    });
     return;
   }
 
@@ -10612,6 +10888,13 @@ function onClientReportSelectorChange(event) {
   currentReportViewMode = "client-report";
   assignedReportIngested = false;
   latestAssignedPdfReport = null;
+  console.log("[client-report-switch] applying selected client report", {
+    selectedReportId,
+    clientName: selectedClientReport?.clientName || null,
+    userEmail: selectedClientReport?.userEmail || null,
+    currentReportViewMode,
+    currentClientReportId,
+  });
   ingestAssignedReportIntoDashboard(selectedClientReport);
 }
 
@@ -10642,6 +10925,7 @@ window.addEventListener('load', () => {
   // Bind report selector first so it still works even if later setup code fails.
   setupReportSelectorHandler();
   setupClientReportSelectorHandler();
+  setupClientReportRefreshHandler();
   window.setInterval(syncSelectedExampleReport, 400);
   decorateInterfaceIcons();
   buildReportModuleIndex();

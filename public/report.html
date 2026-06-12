@@ -30,6 +30,25 @@ body{background:radial-gradient(circle at 5% 0%,#f7fbff 0,#eef4fb 44%,#e9f1fb 10
 .report-switch-label{font-size:var(--fs-label);font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)}
 .report-switch-select{border:1px solid var(--border2);border-radius:10px;background:#fff;color:var(--text);padding:7px 11px;font:600 var(--fs-meta) var(--font-sans);outline:none}
 .report-switch-select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,102,216,.12)}
+.report-switch-refresh{
+  border:1px solid var(--border2);
+  border-radius:10px;
+  background:#fff;
+  color:var(--text2);
+  width:32px;
+  height:32px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  transition:border-color .18s ease,box-shadow .18s ease,background .18s ease,color .18s ease;
+}
+.report-switch-refresh:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-lt)}
+.report-switch-refresh:focus-visible{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,102,216,.12)}
+.report-switch-refresh:disabled{opacity:.55;cursor:not-allowed;background:#f8fbff;color:var(--text3)}
+.report-switch-refresh svg{display:block}
+@keyframes reportRefreshSpin{to{transform:rotate(360deg)}}
+.report-switch-refresh[data-loading="1"] svg{animation:reportRefreshSpin .9s linear infinite}
 .eyebrow{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
 .e8-circle{width:40px;height:40px;border-radius:12px;background:transparent;border:none;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
 .ennea-logo{width:40px;height:40px;display:block}
@@ -466,6 +485,23 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
         <select class="report-switch-select" id="clientReportSelector" data-testid="client-report-selector">
           <option value="">No client reports</option>
         </select>
+        <button
+          class="report-switch-refresh"
+          type="button"
+          id="clientReportRefreshButton"
+          data-testid="client-report-refresh-button"
+          title="Rehydrate dashboard copy from latest client report data"
+          aria-label="Refresh client report data"
+          data-loading="0"
+          disabled
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 3v6h-6"></path>
+            <path d="M3 21v-6h6"></path>
+            <path d="M21 9a9 9 0 0 0-15.5-4.5L3 7"></path>
+            <path d="M3 15a9 9 0 0 0 15.5 4.5L21 17"></path>
+          </svg>
+        </button>
       </div>
     </div>
   </div>
