@@ -51,6 +51,11 @@
   - `npm run lint`
   - `npm test`
   - `npm run build`
+- Hardcoded regression check after **every** change (no exceptions):
+  - Switch between at least 2 different client reports in the UI.
+  - Confirm **all** report-bound content updates (no stale sections), including text blocks, scores, chart data, labels, insights, and recommendations.
+  - Treat any partial update as a blocking failure; fix before considering the task complete.
+  - Add debug `console.log` coverage for report switch state, selected client/report IDs, and each major section render payload to catch stale bindings quickly.
 - Mandatory localhost preview link on every task completion:
   - Always provide a working and active localhost URL in the final response.
   - Before sharing the URL, verify a listener exists on that port and verify the page responds.

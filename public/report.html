@@ -210,7 +210,7 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 @media(max-width:700px){.team-stage-grid{grid-template-columns:1fr}}
 .int-segs{display:flex;gap:4px;height:28px;margin:10px 0}.int-seg{flex:1;border-radius:4px;background:var(--surface3)}.int-seg.act{background:var(--red)}.int-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);letter-spacing:.04em}.int-labels .active{color:var(--text);font-weight:600}
 .rdrow{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}.rdrow:last-child{border-bottom:none}.rdname{font-size:13px;color:var(--text2);min-width:100px}.rdbar{flex:1;height:4px;background:var(--surface3);border-radius:100px;overflow:hidden;margin:0 12px}.rdfil{height:100%;border-radius:100px;background:var(--gold)}.rdscore{font-size:13px;font-weight:600;color:var(--text)}
-.stage{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:15px;margin-bottom:8px}.stage-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.sdot{width:8px;height:8px;border-radius:50%}
+.stage{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:15px;margin-bottom:8px}.stage-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.sdot{width:8px;height:8px;border-radius:50%}.instinct-goal-row{transition:border-color .18s ease, box-shadow .18s ease}.instinct-goal-row.is-dominant-sp{border-color:var(--green)}.instinct-goal-row.is-dominant-so{border-color:var(--blue)}.instinct-goal-row.is-dominant-sx{border-color:var(--gold)}
 .wing-item{background:var(--surface2);border-radius:var(--r-sm);padding:11px 12px;font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:6px}
 .sidebar-box{overflow:hidden;margin-bottom:0;background:linear-gradient(180deg,#ffffff,#f8fbff);border:1px solid var(--border);border-radius:16px}
 .sb-header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -288,14 +288,18 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .strain-breakdown-scroll{margin-top:12px;flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable}
 @media(max-width:980px){.strain-cards-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.strain-cards-grid{grid-template-columns:1fr}}
-.center-expression-layout{display:grid;grid-template-columns:minmax(0,320px) minmax(0,460px);gap:14px;align-items:center;justify-content:center}
-.center-expression-col-right{padding-left:0;display:flex;align-items:center;align-self:stretch;max-width:460px}
-.center-expression-visual-wrap{display:flex;justify-content:center;align-items:center}
+.center-sections-layout{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:14px;align-items:start}
+.center-expression-card{max-width:520px;width:100%}
+.center-expression-layout{display:flex;flex-direction:column;align-items:center;gap:12px}
+.center-expression-visual-wrap{display:flex;justify-content:center;align-items:center;width:100%}
+.center-expression-narratives{width:100%;max-width:460px}
+.center-patterns-card{min-width:0}
 #centerExpressionWheel{width:min(100%,300px);max-width:300px;aspect-ratio:1/1}
 #centerExpressionWheel svg{display:block;width:100%;height:auto}
-@media(max-width:900px){
-  .center-expression-layout{grid-template-columns:1fr}
-  .center-expression-col-right{padding-top:0}
+@media(max-width:1100px){
+  .center-sections-layout{grid-template-columns:1fr}
+  .center-expression-card{max-width:none}
+  .center-expression-narratives{max-width:none}
 }
 @media(max-width:700px){
   #centerExpressionWheel{width:min(100%,260px);max-width:260px}
@@ -576,25 +580,21 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
       </div>
 
       <div id="sec-centers" class="sec">
-        <div class="mb24">
-          <div class="card">
+        <div class="center-sections-layout mb24">
+          <div class="card center-expression-card">
             <div class="ct">Centers of Expression</div>
             <div class="center-expression-layout">
               <div class="center-expression-visual-wrap">
                 <div id="centerExpressionWheel" data-testid="center-expression-wheel" aria-label="Centers of Expression visual wheel"></div>
               </div>
-              <div class="center-expression-col-right">
-                <div class="tlist" id="centerExpressionNarratives" data-testid="center-expression-narratives">
-                  <div class="ti" data-center-row="body"><div class="tic pos">→</div><div class="tt" id="centerNarrativeBody"><strong>Externalised Action:</strong> You act on gut impulses in quick and compelling ways.</div></div>
-                  <div class="ti" data-center-row="heart"><div class="tic neu">♥</div><div class="tt" id="centerNarrativeHeart"><strong>Externalised Feeling:</strong> You focus emotional and relational energy on others.</div></div>
-                  <div class="ti" data-center-row="head"><div class="tic inf">◎</div><div class="tt" id="centerNarrativeHead"><strong>Internalised Thinking:</strong> You quietly apply thinking energy inward, creating a rich thought-world.</div></div>
-                </div>
+              <div class="tlist center-expression-narratives" id="centerExpressionNarratives" data-testid="center-expression-narratives">
+                <div class="ti" data-center-row="body"><div class="tic pos">→</div><div class="tt" id="centerNarrativeBody"><strong>Externalised Action:</strong> You act on gut impulses in quick and compelling ways.</div></div>
+                <div class="ti" data-center-row="heart"><div class="tic neu">♥</div><div class="tt" id="centerNarrativeHeart"><strong>Externalised Feeling:</strong> You focus emotional and relational energy on others.</div></div>
+                <div class="ti" data-center-row="head"><div class="tic inf">◎</div><div class="tt" id="centerNarrativeHead"><strong>Internalised Thinking:</strong> You quietly apply thinking energy inward, creating a rich thought-world.</div></div>
               </div>
             </div>
           </div>
-        </div>
-        <div class="mb24">
-          <div class="card">
+          <div class="card center-patterns-card">
             <div class="ct">Typical Patterns</div>
             <div class="g3">
               <div>
@@ -627,9 +627,9 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
         <div class="card mb24" data-testid="instinct-goals-card">
           <div class="ct">Instinctual Goals</div>
           <div class="g3">
-            <div class="stage" data-testid="instinct-goal-self-pres-row"><div class="stage-head"><span class="chip cgn">SP</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="instinctGoalSelfPres">Not detected in assigned PDF.</p></div>
-            <div class="stage" data-testid="instinct-goal-social-row"><div class="stage-head"><span class="chip cb">SO</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="instinctGoalSocial">Not detected in assigned PDF.</p></div>
-            <div class="stage" data-testid="instinct-goal-one-on-one-row"><div class="stage-head"><span class="chip cg">SX</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="instinctGoalOneOnOne">Not detected in assigned PDF.</p></div>
+            <div data-testid="instinct-goal-self-pres-row" class="stage instinct-goal-row" data-instinct-code="SP"><div class="stage-head"><span class="chip cgn">SP</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="instinctGoalSelfPres">Not detected in assigned PDF.</p></div>
+            <div data-testid="instinct-goal-social-row" class="stage instinct-goal-row" data-instinct-code="SO"><div class="stage-head"><span class="chip cb">SO</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="instinctGoalSocial">Not detected in assigned PDF.</p></div>
+            <div data-testid="instinct-goal-one-on-one-row" class="stage instinct-goal-row" data-instinct-code="SX"><div class="stage-head"><span class="chip cg">SX</span></div><p style="font-size:13px;color:var(--text2);line-height:1.65;margin:0" id="instinctGoalOneOnOne">Not detected in assigned PDF.</p></div>
           </div>
         </div>
       </div>

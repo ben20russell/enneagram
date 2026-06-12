@@ -475,6 +475,51 @@ function instinctValueToLabel(value) {
   return normalized || null;
 }
 
+const DOMINANT_INSTINCT_GOAL_ROW_CLASSES = Object.freeze([
+  "is-dominant-sp",
+  "is-dominant-so",
+  "is-dominant-sx",
+]);
+
+function resolveDominantInstinctCode(instinctValue) {
+  const normalized = String(instinctValue || "").trim().toUpperCase();
+  if (!normalized) return null;
+  if (/\bSP\b/.test(normalized) || /SELF[\s-]*PRESERVATION/.test(normalized)) return "SP";
+  if (/\bSO\b/.test(normalized) || /\bSOCIAL\b/.test(normalized)) return "SO";
+  if (/\bSX\b/.test(normalized) || /ONE[\s-]*ON[\s-]*ONE/.test(normalized) || /ONE[\s-]*TO[\s-]*ONE/.test(normalized)) return "SX";
+  return null;
+}
+
+function renderDominantInstinctGoalBorder(instinctValue) {
+  const instinctGoalRows = document.querySelectorAll(".instinct-goal-row");
+  instinctGoalRows.forEach((row) => {
+    row.classList.remove(...DOMINANT_INSTINCT_GOAL_ROW_CLASSES);
+  });
+
+  const dominantCode = resolveDominantInstinctCode(instinctValue);
+  if (!dominantCode) {
+    console.log("[instinct-goals] no dominant instinct code resolved for border styling", {
+      instinctValue,
+    });
+    return;
+  }
+
+  const dominantRow = document.querySelector(`.instinct-goal-row[data-instinct-code="${dominantCode}"]`);
+  if (!dominantRow) {
+    console.log("[instinct-goals] dominant instinct row not found for border styling", {
+      instinctValue,
+      dominantCode,
+    });
+    return;
+  }
+
+  dominantRow.classList.add(`is-dominant-${dominantCode.toLowerCase()}`);
+  console.log("[instinct-goals] applied dominant instinct border styling", {
+    instinctValue,
+    dominantCode,
+  });
+}
+
 function normalizeAssignedIdentityValue(value) {
   const normalized = sanitizeSnippet(value || "", "").trim();
   if (!normalized) return null;
@@ -10269,6 +10314,7 @@ function renderReportFromState(isExampleMode) {
       spreadsheetFocusFallbacks?.instinctGoals?.oneOnOne,
     ),
   );
+  renderDominantInstinctGoalBorder(REPORT.instinct);
   setHtml(
     'conflictResponseCopy',
     renderNarrativeBullets(
