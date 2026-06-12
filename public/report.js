@@ -3220,9 +3220,17 @@ function applyFallbackAssignedReportFromServerData(data) {
 
 async function ingestAssignedReportIntoDashboard(data) {
   if (!data) return;
+  if (assignedReportIngested) {
+    console.log("[report-ingest] skipping duplicate assigned/client ingestion request", {
+      currentReportViewMode,
+      reportFileName: data?.reportFileName || null,
+      reportId: data?.id || null,
+      activeAssignedIngestionToken,
+    });
+    return;
+  }
   const ingestionToken = activeAssignedIngestionToken + 1;
   activeAssignedIngestionToken = ingestionToken;
-  if (assignedReportIngested) return;
   assignedReportIngested = true;
   console.log("[report-ingest] Started assigned/client ingestion", {
     ingestionToken,
