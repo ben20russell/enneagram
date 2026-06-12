@@ -5002,7 +5002,7 @@ function decorateInterfaceIcons() {
   const navIconMap = {
     Search: 'search',
     Overview: 'overview',
-    'Centers & Instincts': 'centers',
+    'Expressions & Instincts': 'centers',
     'Strengths & Gaps': 'strengths',
     Leadership: 'leadership',
     Communication: 'communication',
@@ -5158,7 +5158,7 @@ function tokenize(text) {
 function buildReportModuleIndex() {
   const sectionNameMap = {
     overview: 'Overview',
-    centers: 'Centers & Instincts',
+    centers: 'Expressions & Instincts',
     strengths: 'Strengths & Gaps',
     leadership: 'Leadership',
     communication: 'Communication',
@@ -7768,6 +7768,8 @@ const ASSIGNED_PDF_INSTRUCTION_RULES = {
     pageNumbers: [10],
     startAnchor: "Self-Preservation - SP",
     endAnchor: "end of page",
+    endAnchors: ["27 Subtypes & Instincts", "27 Subtypes", "Centers of Expression", "Center of Expression"],
+    limitToStartPage: true,
     preferHeadingStart: true,
     mode: "single_snippet",
   },
@@ -8053,6 +8055,8 @@ function extractInstructionTextFromReportContent(parsedProfile, rule, options = 
 
   const startAnchor = normalizeInstructionAnchor(safeRule.startAnchor);
   const endAnchor = normalizeInstructionAnchor(safeRule.endAnchor);
+  const useEndOfPageBoundary = endAnchor === "end_of_page";
+  const limitToStartPage = useEndOfPageBoundary && Boolean(safeRule.limitToStartPage);
   const endAnchors = Array.from(new Set([
     endAnchor,
     ...(Array.isArray(safeRule.endAnchors) ? safeRule.endAnchors.map((anchor) => normalizeInstructionAnchor(anchor)) : []),
@@ -8067,10 +8071,16 @@ function extractInstructionTextFromReportContent(parsedProfile, rule, options = 
     let startIndex = 0;
     let startMatched = !shouldRequireStartAnchor;
     if (startAnchor) {
-      const startMatch = findInstructionAnchorMatch(source, startAnchor, {
+      let startMatch = findInstructionAnchorMatch(source, startAnchor, {
         startIndex: 0,
         preferHeading: Boolean(safeRule.preferHeadingStart),
       });
+      if (!startMatch && Boolean(safeRule.preferHeadingStart)) {
+        startMatch = findInstructionAnchorMatch(source, startAnchor, {
+          startIndex: 0,
+          preferHeading: false,
+        });
+      }
       if (startMatch) {
         startMatched = true;
         startIndex = includeStartAnchor ? startMatch.index : startMatch.index + startMatch.length;
@@ -8116,8 +8126,7 @@ function extractInstructionTextFromReportContent(parsedProfile, rule, options = 
     const startIndex = pageSegments.findIndex((segment) => segment.pageNumber === startPage);
     if (startIndex === -1) continue;
     const snippet = extractFromSource(
-      pageSegments
-        .slice(startIndex)
+      (limitToStartPage ? pageSegments.slice(startIndex, startIndex + 1) : pageSegments.slice(startIndex))
         .map((segment) => segment.text)
         .join("\n\n"),
     );
@@ -8125,7 +8134,7 @@ function extractInstructionTextFromReportContent(parsedProfile, rule, options = 
   }
 
   const fallback = extractFromSource(
-    pageSegments
+    (limitToStartPage ? pageSegments.slice(0, 1) : pageSegments)
       .map((segment) => segment.text)
       .join("\n\n"),
   );
@@ -8634,17 +8643,17 @@ function extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile) {
       instinctGoalsSource?.self_pres,
       instinctGoalsSource?.sp,
       instinctGoalsSource?.selfPres,
-    ], { maxItems: 4, maxLength: 420 }),
+    ], { maxItems: 4, maxLength: 1200 }),
     social: compactTargetedSectionText([
       instinctGoalsSource?.social,
       instinctGoalsSource?.so,
-    ], { maxItems: 4, maxLength: 420 }),
+    ], { maxItems: 4, maxLength: 1200 }),
     oneOnOne: compactTargetedSectionText([
       instinctGoalsSource?.one_on_one,
       instinctGoalsSource?.oneOnOne,
       instinctGoalsSource?.sexual,
       instinctGoalsSource?.sx,
-    ], { maxItems: 4, maxLength: 420 }),
+    ], { maxItems: 4, maxLength: 1200 }),
   };
   const hasInstinctGoals = Boolean(instinctGoals.selfPres || instinctGoals.social || instinctGoals.oneOnOne);
 
@@ -8831,24 +8840,42 @@ function extractMotivationalNeedSummary(rawText, maxLength = 420) {
 function extractInstinctGoalDefinitions(rawText) {
   const normalized = normalizeExtractedText(rawText || "");
   if (!normalized) return null;
+  const defaultStopLabels = [
+    "27 Subtypes & Instincts",
+    "27 Subtypes",
+    "Centers of Expression",
+    "Center of Expression",
+    "Thinking Center of Expression",
+    "Action Center of Expression",
+    "Feeling Center of Expression",
+    "Development Exercise",
+    "Copyright",
+  ];
   const segmentFor = (labels, stopLabels = []) => {
     const startPattern = labels.map((value) => buildFlexiblePhrasePattern(value)).join("|");
-    const stopPattern = stopLabels.length
-      ? stopLabels.map((value) => buildFlexiblePhrasePattern(value)).join("|")
-      : "$";
+    const boundaryLabels = Array.from(new Set([
+      ...(Array.isArray(stopLabels) ? stopLabels : []),
+      ...defaultStopLabels,
+    ]));
+    const stopPattern = boundaryLabels.length
+      ? boundaryLabels.map((value) => buildFlexiblePhrasePattern(value)).join("|")
+      : null;
     const match = normalized.match(
-      new RegExp(`(?:${startPattern})\\s*[:\\-]?\\s*([\\s\\S]{18,760}?)(?=\\s*(?:${stopPattern}))`, "i"),
+      new RegExp(
+        `(?:${startPattern})\\s*[:\\-]?\\s*([\\s\\S]{18,}?)(?=\\s*(?:${stopPattern ? `${stopPattern}|$` : "$"}))`,
+        "i",
+      ),
     );
     const extracted = cleanPdfExtractedValue(match?.[1] || "");
-    return extracted ? compactInsightSnippet(extracted, 420) : null;
+    return extracted || null;
   };
 
   const oneOnOne = segmentFor(
-    ["One-On-One - SX", "One-On-One", "One to One", "Sexual Instinct", "One-to-One instinct"],
+    ["One-On-One - SX", "One-On-One", "Sexual Instinct", "One-to-One instinct", "One-On-One instinct"],
     ["Social - SO", "Self-Preservation - SP", "Self Preservation - SP"],
   );
   const social = segmentFor(
-    ["Social - SO", "Social instinct", "Social"],
+    ["Social - SO", "Social instinct"],
     ["One-On-One - SX", "One-On-One", "One to One", "Self-Preservation - SP", "Self Preservation - SP"],
   );
   const selfPres = segmentFor(
@@ -9140,9 +9167,9 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
     ),
   };
   const instinctGoalsFromAnchoredParagraphs = {
-    oneOnOne: compactInsightSnippet(cleanPdfExtractedValue(instinctOneOnOneInstructionText || ""), 420),
-    social: compactInsightSnippet(cleanPdfExtractedValue(instinctSocialInstructionText || ""), 420),
-    selfPres: compactInsightSnippet(cleanPdfExtractedValue(instinctSelfPresInstructionText || ""), 420),
+    oneOnOne: cleanPdfExtractedValue(instinctOneOnOneInstructionText || "") || null,
+    social: cleanPdfExtractedValue(instinctSocialInstructionText || "") || null,
+    selfPres: cleanPdfExtractedValue(instinctSelfPresInstructionText || "") || null,
   };
   const instinctGoalsFromDefinitionsBlock = extractInstinctGoalDefinitions(subtypesText);
   const instinctGoalsFromFallback = extractInstinctGoalDefinitions(
@@ -9968,7 +9995,6 @@ function renderReportFromState(isExampleMode) {
   setText('growthReleaseBody', growthCopy.releaseBody);
   setText('growthReleaseIbox', growthCopy.releaseIbox);
   setText('profileWheelBadgeType', REPORT.typeNumber);
-  setText('profileWheelBadgeKeyword', String(REPORT.keyword || '').toUpperCase());
   setText('profileWheelBadgeInstinct', String(REPORT.instinct || '').split('—')[0].trim() || 'N/A');
   // Render the wheel early so assigned/client reports still show the graphic even if later blocks throw.
   try {
@@ -10241,35 +10267,6 @@ function renderReportFromState(isExampleMode) {
     resolveSpreadsheetFocusText(
       spreadsheetFocusesFromReport?.instinctGoals?.oneOnOne,
       spreadsheetFocusFallbacks?.instinctGoals?.oneOnOne,
-    ),
-  );
-  const developingAsRows = (Array.isArray(spreadsheetFocusesFromReport.developingAsBullets)
-    ? spreadsheetFocusesFromReport.developingAsBullets
-    : [])
-    .map((row) => cleanPdfExtractedValue(formatOptionalText(row, "")))
-    .filter(Boolean)
-    .filter((row) => !isMissingExtractedText(row));
-  const developingAsFallbackRows = extractNarrativeBulletItems(
-    resolveSpreadsheetFocusText(
-      spreadsheetFocusesFromReport.developingAsCopy,
-      spreadsheetFocusFallbacks.developingAsCopy,
-    ),
-    12,
-  )
-    .map((row) => cleanPdfExtractedValue(row))
-    .filter(Boolean)
-    .filter((row) => !isMissingExtractedText(row));
-  const developingAsItems = developingAsRows.length
-    ? developingAsRows
-    : (developingAsFallbackRows.length ? developingAsFallbackRows : [missingAssignedPdfText]);
-  setHtml(
-    'developingAsCopy',
-    buildAdaptiveListHtml(
-      developingAsItems.map((text) => ({
-        tone: "neu",
-        symbol: "•",
-        text,
-      })),
     ),
   );
   setHtml(
