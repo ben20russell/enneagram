@@ -9169,15 +9169,26 @@ function extractTeamStageSnippet(text, stage, nextStages = []) {
   const normalized = normalizeExtractedText(text || "");
   if (!normalized || !stage) return null;
 
+  const stageKey = String(stage || "").trim().toLowerCase();
   const stagePattern = `\\b${buildFlexiblePhrasePattern(stage)}\\b`;
   const boundaryStages = Array.isArray(nextStages) ? nextStages.filter(Boolean) : [];
-  const boundaryStagePattern = boundaryStages.map((value) => `\\b${buildFlexiblePhrasePattern(value)}\\b`).join("|");
+  const boundaryStagePattern = boundaryStages
+    .map((value) => `\\b${buildFlexiblePhrasePattern(value)}\\b(?!\\s*stage\\b)`)
+    .join("|");
   const boundaryPattern = boundaryStages.length
     ? `${boundaryStagePattern}|coaching\\s*relationship|strategic\\s*leadership|decision\\s*making|$`
     : "coaching\\s*relationship|strategic\\s*leadership|decision\\s*making|$";
   const disallowedStageLead = boundaryStagePattern
     ? `(?:[-–—/\\s]*(?:${boundaryStagePattern})|\\s*(?:and|or)\\s+(?:${boundaryStagePattern})|\\s*(?:and|or)\\b)`
     : "(?:and|or)\\b";
+  const stageHeadingLeakPattern = /^(?:FORMING|STORMING|NORMING|PERFORMING)\s*[:\-]\s*/i;
+  const stageHeadingLeadPattern = "(?:\\s*[:\\-]\\s*|\\s+(?=[A-Z]))";
+  const stageOrdinalByKey = {
+    forming: "first",
+    storming: "second",
+    norming: "third",
+  };
+  const stageUpperLabel = String(stage || "").toUpperCase();
 
   const stripOverviewPreamble = (value) => {
     let candidate = cleanPdfExtractedValue(value || "");
@@ -9193,6 +9204,27 @@ function extractTeamStageSnippet(text, stage, nextStages = []) {
     candidate = candidate
       .replace(new RegExp(`^${escapeRegex(stage)}\\s*[:\\-]?\\s*`, "i"), "")
       .trim();
+    const repeatedStageHeadingPattern = new RegExp(
+      `\\b${escapeRegex(stageUpperLabel)}\\b\\s*(?:[:\\-]\\s*|(?=\\s+[A-Z]))`,
+      "g",
+    );
+    let repeatedStageHeading = null;
+    let repeatedMatch;
+    while ((repeatedMatch = repeatedStageHeadingPattern.exec(candidate)) !== null) {
+      repeatedStageHeading = repeatedMatch;
+    }
+    if (repeatedStageHeading && repeatedStageHeading.index > 0) {
+      candidate = candidate.slice(repeatedStageHeading.index).trim();
+      candidate = candidate.replace(new RegExp(`^${escapeRegex(stage)}\\s*[:\\-]?\\s*`, "i"), "").trim();
+    }
+    if (/\(cid:\d+\)/i.test(candidate)) {
+      candidate = candidate.replace(/\s*\(cid:\d+\)[\s\S]*$/i, "").trim();
+    }
+    let headingGuard = 0;
+    while (headingGuard < 4 && stageHeadingLeakPattern.test(candidate)) {
+      candidate = candidate.replace(stageHeadingLeakPattern, "").trim();
+      headingGuard += 1;
+    }
     if (/^[,;\-–—]?\s*(?:illustrate|illustrates|show|shows|describe|describes|represent|represents)\b/i.test(candidate) && /\bprocess\b[\s\S]{0,120}\bteams?\b/i.test(candidate)) {
       return null;
     }
@@ -9200,19 +9232,102 @@ function extractTeamStageSnippet(text, stage, nextStages = []) {
     if (boundaryStages.length && /\b(?:and|or)\s*$/i.test(candidate)) return null;
     return candidate || null;
   };
+  const isLikelyStageCandidate = (value) => {
+    const candidate = normalizeExtractedText(value || "");
+    if (!candidate || candidate.length < 22) return false;
+    if (/^[a-z]/.test(candidate)) return false;
+    const wordCount = candidate.split(/\s+/).filter(Boolean).length;
+    if (wordCount < 8) return false;
+    const lowered = candidate.toLowerCase();
+    if (/\b(?:a|an|and|the|to|for|with|from|of|in|on|at)\s*$/i.test(candidate)) return false;
+    const ordinalMatch = lowered.match(/\b(first|second|third)\s+stage\s+of\s+team\s+development\b/);
+    if (stageKey === "performing" && ordinalMatch) return false;
+    if (stageOrdinalByKey[stageKey] && ordinalMatch && ordinalMatch[1] !== stageOrdinalByKey[stageKey]) {
+      return false;
+    }
+    if (
+      stageKey === "forming" &&
+      /\bonce individuals start resolving\b/i.test(candidate) &&
+      /\bfirst stage of team development\b/i.test(candidate)
+    ) {
+      return false;
+    }
+    if (
+      stageKey === "storming" &&
+      /^although not all teams reach the performing stage\b/i.test(candidate)
+    ) {
+      return false;
+    }
+    if (
+      stageKey === "performing" &&
+      /\bthis is the second stage of team development\b/i.test(candidate)
+    ) {
+      return false;
+    }
+    return true;
+  };
+  const scoreStageCandidate = (value) => {
+    const candidate = normalizeExtractedText(value || "");
+    if (!candidate) return -Infinity;
+    const lowered = candidate.toLowerCase();
+    const wordCount = candidate.split(/\s+/).filter(Boolean).length;
+    const otherStageMentions = ["forming", "storming", "norming", "performing"]
+      .filter((label) => label !== stageKey)
+      .reduce((total, label) => {
+        const matches = lowered.match(new RegExp(`\\b${label}\\b`, "g"));
+        return total + (matches ? matches.length : 0);
+      }, 0);
+    let score = Math.min(wordCount, 160);
+    if (candidate.length >= 120 && candidate.length <= 920) score += 24;
+    if (candidate.length > 1200) score -= 14;
+    if (/\bteam\s+development\b/i.test(candidate)) score += 12;
+    if (new RegExp(`\\b${escapeRegex(stageKey)}\\b\\s+phase\\s+of\\s+team\\s+development`, "i").test(candidate)) {
+      score += 38;
+    }
+    if (new RegExp(`\\b${escapeRegex(stageKey)}\\b\\s+stage\\s+of\\s+team\\s+development`, "i").test(candidate)) {
+      score += 30;
+    }
+    if (/\bAs\s+an\s+Ennea\s*[1-9]\b/i.test(candidate)) score += 24;
+    if (/[●•▪◦]/.test(candidate)) score += 14;
+    if (/\bYour\s+Impact\s+on\s+Team\b/i.test(candidate)) score -= 48;
+    if (/\bInterdependence\s+and\s+Team\s+Role\b/i.test(candidate)) score -= 36;
+    if (/\bTypes?\s+of\s+goals?\s+that\s+resonate\s+with\s+you\b/i.test(candidate)) score -= 28;
+    if (/\(cid:\d+\)/i.test(candidate)) score -= 18;
+    if (otherStageMentions >= 3) score -= 22;
+    return score;
+  };
 
   const blockPattern = new RegExp(
-    `${stagePattern}\\s*[:\\-]?\\s*${disallowedStageLead ? `(?!${disallowedStageLead})` : ""}([\\s\\S]{22,840}?)(?=\\s*(?:${boundaryPattern}))`,
+    `${stagePattern}${stageHeadingLeadPattern}${disallowedStageLead ? `(?!${disallowedStageLead})` : ""}([\\s\\S]{22,1800}?)(?=\\s*(?:${boundaryPattern}))`,
     "ig",
   );
+  const directCandidates = [];
   let blockMatch;
   while ((blockMatch = blockPattern.exec(normalized)) !== null) {
     const direct = stripOverviewPreamble(blockMatch?.[1] || "");
-    if (direct) return direct;
+    if (!direct) continue;
+    directCandidates.push({
+      text: direct,
+      index: blockMatch.index,
+      likely: isLikelyStageCandidate(direct),
+      score: scoreStageCandidate(direct),
+    });
   }
+  const rankedDirectCandidates = directCandidates
+    .slice()
+    .sort((left, right) => {
+      if (left.likely !== right.likely) return left.likely ? -1 : 1;
+      if (left.score !== right.score) return right.score - left.score;
+      return left.index - right.index;
+    });
+  const bestDirectCandidate = rankedDirectCandidates[0] || null;
+  if (bestDirectCandidate?.likely) return bestDirectCandidate.text;
 
   const fallback = extractSnippetFromLabels(normalized, [stage]);
-  return stripOverviewPreamble(fallback || "") || null;
+  const cleanedFallback = stripOverviewPreamble(fallback || "");
+  if (cleanedFallback && isLikelyStageCandidate(cleanedFallback)) return cleanedFallback;
+  if (bestDirectCandidate?.text) return bestDirectCandidate.text;
+  return cleanedFallback || null;
 }
 
 function getTargetedSections(parsedProfile) {
