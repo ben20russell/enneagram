@@ -1421,11 +1421,77 @@ const DASHBOARD_CLEANUP_STRAIN_CATEGORIES = [
   "Psychological",
 ];
 const DASHBOARD_CLEANUP_INSTINCT_GOAL_KEYS = ["selfPres", "social", "oneOnOne"];
+const DASHBOARD_INSTINCT_FOREIGN_REFERENCE_PATTERNS = Object.freeze({
+  selfPres: [
+    /One(?:-| )On(?:-| )One\s*-\s*SX/i,
+    /Social\s*-\s*SO/i,
+    /\bSX\b/,
+    /\bSO\b/,
+    /\bSX(?=[A-Za-z])/,
+    /\bSO(?=[A-Za-z])/,
+    /sexual\s+instinct/i,
+    /one(?:-| )on(?:-| )one\s+instinct/i,
+    /one(?:-| )to(?:-| )one\s+instinct/i,
+    /social\s+instinct/i,
+  ],
+  social: [
+    /One(?:-| )On(?:-| )One\s*-\s*SX/i,
+    /Self(?:-| )Preservation\s*-\s*SP/i,
+    /\bSX\b/,
+    /\bSP\b/,
+    /\bSX(?=[A-Za-z])/,
+    /\bSP(?=[A-Za-z])/,
+    /sexual\s+instinct/i,
+    /one(?:-| )on(?:-| )one\s+instinct/i,
+    /one(?:-| )to(?:-| )one\s+instinct/i,
+    /self(?:-| )preservation\s+instinct/i,
+  ],
+  oneOnOne: [
+    /Social\s*-\s*SO/i,
+    /Self(?:-| )Preservation\s*-\s*SP/i,
+    /\bSO\b/,
+    /\bSP\b/,
+    /\bSO(?=[A-Za-z])/,
+    /\bSP(?=[A-Za-z])/,
+    /social\s+instinct/i,
+    /self(?:-| )preservation\s+instinct/i,
+    /\bself(?:-| )preservation\b/i,
+  ],
+});
 
 function normalizeDashboardNarrativeCleanupText(value, fallback = null) {
   const cleaned = sanitizeSnippet(value || "", "");
   if (!cleaned) return fallback;
   return cleaned;
+}
+
+function getDashboardInstinctForeignReferencePatterns(instinctKey) {
+  const key = String(instinctKey || "").trim();
+  return Array.isArray(DASHBOARD_INSTINCT_FOREIGN_REFERENCE_PATTERNS[key])
+    ? DASHBOARD_INSTINCT_FOREIGN_REFERENCE_PATTERNS[key]
+    : [];
+}
+
+function hasDashboardInstinctForeignReference(value, instinctKey) {
+  const normalized = normalizeDashboardNarrativeCleanupText(value, null);
+  if (!normalized) return false;
+  const patterns = getDashboardInstinctForeignReferencePatterns(instinctKey);
+  if (!patterns.length) return false;
+  return patterns.some((pattern) => pattern.test(normalized));
+}
+
+function resolveIsolatedInstinctGoalCleanupText(value, instinctKey) {
+  const isolated = isolateInstinctGoalTopicText(value, instinctKey);
+  if (isolated && !isMissingExtractedText(isolated) && !hasDashboardInstinctForeignReference(isolated, instinctKey)) {
+    return isolated;
+  }
+  if (isolated && !hasDashboardInstinctForeignReference(isolated, instinctKey)) {
+    return isolated;
+  }
+  const normalized = normalizeDashboardNarrativeCleanupText(value, null);
+  if (!normalized || isMissingExtractedText(normalized)) return null;
+  if (hasDashboardInstinctForeignReference(normalized, instinctKey)) return null;
+  return normalized;
 }
 
 function normalizeDashboardNarrativeCleanupStrainRows(rows) {
@@ -1471,18 +1537,9 @@ function normalizeDashboardNarrativeCleanupSpreadsheetFocuses(value) {
   const safe = value && typeof value === "object" ? value : {};
   const instinctGoals = safe?.instinctGoals && typeof safe.instinctGoals === "object" ? safe.instinctGoals : {};
   const normalizedInstinctGoals = {
-    selfPres:
-      isolateInstinctGoalTopicText(instinctGoals?.selfPres, "selfPres") ||
-      normalizeDashboardNarrativeCleanupText(instinctGoals?.selfPres, null) ||
-      "Not detected in assigned PDF.",
-    social:
-      isolateInstinctGoalTopicText(instinctGoals?.social, "social") ||
-      normalizeDashboardNarrativeCleanupText(instinctGoals?.social, null) ||
-      "Not detected in assigned PDF.",
-    oneOnOne:
-      isolateInstinctGoalTopicText(instinctGoals?.oneOnOne, "oneOnOne") ||
-      normalizeDashboardNarrativeCleanupText(instinctGoals?.oneOnOne, null) ||
-      "Not detected in assigned PDF.",
+    selfPres: resolveIsolatedInstinctGoalCleanupText(instinctGoals?.selfPres, "selfPres") || "Not detected in assigned PDF.",
+    social: resolveIsolatedInstinctGoalCleanupText(instinctGoals?.social, "social") || "Not detected in assigned PDF.",
+    oneOnOne: resolveIsolatedInstinctGoalCleanupText(instinctGoals?.oneOnOne, "oneOnOne") || "Not detected in assigned PDF.",
   };
 
   const developingAsCopy =
@@ -1627,6 +1684,7 @@ function dashboardNarrativeHasCleanupArtifacts(value, options = {}) {
 
   if (/[≡]/.test(source)) return true;
   if (hasDashboardInstinctGoalHeadingLeak(fieldKey, cleaned)) return true;
+  if (fieldKey && hasDashboardInstinctForeignReference(cleaned, fieldKey)) return true;
   if (/\b(?:Development\s*Exercise|Developing\s+As)\b/i.test(cleaned)) return true;
   if (/\bExercise\s*\d+\b/i.test(cleaned) && cleaned.split(/\s+/).filter(Boolean).length >= 10) return true;
   if (/\b(?:SO|SP|SX)\s*[—-]?\s*[1-9]\b/i.test(cleaned)) return true;
@@ -1824,18 +1882,14 @@ function mergeDashboardNarrativeCleanupPayload(preferredPayload, fallbackPayload
   const developmentExercises = normalizeDevelopmentExerciseRows(mergedDevelopmentRows, 12);
 
   const mergeInstinctGoal = (key) => {
-    const preferredText =
-      isolateInstinctGoalTopicText(preferred.spreadsheetFocuses?.instinctGoals?.[key], key) ||
-      normalizeDashboardNarrativeCleanupText(
-        preferred.spreadsheetFocuses?.instinctGoals?.[key],
-        null,
-      );
-    const fallbackText =
-      isolateInstinctGoalTopicText(fallback.spreadsheetFocuses?.instinctGoals?.[key], key) ||
-      normalizeDashboardNarrativeCleanupText(
-        fallback.spreadsheetFocuses?.instinctGoals?.[key],
-        null,
-      );
+    const preferredText = resolveIsolatedInstinctGoalCleanupText(
+      preferred.spreadsheetFocuses?.instinctGoals?.[key],
+      key,
+    );
+    const fallbackText = resolveIsolatedInstinctGoalCleanupText(
+      fallback.spreadsheetFocuses?.instinctGoals?.[key],
+      key,
+    );
     return (
       (preferredText && !isMissingExtractedText(preferredText) ? preferredText : null) ||
       (fallbackText && !isMissingExtractedText(fallbackText) ? fallbackText : null) ||
@@ -2039,6 +2093,26 @@ function mergeDashboardNarrativeCleanupPayload(preferredPayload, fallbackPayload
   };
 }
 
+function applyDashboardInstinctGoalIsolationGuard(preferredPayload, fallbackPayload = null) {
+  const guarded = normalizeDashboardNarrativeCleanupInput(preferredPayload);
+  const fallback = normalizeDashboardNarrativeCleanupInput(fallbackPayload == null ? preferredPayload : fallbackPayload);
+  DASHBOARD_CLEANUP_INSTINCT_GOAL_KEYS.forEach((key) => {
+    const preferredText = resolveIsolatedInstinctGoalCleanupText(
+      guarded?.spreadsheetFocuses?.instinctGoals?.[key],
+      key,
+    );
+    const fallbackText = resolveIsolatedInstinctGoalCleanupText(
+      fallback?.spreadsheetFocuses?.instinctGoals?.[key],
+      key,
+    );
+    guarded.spreadsheetFocuses.instinctGoals[key] =
+      (preferredText && !isMissingExtractedText(preferredText) ? preferredText : null) ||
+      (fallbackText && !isMissingExtractedText(fallbackText) ? fallbackText : null) ||
+      "Not detected in assigned PDF.";
+  });
+  return guarded;
+}
+
 function resolveDashboardNarrativeCleanupPayload(value) {
   return normalizeDashboardNarrativeCleanupInput(value);
 }
@@ -2089,10 +2163,11 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
       reportId: reportId || null,
       reportFileName: reportFileName || null,
     });
-    return mergeDashboardNarrativeCleanupPayload(
+    const mergedFromCache = mergeDashboardNarrativeCleanupPayload(
       DASHBOARD_COPY_HYDRATION_CACHE.get(cacheKey),
       normalizedPayload,
     );
+    return applyDashboardInstinctGoalIsolationGuard(mergedFromCache, normalizedPayload);
   }
 
   const requestBody = {
@@ -2154,7 +2229,10 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
         ? payload.copyCleanupValidation
         : null;
     const cleanedPayload = resolveDashboardNarrativeCleanupPayload(payload);
-    const mergedPayload = mergeDashboardNarrativeCleanupPayload(cleanedPayload, normalizedPayload);
+    const mergedPayload = applyDashboardInstinctGoalIsolationGuard(
+      mergeDashboardNarrativeCleanupPayload(cleanedPayload, normalizedPayload),
+      cleanedPayload,
+    );
     DASHBOARD_COPY_HYDRATION_CACHE.set(cacheKey, mergedPayload);
     if (copyCleanupValidation?.status === "needs_review") {
       console.log("[report-ingest] Dashboard narrative LLM cleanup flagged for review", {
@@ -6399,8 +6477,11 @@ function normalizeDashboardHtmlCopy(value) {
   let node = walker.nextNode();
   while (node) {
     const text = String(node.nodeValue || "");
-    if (text.trim()) {
-      node.nodeValue = ensureSentenceStartsCapitalized(text);
+    const trimmed = text.trim();
+    if (trimmed) {
+      const leadingWhitespace = text.match(/^\s+/)?.[0] || "";
+      const normalizedText = ensureSentenceStartsCapitalized(trimmed);
+      node.nodeValue = `${leadingWhitespace}${normalizedText}`;
     }
     node = walker.nextNode();
   }
@@ -9088,12 +9169,15 @@ function extractTeamStageSnippet(text, stage, nextStages = []) {
   const normalized = normalizeExtractedText(text || "");
   if (!normalized || !stage) return null;
 
+  const stagePattern = `\\b${buildFlexiblePhrasePattern(stage)}\\b`;
   const boundaryStages = Array.isArray(nextStages) ? nextStages.filter(Boolean) : [];
-  const boundaryStagePattern = boundaryStages.map((value) => buildFlexiblePhrasePattern(value)).join("|");
+  const boundaryStagePattern = boundaryStages.map((value) => `\\b${buildFlexiblePhrasePattern(value)}\\b`).join("|");
   const boundaryPattern = boundaryStages.length
     ? `${boundaryStagePattern}|coaching\\s*relationship|strategic\\s*leadership|decision\\s*making|$`
     : "coaching\\s*relationship|strategic\\s*leadership|decision\\s*making|$";
-  const disallowedStageLead = boundaryStagePattern ? `[-–—\\s]*(?:${boundaryStagePattern})\\b` : "";
+  const disallowedStageLead = boundaryStagePattern
+    ? `(?:[-–—/\\s]*(?:${boundaryStagePattern})|\\s*(?:and|or)\\s+(?:${boundaryStagePattern})|\\s*(?:and|or)\\b)`
+    : "(?:and|or)\\b";
 
   const stripOverviewPreamble = (value) => {
     let candidate = cleanPdfExtractedValue(value || "");
@@ -9109,16 +9193,23 @@ function extractTeamStageSnippet(text, stage, nextStages = []) {
     candidate = candidate
       .replace(new RegExp(`^${escapeRegex(stage)}\\s*[:\\-]?\\s*`, "i"), "")
       .trim();
+    if (/^[,;\-–—]?\s*(?:illustrate|illustrates|show|shows|describe|describes|represent|represents)\b/i.test(candidate) && /\bprocess\b[\s\S]{0,120}\bteams?\b/i.test(candidate)) {
+      return null;
+    }
+    if (/^(?:and|or)\b/i.test(candidate)) return null;
+    if (boundaryStages.length && /\b(?:and|or)\s*$/i.test(candidate)) return null;
     return candidate || null;
   };
 
   const blockPattern = new RegExp(
-    `${buildFlexiblePhrasePattern(stage)}\\s*[:\\-]?\\s*${disallowedStageLead ? `(?!${disallowedStageLead})` : ""}([\\s\\S]{22,840}?)(?=\\s*(?:${boundaryPattern}))`,
-    "i",
+    `${stagePattern}\\s*[:\\-]?\\s*${disallowedStageLead ? `(?!${disallowedStageLead})` : ""}([\\s\\S]{22,840}?)(?=\\s*(?:${boundaryPattern}))`,
+    "ig",
   );
-  const blockMatch = normalized.match(blockPattern);
-  const direct = stripOverviewPreamble(blockMatch?.[1] || "");
-  if (direct) return direct;
+  let blockMatch;
+  while ((blockMatch = blockPattern.exec(normalized)) !== null) {
+    const direct = stripOverviewPreamble(blockMatch?.[1] || "");
+    if (direct) return direct;
+  }
 
   const fallback = extractSnippetFromLabels(normalized, [stage]);
   return stripOverviewPreamble(fallback || "") || null;
@@ -9368,13 +9459,56 @@ function extractCoreIdentityFromTargetedSections(parsedProfile) {
 }
 
 function extractTeamStageBreakdownFromTargetedSections(parsedProfile) {
-  const teamDynamics = getTargetedSections(parsedProfile)?.team_dynamics;
-  if (!teamDynamics || typeof teamDynamics !== "object") return null;
+  const targeted = getTargetedSections(parsedProfile);
+  const teamDynamics =
+    targeted?.team_dynamics ??
+    targeted?.team_stage_breakdown ??
+    targeted?.teamStages ??
+    targeted?.team_stages ??
+    targeted?.teamStageBreakdown ??
+    null;
+  if (!teamDynamics) return null;
+
+  const stageLabels = ["Forming", "Storming", "Norming", "Performing"];
+  const pickStageValue = (value, stageKey) => {
+    if (!value || typeof value !== "object") return null;
+    const normalizedStageKey = String(stageKey || "").trim().toLowerCase();
+    const titleCaseKey = `${normalizedStageKey.charAt(0).toUpperCase()}${normalizedStageKey.slice(1)}`;
+    return (
+      value?.[normalizedStageKey] ??
+      value?.[titleCaseKey] ??
+      value?.[`stage_${normalizedStageKey}`] ??
+      value?.[`team_stage_${normalizedStageKey}`] ??
+      value?.[`teamStage${titleCaseKey}`] ??
+      null
+    );
+  };
+
+  if (typeof teamDynamics === "string") {
+    const normalized = normalizeExtractedText(teamDynamics);
+    if (!normalized) return null;
+    const extractedFromText = {
+      forming: extractTeamStageSnippet(normalized, stageLabels[0], stageLabels.slice(1)),
+      storming: extractTeamStageSnippet(normalized, stageLabels[1], stageLabels.slice(2)),
+      norming: extractTeamStageSnippet(normalized, stageLabels[2], stageLabels.slice(3)),
+      performing: extractTeamStageSnippet(normalized, stageLabels[3], []),
+    };
+    if (Object.values(extractedFromText).every((value) => !value)) return null;
+    console.log("[team-stage] targeted-section extraction", {
+      hasForming: Boolean(extractedFromText.forming),
+      hasStorming: Boolean(extractedFromText.storming),
+      hasNorming: Boolean(extractedFromText.norming),
+      hasPerforming: Boolean(extractedFromText.performing),
+    });
+    return extractedFromText;
+  }
+
+  if (typeof teamDynamics !== "object") return null;
   const result = {
-    forming: compactTargetedSectionText(teamDynamics.forming),
-    storming: compactTargetedSectionText(teamDynamics.storming),
-    norming: compactTargetedSectionText(teamDynamics.norming),
-    performing: compactTargetedSectionText(teamDynamics.performing),
+    forming: compactTargetedSectionText(pickStageValue(teamDynamics, "forming")),
+    storming: compactTargetedSectionText(pickStageValue(teamDynamics, "storming")),
+    norming: compactTargetedSectionText(pickStageValue(teamDynamics, "norming")),
+    performing: compactTargetedSectionText(pickStageValue(teamDynamics, "performing")),
   };
   console.log("[team-stage] targeted-section extraction", {
     hasForming: Boolean(result.forming),
@@ -9503,9 +9637,14 @@ function extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile) {
   const strategic = targeted?.strategic_leadership && typeof targeted.strategic_leadership === "object"
     ? targeted.strategic_leadership
     : {};
-  const team = targeted?.team_dynamics && typeof targeted.team_dynamics === "object"
-    ? targeted.team_dynamics
-    : {};
+  const team = (
+    (targeted?.team_dynamics && typeof targeted.team_dynamics === "object" ? targeted.team_dynamics : null) ||
+    (targeted?.team_stage_breakdown && typeof targeted.team_stage_breakdown === "object" ? targeted.team_stage_breakdown : null) ||
+    (targeted?.teamStages && typeof targeted.teamStages === "object" ? targeted.teamStages : null) ||
+    (targeted?.team_stages && typeof targeted.team_stages === "object" ? targeted.team_stages : null) ||
+    (targeted?.teamStageBreakdown && typeof targeted.teamStageBreakdown === "object" ? targeted.teamStageBreakdown : null) ||
+    {}
+  );
   const development = targeted?.development_exercises && typeof targeted.development_exercises === "object"
     ? targeted.development_exercises
     : {};

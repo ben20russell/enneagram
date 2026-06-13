@@ -27,28 +27,39 @@ const INSTINCT_FOREIGN_REFERENCE_PATTERNS = Object.freeze({
     /Social\s*-\s*SO/i,
     /\bSX\b/,
     /\bSO\b/,
+    /\bSX(?=[A-Za-z])/,
+    /\bSO(?=[A-Za-z])/,
     /sexual\s+instinct/i,
     /one(?:-| )on(?:-| )one\s+instinct/i,
     /one(?:-| )to(?:-| )one\s+instinct/i,
     /social\s+instinct/i,
+    /\bone(?:-| )on(?:-| )one\b/i,
+    /\bone(?:-| )to(?:-| )one\b/i,
   ],
   social: [
     /One(?:-| )On(?:-| )One\s*-\s*SX/i,
     /Self(?:-| )Preservation\s*-\s*SP/i,
     /\bSX\b/,
     /\bSP\b/,
+    /\bSX(?=[A-Za-z])/,
+    /\bSP(?=[A-Za-z])/,
     /sexual\s+instinct/i,
     /one(?:-| )on(?:-| )one\s+instinct/i,
     /one(?:-| )to(?:-| )one\s+instinct/i,
     /self(?:-| )preservation\s+instinct/i,
+    /\bone(?:-| )on(?:-| )one\b/i,
+    /\bone(?:-| )to(?:-| )one\b/i,
   ],
   oneOnOne: [
     /Social\s*-\s*SO/i,
     /Self(?:-| )Preservation\s*-\s*SP/i,
     /\bSO\b/,
     /\bSP\b/,
+    /\bSO(?=[A-Za-z])/,
+    /\bSP(?=[A-Za-z])/,
     /social\s+instinct/i,
     /self(?:-| )preservation\s+instinct/i,
+    /\bself(?:-| )preservation\b/i,
   ],
 });
 const SPREADSHEET_TEXT_KEYS = [
@@ -383,6 +394,7 @@ function pruneInstinctGoalFieldText(value, fieldKey) {
 }
 
 function resolveInstinctGoalFieldGuard({ fieldKey, preferredValue, fallbackValue }) {
+  const preferredSourceHadForeign = hasInstinctForeignReference(preferredValue, fieldKey);
   const preferred = pruneInstinctGoalFieldText(preferredValue, fieldKey);
   const fallback = pruneInstinctGoalFieldText(fallbackValue, fieldKey);
   const preferredHasForeign = hasInstinctForeignReference(preferred, fieldKey);
@@ -390,12 +402,21 @@ function resolveInstinctGoalFieldGuard({ fieldKey, preferredValue, fallbackValue
   const preferredInformative = preferred && !isMissingText(preferred);
   const fallbackInformative = fallback && !isMissingText(fallback);
 
+  if (preferredSourceHadForeign && fallbackInformative && !fallbackHasForeign) {
+    return {
+      value: fallback,
+      downRanked: true,
+      usedFallback: true,
+      reason: "preferred_foreign_reference",
+    };
+  }
+
   if (preferredInformative && !preferredHasForeign) {
     return {
       value: preferred,
-      downRanked: false,
+      downRanked: preferredSourceHadForeign,
       usedFallback: false,
-      reason: null,
+      reason: preferredSourceHadForeign ? "preferred_pruned_foreign_reference" : null,
     };
   }
   if (fallbackInformative && !fallbackHasForeign) {
