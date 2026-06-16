@@ -21,10 +21,21 @@ OCR_MULTI_SPACING = rf"(?:{OCR_WHITESPACE}{{2,}})"
 OCR_WORD_GAP_MARKER = "\u0000"
 CONTROL_NOISE_PATTERN = re.compile(r"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]")
 REPLACEMENT_CHAR_PATTERN = re.compile(r"\uFFFD")
+CID_ARTIFACT_PATTERN = re.compile(r"\(\s*c\s*i\s*d\s*:\s*\d+\s*\)", re.I)
+CID_INLINE_PATTERN = re.compile(r"\bC\s*I\s*D\s*:\s*\d+\b", re.I)
 
 
 def strip_control_noise_characters(text: str) -> str:
-    return re.sub(r"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uFFFD]", " ", str(text or ""))
+    source = str(text or "")
+    cleaned = CONTROL_NOISE_PATTERN.sub(" ", source)
+    return REPLACEMENT_CHAR_PATTERN.sub(" ", cleaned)
+
+
+def strip_cid_artifacts(text: str) -> str:
+    source = str(text or "")
+    source = CID_ARTIFACT_PATTERN.sub(" ", source)
+    source = CID_INLINE_PATTERN.sub(" ", source)
+    return source
 
 
 def collapse_ocr_word_fragments(text: str) -> str:
@@ -55,6 +66,7 @@ def collapse_ocr_word_fragments(text: str) -> str:
 
     # Repair merged OCR boundaries such as "BenRussellReportDate".
     source = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", source)
+    source = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", source)
     source = re.sub(r"(?<=\d)(?=[A-Za-z])", " ", source)
     source = re.sub(r"(?<=[A-Za-z])(?=\d)", " ", source)
 
@@ -62,7 +74,7 @@ def collapse_ocr_word_fragments(text: str) -> str:
 
 
 def normalize(text: str) -> str:
-    cleaned = strip_control_noise_characters(text)
+    cleaned = strip_control_noise_characters(strip_cid_artifacts(text))
     return re.sub(r"\s+", " ", collapse_ocr_word_fragments(cleaned)).strip()
 
 

@@ -75,6 +75,8 @@ FOOTER_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 OUTPUT_SCHEMA = SHARED_CONFIG.get("output_schema") or {}
+CID_ARTIFACT_PATTERN = re.compile(r"\(\s*c\s*i\s*d\s*:\s*\d+\s*\)", flags=re.IGNORECASE)
+CID_INLINE_PATTERN = re.compile(r"\bC\s*I\s*D\s*:\s*\d+\b", flags=re.IGNORECASE)
 
 
 def configure_logging(verbose: bool) -> None:
@@ -82,8 +84,15 @@ def configure_logging(verbose: bool) -> None:
     logging.basicConfig(level=level, format="[%(levelname)s] %(message)s")
 
 
+def strip_cid_artifacts(text: str) -> str:
+    source = str(text or "")
+    source = CID_ARTIFACT_PATTERN.sub(" ", source)
+    source = CID_INLINE_PATTERN.sub(" ", source)
+    return source
+
+
 def normalize_spaces(text: str) -> str:
-    return re.sub(r"\s+", " ", text or "").strip()
+    return re.sub(r"\s+", " ", strip_cid_artifacts(text)).strip()
 
 
 def _join_words_to_lines(words: list[dict[str, Any]], line_tolerance: float = 3.2) -> list[str]:
@@ -160,7 +169,7 @@ def extract_page_layout_aware_text(page: Any) -> str:
 
 
 def strip_footer(text: str) -> str:
-    without_footer = FOOTER_PATTERN.sub("", text or "")
+    without_footer = FOOTER_PATTERN.sub("", strip_cid_artifacts(text))
     return without_footer.strip()
 
 

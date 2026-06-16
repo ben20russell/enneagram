@@ -603,6 +603,7 @@ function stripPdfFooterNoiseFragments(rawText) {
   return String(rawText || "")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, " ")
     .replace(/\uFFFD/g, " ")
+    .replace(/\(\s*c\s*i\s*d\s*:\s*\d+\s*\)/gi, " ")
     .replace(/\b(?:[A-Za-z](?:[ \t]+)){2,}[A-Za-z]\b/g, (match) => {
       const source = String(match || "");
       const marked = source.replace(/[ \t]{2,}/g, "\u0000");
@@ -9332,7 +9333,45 @@ function extractTeamStageSnippet(text, stage, nextStages = []) {
 
 function getTargetedSections(parsedProfile) {
   const targeted = parsedProfile?.targetedSections;
-  return targeted && typeof targeted === "object" ? targeted : {};
+  if (targeted && typeof targeted === "object" && Object.keys(targeted).length) return targeted;
+
+  const fallbackKeys = [
+    "strain_interpretation",
+    "body_language",
+    "feedback_guide",
+    "decision_framework",
+    "strategic_leadership",
+    "team_dynamics",
+    "coaching_relationship",
+    "development_exercises",
+    "subtypes_instincts",
+    "instinct_goals",
+    "core_identity",
+    "core_belief_attention_pattern",
+    "core_type",
+    "subtype",
+    "team_stage_breakdown",
+    "teamStages",
+    "team_stages",
+    "teamStageBreakdown",
+  ];
+
+  const safeProfile = parsedProfile && typeof parsedProfile === "object" ? parsedProfile : null;
+  if (!safeProfile) return {};
+
+  const lifted = fallbackKeys.reduce((acc, key) => {
+    if (safeProfile[key] != null) {
+      acc[key] = safeProfile[key];
+    }
+    return acc;
+  }, {});
+
+  if (!Object.keys(lifted).length) return {};
+
+  console.log("[targeted-sections] using top-level payload fallback", {
+    keys: Object.keys(lifted),
+  });
+  return lifted;
 }
 
 function normalizeTargetedSectionRows(value, options = {}) {
@@ -11552,6 +11591,11 @@ function renderReportFromState(isExampleMode) {
     strainNarratives.map((item) => [String(item.category || "").toLowerCase(), formatOptionalText(item.text, "Not detected in assigned PDF.")]),
   );
   const overallStrainSummary = formatOptionalText(REPORT.overallStrainSummary, "");
+  const overallStrainSummaryText = overallStrainSummary
+    || (Number.isFinite(overall)
+      ? `Overall strain is ${String(scoreBandLabel(overall) || "moderate").toLowerCase()} in this report.`
+      : "Overall strain summary was not detected in the assigned report.");
+  setText('overallStrainSummary', overallStrainSummaryText);
   const strainWriteupRows = buildSortedStrainWriteupRows(strain, REPORT.strain, overall);
   setHtml(
     'strainWriteupCards',
