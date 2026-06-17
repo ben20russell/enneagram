@@ -112,9 +112,14 @@ function getIngestedDashboardContext(resultsData, options = {}) {
     normalizeTypeNumber(options?.enneagramType) ??
     normalizeTypeNumber(normalized?.enneagramType) ??
     null;
-  const parsed = typeof normalized.parsedProfile === "object" && normalized.parsedProfile
-    ? normalized.parsedProfile
-    : null;
+  const parsedProfileRaw =
+    typeof normalized.parsedProfile === "object" && normalized.parsedProfile
+      ? normalized.parsedProfile
+      : null;
+  const parsed =
+    typeof hydrateParsedProfileReportContent === "function"
+      ? hydrateParsedProfileReportContent(parsedProfileRaw, normalized?.extractedContent)
+      : parsedProfileRaw;
   const verificationResolvedFields = getVerificationResolvedFields(normalized);
   const resolvedPrimaryType =
     normalizeTypeNumber(verificationResolvedFields?.primaryType) ??
@@ -204,15 +209,6 @@ function getIngestedDashboardContext(resultsData, options = {}) {
   return null;
 }
 
-function getParsedProfile(resultsData) {
-  const normalized = normalizeResultsData(resultsData);
-  if (!normalized) return null;
-  if (typeof normalized.parsedProfile === "object" && normalized.parsedProfile) {
-    return normalized.parsedProfile;
-  }
-  return null;
-}
-
 function normalizeResultsData(resultsData) {
   if (!resultsData) return null;
   if (typeof resultsData === "object") return resultsData;
@@ -223,6 +219,65 @@ function normalizeResultsData(resultsData) {
     } catch (_error) {
       return null;
     }
+  }
+  return null;
+}
+
+function hasUsableExtractedTextRows(rows) {
+  return Array.isArray(rows) && rows.some((row) => String(row?.extractedText || "").trim().length > 0);
+}
+
+function hydrateParsedProfileReportContent(parsedProfile, extractedContent) {
+  const parsed =
+    parsedProfile && typeof parsedProfile === "object" && !Array.isArray(parsedProfile)
+      ? parsedProfile
+      : null;
+  const extracted =
+    extractedContent && typeof extractedContent === "object" && !Array.isArray(extractedContent)
+      ? extractedContent
+      : null;
+  if (!parsed || !extracted) return parsed;
+
+  const parsedReportContent =
+    parsed?.reportContent && typeof parsed.reportContent === "object" && !Array.isArray(parsed.reportContent)
+      ? parsed.reportContent
+      : {};
+  const parsedPages = Array.isArray(parsedReportContent?.pages) ? parsedReportContent.pages : [];
+  const parsedSections = Array.isArray(parsedReportContent?.sections) ? parsedReportContent.sections : [];
+  const extractedPages = Array.isArray(extracted?.pages) ? extracted.pages : [];
+  const extractedSections = Array.isArray(extracted?.sections) ? extracted.sections : [];
+
+  const shouldHydratePages = !hasUsableExtractedTextRows(parsedPages) && hasUsableExtractedTextRows(extractedPages);
+  const shouldHydrateSections = parsedSections.length === 0 && extractedSections.length > 0;
+  const shouldHydrateDocumentSummary =
+    !String(parsedReportContent?.documentSummary || "").trim() &&
+    String(extracted?.documentSummary || "").trim().length > 0;
+
+  if (!shouldHydratePages && !shouldHydrateSections && !shouldHydrateDocumentSummary) {
+    return parsed;
+  }
+
+  return {
+    ...parsed,
+    reportContent: {
+      ...parsedReportContent,
+      documentSummary: shouldHydrateDocumentSummary
+        ? String(extracted.documentSummary || "").trim()
+        : (parsedReportContent?.documentSummary || null),
+      pages: shouldHydratePages ? extractedPages : parsedPages,
+      sections: shouldHydrateSections ? extractedSections : parsedSections,
+    },
+  };
+}
+
+function getParsedProfile(resultsData) {
+  const normalized = normalizeResultsData(resultsData);
+  if (!normalized) return null;
+  if (typeof normalized.parsedProfile === "object" && normalized.parsedProfile) {
+    return hydrateParsedProfileReportContent(
+      normalized.parsedProfile,
+      normalized?.extractedContent,
+    );
   }
   return null;
 }
@@ -238,9 +293,13 @@ function getIngestionState(resultsData, options = {}) {
       ? ingestion.parseDiagnostics
       : normalized?.parsedProfile?._parseDiagnostics || null;
   const status = String(ingestion.status || "").toLowerCase() || null;
-  const parsedProfile = normalized?.parsedProfile && typeof normalized.parsedProfile === "object"
+  const parsedProfileRaw = normalized?.parsedProfile && typeof normalized.parsedProfile === "object"
     ? normalized.parsedProfile
     : null;
+  const parsedProfile =
+    typeof hydrateParsedProfileReportContent === "function"
+      ? hydrateParsedProfileReportContent(parsedProfileRaw, normalized?.extractedContent)
+      : parsedProfileRaw;
   const fallbackPrimaryType =
     normalizeTypeNumber(options?.enneagramType) ??
     normalizeTypeNumber(normalized?.enneagramType) ??

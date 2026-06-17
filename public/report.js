@@ -10589,9 +10589,203 @@ function extractSpreadsheetSectionFocusesFromPdfText(pdfText) {
   return focused;
 }
 
+function parseSpreadsheetFocusObjectCandidate(value) {
+  if (!value) return null;
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value !== "string") return null;
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+  } catch (_error) {
+    return null;
+  }
+  return null;
+}
+
+function normalizeSpreadsheetLegacyRows(value, { maxItems = 10 } = {}) {
+  const cap = Math.max(1, Number(maxItems) || 10);
+  const rows = Array.isArray(value)
+    ? value
+    : (typeof value === "string"
+        ? String(value || "")
+          .split(/\s*[•·▪◦*]\s+/)
+          .map((entry) => cleanPdfExtractedValue(entry || ""))
+          .filter(Boolean)
+        : []);
+  if (!rows.length && typeof value === "string") {
+    return (String(value || "").match(/[^.!?]{12,240}(?:[.!?]|$)/g) || [])
+      .map((entry) => cleanPdfExtractedValue(entry || ""))
+      .filter(Boolean)
+      .slice(0, cap);
+  }
+  return rows
+    .map((entry) => cleanPdfExtractedValue(entry || ""))
+    .filter(Boolean)
+    .slice(0, cap);
+}
+
+function joinSpreadsheetLegacyRows(value, { maxItems = 8, maxLength = 420 } = {}) {
+  const rows = normalizeSpreadsheetLegacyRows(value, { maxItems });
+  if (!rows.length) return null;
+  return compactInsightSnippet(rows.join(" "), maxLength);
+}
+
+function normalizeSpreadsheetFocusSourcePayload(payload) {
+  const raw = payload && typeof payload === "object" ? payload : {};
+  const communicationData = parseSpreadsheetFocusObjectCandidate(raw.communicationDynamics) || {};
+  const decisionData = parseSpreadsheetFocusObjectCandidate(raw.decisionMaking) || {};
+  const conflictData = parseSpreadsheetFocusObjectCandidate(raw.conflictAndTriggers) || {};
+  const leadershipData = parseSpreadsheetFocusObjectCandidate(raw.leadershipAndManagement) || {};
+  const teamData = parseSpreadsheetFocusObjectCandidate(raw.teamBehaviour) || {};
+
+  const normalizeGoal = (value, instinctKey) => isolateInstinctGoalTopicText(value || "", instinctKey);
+  const normalizedInstinctGoals = {
+    selfPres: normalizeGoal(raw?.instinctGoals?.selfPres, "selfPres"),
+    social: normalizeGoal(raw?.instinctGoals?.social, "social"),
+    oneOnOne: normalizeGoal(raw?.instinctGoals?.oneOnOne, "oneOnOne"),
+  };
+  const hasNormalizedInstinctGoal = Boolean(
+    normalizedInstinctGoals.selfPres || normalizedInstinctGoals.social || normalizedInstinctGoals.oneOnOne,
+  );
+
+  const developingAsBullets = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(raw?.developingAsBullets) ? raw.developingAsBullets : []),
+        ...normalizeSpreadsheetLegacyRows(raw?.developingAsCopy, { maxItems: 10 }),
+      ]
+        .map((entry) => cleanPdfExtractedValue(entry || ""))
+        .filter(Boolean),
+    ),
+  ).slice(0, 12);
+  const conflictTriggeredBullets = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(raw?.conflictTriggeredBullets) ? raw.conflictTriggeredBullets : []),
+        ...normalizeSpreadsheetLegacyRows(conflictData?.behavior_when_triggered, { maxItems: 12 }),
+      ]
+        .map((entry) => cleanPdfExtractedValue(entry || ""))
+        .filter(Boolean),
+    ),
+  ).slice(0, 16);
+  const bodyLanguageRows = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(raw?.bodyLanguageRows) ? raw.bodyLanguageRows : []),
+        ...normalizeSpreadsheetLegacyRows(communicationData?.body_language, { maxItems: 6 }),
+      ]
+        .map((entry) => cleanPdfExtractedValue(entry || ""))
+        .filter(Boolean),
+    ),
+  ).slice(0, 6);
+
+  const motivationSummary = sanitizeSnippet(
+    raw?.motivationSummary ||
+      raw?.coreMotivation ||
+      leadershipData?.motivation ||
+      joinSpreadsheetLegacyRows(raw?.motivation, { maxItems: 3, maxLength: 420 }),
+    null,
+  );
+  const decisionCenteredCopy = sanitizeSnippet(
+    raw?.centeredDecisionCopy ||
+      decisionData?.approach ||
+      decisionData?.dominant_center_impact,
+    null,
+  );
+  const decisionImpactCopy = sanitizeSnippet(
+    raw?.decisionImpactCopy ||
+      decisionData?.drawbacks ||
+      decisionData?.making_decisions ||
+      decisionData?.receiving_decisions,
+    null,
+  );
+  const decisionStrainCopy = sanitizeSnippet(
+    raw?.decisionStrainCopy ||
+      decisionData?.impact_of_strain ||
+      decisionData?.strain_impact,
+    null,
+  );
+  const conflictResponseCopy = sanitizeSnippet(
+    raw?.conflictResponseCopy ||
+      joinSpreadsheetLegacyRows(conflictData?.what_others_should_do, { maxItems: 6, maxLength: 420 }) ||
+      joinSpreadsheetLegacyRows(conflictData?.primary_triggers, { maxItems: 6, maxLength: 420 }),
+    null,
+  );
+  const conflictTriggeredCopy = sanitizeSnippet(
+    raw?.conflictTriggeredCopy ||
+      joinSpreadsheetLegacyRows(conflictData?.behavior_when_triggered, { maxItems: 6, maxLength: 420 }) ||
+      joinSpreadsheetLegacyRows(conflictData?.primary_triggers, { maxItems: 6, maxLength: 420 }),
+    null,
+  );
+  const strategicLeadershipCopy = sanitizeSnippet(
+    raw?.strategicLeadershipCopy ||
+      leadershipData?.strategic_leadership ||
+      leadershipData?.goal_setting,
+    null,
+  );
+  const teamImpactCopy = sanitizeSnippet(
+    raw?.teamImpactCopy ||
+      teamData?.ideal_role ||
+      joinSpreadsheetLegacyRows(teamData?.performing, { maxItems: 5, maxLength: 420 }),
+    null,
+  );
+  const interdependenceCopy = sanitizeSnippet(
+    raw?.interdependenceCopy ||
+      teamData?.interdependence_and_role ||
+      joinSpreadsheetLegacyRows(teamData?.norming, { maxItems: 5, maxLength: 420 }),
+    null,
+  );
+  const coachingRelationshipCopy = sanitizeSnippet(
+    raw?.coachingRelationshipCopy ||
+      raw?.coachingRelationship,
+    null,
+  );
+
+  const legacyMapped = {
+    motivationSummary,
+    instinctGoals: hasNormalizedInstinctGoal ? normalizedInstinctGoals : raw?.instinctGoals || null,
+    developingAsCopy: sanitizeSnippet(raw?.developingAsCopy || developingAsBullets?.[0], null),
+    developingAsBullets,
+    bodyLanguageRows,
+    conflictResponseCopy,
+    conflictTriggeredCopy,
+    conflictTriggeredBullets,
+    centeredDecisionCopy: decisionCenteredCopy,
+    decisionImpactCopy,
+    decisionStrainCopy,
+    strategicLeadershipCopy,
+    teamImpactCopy,
+    interdependenceCopy,
+    coachingRelationshipCopy,
+  };
+
+  console.log("[spreadsheet-focus] normalized legacy source payload", {
+    hasCommunicationDynamics: Boolean(raw?.communicationDynamics),
+    hasDecisionLegacyPayload: Boolean(raw?.decisionMaking),
+    hasConflictLegacyPayload: Boolean(raw?.conflictAndTriggers),
+    hasTeamLegacyPayload: Boolean(raw?.teamBehaviour),
+    hasMotivationSummary: Boolean(legacyMapped.motivationSummary),
+    hasCenteredDecisionCopy: Boolean(legacyMapped.centeredDecisionCopy),
+    hasDecisionImpactCopy: Boolean(legacyMapped.decisionImpactCopy),
+    hasConflictTriggeredCopy: Boolean(legacyMapped.conflictTriggeredCopy),
+    bodyLanguageRows: legacyMapped.bodyLanguageRows.length,
+  });
+
+  return {
+    ...raw,
+    ...legacyMapped,
+  };
+}
+
 function mergeSpreadsheetSectionFocuses(structuredFocuses, pdfFocuses) {
-  const structured = structuredFocuses && typeof structuredFocuses === "object" ? structuredFocuses : {};
-  const pdf = pdfFocuses && typeof pdfFocuses === "object" ? pdfFocuses : {};
+  const normalizeSourcePayload =
+    typeof normalizeSpreadsheetFocusSourcePayload === "function"
+      ? normalizeSpreadsheetFocusSourcePayload
+      : (value) => (value && typeof value === "object" ? value : {});
+  const structured = normalizeSourcePayload(structuredFocuses);
+  const pdf = normalizeSourcePayload(pdfFocuses);
   const fallback = "Not detected in assigned PDF.";
   const pickHydratedSnippet = (values) => {
     const candidates = Array.isArray(values) ? values : [];

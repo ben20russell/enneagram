@@ -217,6 +217,7 @@ async function main() {
     enablePythonCrossCheck: true,
     rawTextOverride,
     pageCountOverride,
+    pagesOverride: localExtractedPages,
   });
   const parseDiagnostics =
     parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
