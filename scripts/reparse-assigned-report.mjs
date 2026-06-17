@@ -39,6 +39,99 @@ const table = process.env.SUPABASE_REPORTS_TABLE || "reports";
 const supabase = getSupabaseAdmin();
 const preferLocalTextFirst = String(process.env.REPARSE_LOCAL_TEXT_FIRST || "0").trim() === "1";
 const failOnParserFailure = String(process.env.REPARSE_FAIL_ON_PARSE_FAILURE || "1").trim() !== "0";
+const enableIdentitySafeguard = String(process.env.REPARSE_IDENTITY_SAFEGUARD || "1").trim() !== "0";
+
+function normalizeTypeNumber(value) {
+  if (value == null) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    const floored = Math.floor(numeric);
+    if (floored >= 1 && floored <= 9) return floored;
+  }
+  const match = String(value).match(/[1-9]/);
+  return match?.[0] ? Number(match[0]) : null;
+}
+
+function normalizeOptionalString(value) {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized : null;
+}
+
+function normalizeInstinctualVariant(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "sx" || normalized.includes("sexual") || normalized.includes("one-on-one") || normalized.includes("one on one")) {
+    return "sx";
+  }
+  if (normalized === "so" || normalized.includes("social")) return "so";
+  if (normalized === "sp" || normalized.includes("self-preservation") || normalized.includes("self preservation")) {
+    return "sp";
+  }
+  return null;
+}
+
+function normalizeIntegrationLevel(value) {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) return null;
+  const lowered = normalized.toLowerCase();
+  if (lowered === "high") return "High";
+  if (lowered === "moderate" || lowered === "medium") return "Moderate";
+  if (lowered === "low") return "Low";
+  return normalized;
+}
+
+function buildIdentitySafeguardFromReport(report) {
+  if (!enableIdentitySafeguard) return { enabled: false };
+  const results = report?.results_data && typeof report.results_data === "object" ? report.results_data : {};
+  const parsedProfile = results?.parsedProfile && typeof results.parsedProfile === "object" ? results.parsedProfile : {};
+  const reviewCoreIdentity = results?.review?.coreIdentity && typeof results.review.coreIdentity === "object"
+    ? results.review.coreIdentity
+    : {};
+  const verificationResolved = results?.ingestion?.parseDiagnostics?.verification?.resolvedFields
+    && typeof results.ingestion.parseDiagnostics.verification.resolvedFields === "object"
+    ? results.ingestion.parseDiagnostics.verification.resolvedFields
+    : {};
+  const mlGroundTruthIdentity = results?.ml?.feedback?.groundTruthIdentity
+    && typeof results.ml.feedback.groundTruthIdentity === "object"
+    ? results.ml.feedback.groundTruthIdentity
+    : {};
+
+  return {
+    enabled: true,
+    lockOnMismatch: true,
+    source: "reparse-assigned-report",
+    priorVerified: {
+      primaryType: normalizeTypeNumber(
+        mlGroundTruthIdentity?.primaryType
+        ?? reviewCoreIdentity?.primaryType
+        ?? verificationResolved?.primaryType
+        ?? parsedProfile?.primaryType
+        ?? report?.enneagram_type
+        ?? null,
+      ),
+      typeName: normalizeOptionalString(
+        reviewCoreIdentity?.typeName
+        ?? verificationResolved?.typeName
+        ?? parsedProfile?.typeName
+        ?? parsedProfile?.core_type_name
+        ?? null,
+      ),
+      instinctualVariant: normalizeInstinctualVariant(
+        mlGroundTruthIdentity?.instinctualVariant
+        ?? reviewCoreIdentity?.instinctualVariant
+        ?? verificationResolved?.instinctualVariant
+        ?? parsedProfile?.instinctualVariant
+        ?? null,
+      ),
+      integrationLevel: normalizeIntegrationLevel(
+        reviewCoreIdentity?.integrationLevel
+        ?? verificationResolved?.integrationLevel
+        ?? parsedProfile?.integrationLevel
+        ?? null,
+      ),
+    },
+  };
+}
 
 function getNonNullCount(obj) {
   if (!obj || typeof obj !== "object") return 0;
@@ -206,6 +299,16 @@ async function main() {
     trainingSamples: extractionLearningContext?.training?.trainingSampleCount ?? 0,
     hints: extractionLearningContext?.hintCount ?? 0,
   });
+  const identitySafeguard = buildIdentitySafeguardFromReport(report);
+  console.log("[reparse-assigned-report] Identity safeguard configuration", {
+    reportId: report.id,
+    enabled: Boolean(identitySafeguard?.enabled),
+    source: identitySafeguard?.source || null,
+    lockOnMismatch: Boolean(identitySafeguard?.lockOnMismatch),
+    priorPrimaryType: identitySafeguard?.priorVerified?.primaryType ?? null,
+    priorInstinctualVariant: identitySafeguard?.priorVerified?.instinctualVariant ?? null,
+    priorTypeName: identitySafeguard?.priorVerified?.typeName ?? null,
+  });
   let rawTextOverride = null;
   let pageCountOverride = null;
   let localExtractedPages = [];
@@ -247,6 +350,7 @@ async function main() {
     allowLocalTextFallback: true,
     enablePythonCrossCheck: true,
     extractionLearningContext,
+    identitySafeguard,
     rawTextOverride,
     pageCountOverride,
     pagesOverride: localExtractedPages,
