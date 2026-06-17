@@ -5300,10 +5300,6 @@ const DASHBOARD_EXPORT_PDF_CONFIG = Object.freeze({
 
 function getDashboardPdfExportTargets() {
   const targets = [];
-  const header = document.querySelector(".header");
-  if (header) {
-    targets.push(header);
-  }
   const sectionNodes = Array.from(document.querySelectorAll(".main-col .sec"));
   sectionNodes.forEach((sectionNode) => {
     const sectionId = String(sectionNode?.id || "").trim().toLowerCase();

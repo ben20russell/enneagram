@@ -16,6 +16,7 @@
     "vite": "^7.1.0"
   },
   "dependencies": {
+    "@azure-rest/ai-document-intelligence": "^1.1.0",
     "@azure/ai-form-recognizer": "^5.1.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.1",
