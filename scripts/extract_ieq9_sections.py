@@ -255,6 +255,33 @@ def build_development_context_text(page_text: dict[int, str]) -> dict[str, str]:
 
 
 def build_llm_prompt_payload(cleaned_sections: dict[str, str], development_context: dict[str, str]) -> str:
+    targeted_prompt = (
+        "Act like an enneagram expert and identify and parse the following sections and the most relevant copy specific to the current report.\n"
+        "* Core Enneagram Type: page 8\n"
+        "* 27 Subtypes & Instincts: page 10\n"
+        "* Centers of Expression: page 12 and 13. In the dashboard, change the number bar chart to Low, Medium, High.\n"
+        "* Self-Awareness & Integration: page 16 and 17\n"
+        "* Strain Profile (In the dashboard, change the number bar chart to Low, Medium, High):\n"
+        "    * Overall Strain: page 18\n"
+        "    * Vocational: page 20\n"
+        "    * Environmental: page 20\n"
+        "    * Physical: page 21\n"
+        "    * Interpersonal: page 21\n"
+        "    * Psychological: page 22\n"
+        "    * Happiness: page 22\n"
+        "* Communication: page 24\n"
+        "* Feedback Guide: page 28 and 29\n"
+        "* Development Exercise: Page 7, 11, 13, 17, 19, 31, 36, 28\n"
+        "Canonical extraction map for parser alignment:\n"
+        "- strain_interpretation (pages 20, 21, 22)\n"
+        "- body_language (page 25)\n"
+        "- feedback_guide (pages 28, 29)\n"
+        "- decision_framework (pages 32, 33, 34)\n"
+        "- strategic_leadership (pages 37, 38)\n"
+        "- team_dynamics (pages 39, 40, 41)\n"
+        "- coaching_relationship (page 42)\n"
+        "- development_exercises (pages 7, 11, 13, 17, 19, 31, 36, 38)"
+    )
     prompt_object = {
         "instructions": {
             "rules": [
@@ -263,7 +290,8 @@ def build_llm_prompt_payload(cleaned_sections: dict[str, str], development_conte
                 "Do not invent missing facts.",
                 "Use empty strings or empty arrays when no evidence exists.",
                 "Respect section boundaries and source pages.",
-            ]
+            ],
+            "targeted_accuracy_prompt": targeted_prompt,
         },
         "sections": cleaned_sections,
         "development_exercise_context": development_context,
