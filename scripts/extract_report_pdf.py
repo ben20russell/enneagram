@@ -12,9 +12,12 @@ from __future__ import annotations
 
 import html
 import inspect
+import io
 import json
+import os
 import re
 import sys
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any, Callable
 
@@ -146,6 +149,23 @@ def filter_supported_kwargs(callable_obj: Callable[..., Any], kwargs: dict[str, 
     accepted_names = set(signature.parameters.keys())
     return {key: value for key, value in kwargs.items() if key in accepted_names}
 
+@contextmanager
+def suppress_native_stdout_stderr() -> Any:
+    """Suppress native/library writes to process stdout/stderr file descriptors."""
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    original_stdout_fd = os.dup(1)
+    original_stderr_fd = os.dup(2)
+    try:
+        os.dup2(devnull_fd, 1)
+        os.dup2(devnull_fd, 2)
+        yield
+    finally:
+        os.dup2(original_stdout_fd, 1)
+        os.dup2(original_stderr_fd, 2)
+        os.close(original_stdout_fd)
+        os.close(original_stderr_fd)
+        os.close(devnull_fd)
+
 
 def call_to_markdown_with_fallbacks(
     to_markdown_fn: Callable[..., Any],
@@ -186,7 +206,12 @@ def extract_markdown_with_pymupdf4llm(
         if not callable(active_to_markdown):
             raise RuntimeError("pymupdf4llm.to_markdown is not available.")
 
-    raw_markdown = call_to_markdown_with_fallbacks(active_to_markdown, pdf_path)
+    captured_stdout = io.StringIO()
+    captured_stderr = io.StringIO()
+    # pymupdf4llm may emit parser diagnostics directly to stdout/stderr.
+    # Capture them so this script always returns JSON-only stdout.
+    with suppress_native_stdout_stderr(), redirect_stdout(captured_stdout), redirect_stderr(captured_stderr):
+        raw_markdown = call_to_markdown_with_fallbacks(active_to_markdown, pdf_path)
     normalized_markdown = normalize_layout_markdown(normalize_markdown_output(raw_markdown))
     return ensure_html_tables(normalized_markdown)
 

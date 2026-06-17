@@ -1,0 +1,114 @@
+[batch-reparse] START coach@ashmipatel.com 2026-06-17T18:10:32Z
+[reparse-assigned-report] Extraction learning context prepared {
+  reportId: '89eb5f1f-2c27-4968-8cab-1ddc91bb5e40',
+  status: 'active',
+  reason: null,
+  trainingSamples: 4,
+  hints: 6
+}
+[reparse-assigned-report] local raw-text-first extraction disabled by default. Using layout-html -> agentic OCR parser path first.
+[parsePdf] Starting agentic OCR parsing pipeline for new report...
+[parsePdf] Extraction learning context status before extraction. {
+  modelVersion: 'identity-priors-v1',
+  status: 'active',
+  reason: null,
+  generatedAt: '2026-06-17T18:10:33.968Z',
+  scannedRowCount: 5,
+  trainingSampleCount: 4,
+  hintCount: 6
+}
+[parsePdf] Canonical RAG status before extraction. {
+  enabled: true,
+  available: false,
+  reason: 'no_document_text',
+  source: 'uploaded_report_text',
+  sourcePath: null,
+  queryTokenCount: 0,
+  retrievedChunkCount: 0,
+  retrievedChars: 0
+}
+[parsePdf] Stage 1 layout extraction completed. {
+  sourceFileName: 'iEQ9-Ashmi-Patel-PRO-05-Mar-2026.pdf',
+  source: 'layout_html_markdown',
+  tableFormat: 'html',
+  structuredChars: 116069,
+  pythonBin: '/Users/brussell/Downloads/Code/enneagram-main/.venv/bin/python3'
+}
+[parsePdf] Using Stage 1 layout-aware extraction output for parsing. {
+  pages: 1,
+  chars: 116069,
+  sourceFileName: 'iEQ9-Ashmi-Patel-PRO-05-Mar-2026.pdf',
+  parserVersion: 'attached-agentic-ocr-v1'
+}
+[parsePdf] Running agentic OCR repair stage. {
+  rawChars: 116069,
+  sourceFileName: 'iEQ9-Ashmi-Patel-PRO-05-Mar-2026.pdf'
+}
+[parsePdf] Agentic OCR repair stage completed. {
+  repairedChars: 116112,
+  normalizedChanged: true,
+  sourceFileName: 'iEQ9-Ashmi-Patel-PRO-05-Mar-2026.pdf'
+}
+[parsePdf] Stage 2 agentic OCR repair completed. {
+  pages: 1,
+  repairedChars: 116112,
+  sourceFileName: 'iEQ9-Ashmi-Patel-PRO-05-Mar-2026.pdf',
+  parserVersion: 'attached-agentic-ocr-v1'
+}
+[parsePdf] In-document RAG context retrieved. {
+  source: 'uploaded_report_text',
+  queryTokenCount: 96,
+  retrievedChunkCount: 4,
+  retrievedChars: 4877,
+  keywords: [
+    'strain profile',
+    'instinct',
+    'dominant instinct',
+    'main type',
+    'level of integration',
+    'core motivation',
+    'core fear',
+    'centers of expression'
+  ]
+}
+[parsePdf] Canonical RAG context refreshed from repaired HTML. {
+  enabled: true,
+  available: true,
+  reason: null,
+  source: 'uploaded_report_text',
+  sourcePath: null,
+  queryTokenCount: 96,
+  retrievedChunkCount: 4,
+  retrievedChars: 4877
+}
+[parsePdf] Applied deterministic raw-text fallback extraction for critical identity fields. {
+  patchedPrimaryType: false,
+  patchedDominantInstinct: false,
+  detectedPrimaryType: 2,
+  detectedDominantInstinct: null
+}
+[reparse-assigned-report] ML score learning completed {
+  reportId: '89eb5f1f-2c27-4968-8cab-1ddc91bb5e40',
+  mlStatus: 'applied',
+  mlReason: null,
+  mlTrainingSamples: 4,
+  mlAppliedScoreCount: 4
+}
+{
+  "success": true,
+  "reportId": "89eb5f1f-2c27-4968-8cab-1ddc91bb5e40",
+  "userEmail": "coach@ashmipatel.com",
+  "bucket": "admin-import-reports",
+  "storagePath": "89eb5f1f-2c27-4968-8cab-1ddc91bb5e40/iEQ9-Ashmi-Patel-PRO-05-Mar-2026.pdf",
+  "sourceFileName": "iEQ9-Ashmi-Patel-PRO-05-Mar-2026.pdf",
+  "parsedPrimaryType": 2,
+  "parsedInstinctualVariant": "sp",
+  "parserModel": "gpt-5.4-mini",
+  "mlStatus": "applied",
+  "mlTrainingSamples": 4,
+  "parseStatus": "incomplete",
+  "parsePages": 1,
+  "parseMinExpectedPages": 42,
+  "reviewStatus": "needs_review"
+}
+[batch-reparse] DONE coach@ashmipatel.com 2026-06-17T18:12:42Z

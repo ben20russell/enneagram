@@ -1,0 +1,102 @@
+[batch-reparse] START ben20russell@gmail.com 2026-06-17T18:08:08Z
+[reparse-assigned-report] Extraction learning context prepared {
+  reportId: '2833c314-28e4-440b-96cc-7ab3f31f820e',
+  status: 'active',
+  reason: null,
+  trainingSamples: 4,
+  hints: 6
+}
+[reparse-assigned-report] local OCR-aware text extraction succeeded; using rawTextOverride. {
+  chars: 115521,
+  pages: 42,
+  fallbackTriggered: false,
+  ocrAppliedPageCount: 0
+}
+[parsePdf] Starting agentic OCR parsing pipeline for new report...
+[parsePdf] In-document RAG context retrieved. {
+  source: 'uploaded_report_text',
+  queryTokenCount: 96,
+  retrievedChunkCount: 4,
+  retrievedChars: 4877,
+  keywords: [
+    'strain profile',
+    'instinct',
+    'dominant instinct',
+    'main type',
+    'level of integration',
+    'core motivation',
+    'core fear',
+    'centers of expression'
+  ]
+}
+[parsePdf] Extraction learning context status before extraction. {
+  modelVersion: 'identity-priors-v1',
+  status: 'active',
+  reason: null,
+  generatedAt: '2026-06-17T18:08:10.246Z',
+  scannedRowCount: 5,
+  trainingSampleCount: 4,
+  hintCount: 6
+}
+[parsePdf] Canonical RAG status before extraction. {
+  enabled: true,
+  available: true,
+  reason: null,
+  source: 'uploaded_report_text',
+  sourcePath: null,
+  queryTokenCount: 96,
+  retrievedChunkCount: 4,
+  retrievedChars: 4877
+}
+[parsePdf] Using provided rawTextOverride for LLM parse. {
+  pages: 42,
+  chars: 115480,
+  pagesOverrideUsed: true,
+  parserVersion: 'attached-agentic-ocr-v1'
+}
+[parsePdf] Raw text exceeds single-pass payload limits; using chunked LLM parsing. {
+  chunkCount: 8,
+  chars: 115480,
+  maxSinglePassChars: 28000,
+  maxChunkChars: 16000,
+  chunkOverlapChars: 1200
+}
+[parsePdf] Chunk parsed successfully. { chunk: '1/8', chars: 15994 }
+[parsePdf] Chunk parsed successfully. { chunk: '2/8', chars: 15999 }
+[parsePdf] Chunk parsed successfully. { chunk: '3/8', chars: 15993 }
+[parsePdf] Chunk parsed successfully. { chunk: '4/8', chars: 15996 }
+[parsePdf] Chunk parsed successfully. { chunk: '5/8', chars: 15997 }
+[parsePdf] Chunk parsed successfully. { chunk: '6/8', chars: 15998 }
+[parsePdf] Chunk parsed successfully. { chunk: '7/8', chars: 15995 }
+[parsePdf] Chunk parsed successfully. { chunk: '8/8', chars: 11906 }
+[parsePdf] Applied deterministic raw-text fallback extraction for critical identity fields. {
+  patchedPrimaryType: false,
+  patchedDominantInstinct: false,
+  detectedPrimaryType: 8,
+  detectedDominantInstinct: null
+}
+[reparse-assigned-report] ML score learning completed {
+  reportId: '2833c314-28e4-440b-96cc-7ab3f31f820e',
+  mlStatus: 'applied',
+  mlReason: null,
+  mlTrainingSamples: 4,
+  mlAppliedScoreCount: 4
+}
+{
+  "success": true,
+  "reportId": "2833c314-28e4-440b-96cc-7ab3f31f820e",
+  "userEmail": "ben20russell@gmail.com",
+  "bucket": "admin-import-reports",
+  "storagePath": "2833c314-28e4-440b-96cc-7ab3f31f820e/iEQ9-Ben-Russell-PRO.pdf",
+  "sourceFileName": "iEQ9-Ben-Russell-PRO.pdf",
+  "parsedPrimaryType": 8,
+  "parsedInstinctualVariant": "sx",
+  "parserModel": "gpt-5.4-mini",
+  "mlStatus": "applied",
+  "mlTrainingSamples": 4,
+  "parseStatus": "complete",
+  "parsePages": 42,
+  "parseMinExpectedPages": 42,
+  "reviewStatus": "auto_approved"
+}
+[batch-reparse] DONE ben20russell@gmail.com 2026-06-17T18:09:05Z

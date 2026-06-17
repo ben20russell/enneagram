@@ -37,7 +37,7 @@ loadEnvFile(resolve(process.cwd(), ".env"));
 const userEmail = (process.argv[2] || "ben20russell@gmail.com").trim().toLowerCase();
 const table = process.env.SUPABASE_REPORTS_TABLE || "reports";
 const supabase = getSupabaseAdmin();
-const preferLocalTextFirst = String(process.env.REPARSE_LOCAL_TEXT_FIRST || "1").trim() !== "0";
+const preferLocalTextFirst = String(process.env.REPARSE_LOCAL_TEXT_FIRST || "0").trim() === "1";
 const failOnParserFailure = String(process.env.REPARSE_FAIL_ON_PARSE_FAILURE || "1").trim() !== "0";
 
 function getNonNullCount(obj) {
@@ -199,6 +199,11 @@ async function main() {
   let pageCountOverride = null;
   let localExtractedPages = [];
   let localExtractionDiagnostics = null;
+  if (!preferLocalTextFirst) {
+    console.log(
+      "[reparse-assigned-report] local raw-text-first extraction disabled by default. Using layout-html -> agentic OCR parser path first.",
+    );
+  }
   if (preferLocalTextFirst) {
     try {
       const localExtraction = await extractRawTextOverrideFromPdf(pdfBuffer);

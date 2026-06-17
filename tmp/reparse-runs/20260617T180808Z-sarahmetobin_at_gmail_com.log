@@ -1,0 +1,97 @@
+[batch-reparse] START sarahmetobin@gmail.com 2026-06-17T18:09:05Z
+[reparse-assigned-report] Extraction learning context prepared {
+  reportId: '0f705480-3e49-427a-8a6d-7eef99b2d612',
+  status: 'active',
+  reason: null,
+  trainingSamples: 4,
+  hints: 6
+}
+[reparse-assigned-report] local OCR-aware text extraction succeeded; using rawTextOverride. {
+  chars: 42500,
+  pages: 16,
+  fallbackTriggered: false,
+  ocrAppliedPageCount: 0
+}
+[parsePdf] Starting agentic OCR parsing pipeline for new report...
+[parsePdf] In-document RAG context retrieved. {
+  source: 'uploaded_report_text',
+  queryTokenCount: 96,
+  retrievedChunkCount: 4,
+  retrievedChars: 4884,
+  keywords: [
+    'strain profile',
+    'instinct',
+    'dominant instinct',
+    'main type',
+    'level of integration',
+    'core motivation',
+    'core fear',
+    'centers of expression'
+  ]
+}
+[parsePdf] Extraction learning context status before extraction. {
+  modelVersion: 'identity-priors-v1',
+  status: 'active',
+  reason: null,
+  generatedAt: '2026-06-17T18:09:06.287Z',
+  scannedRowCount: 5,
+  trainingSampleCount: 4,
+  hintCount: 6
+}
+[parsePdf] Canonical RAG status before extraction. {
+  enabled: true,
+  available: true,
+  reason: null,
+  source: 'uploaded_report_text',
+  sourcePath: null,
+  queryTokenCount: 96,
+  retrievedChunkCount: 4,
+  retrievedChars: 4884
+}
+[parsePdf] Using provided rawTextOverride for LLM parse. {
+  pages: 16,
+  chars: 42485,
+  pagesOverrideUsed: true,
+  parserVersion: 'attached-agentic-ocr-v1'
+}
+[parsePdf] Raw text exceeds single-pass payload limits; using chunked LLM parsing. {
+  chunkCount: 3,
+  chars: 42485,
+  maxSinglePassChars: 28000,
+  maxChunkChars: 16000,
+  chunkOverlapChars: 1200
+}
+[parsePdf] Chunk parsed successfully. { chunk: '1/3', chars: 15998 }
+[parsePdf] Chunk parsed successfully. { chunk: '2/3', chars: 15994 }
+[parsePdf] Chunk parsed successfully. { chunk: '3/3', chars: 12893 }
+[parsePdf] Applied deterministic raw-text fallback extraction for critical identity fields. {
+  patchedPrimaryType: false,
+  patchedDominantInstinct: false,
+  detectedPrimaryType: null,
+  detectedDominantInstinct: null
+}
+[reparse-assigned-report] ML score learning completed {
+  reportId: '0f705480-3e49-427a-8a6d-7eef99b2d612',
+  mlStatus: 'applied',
+  mlReason: null,
+  mlTrainingSamples: 4,
+  mlAppliedScoreCount: 4
+}
+{
+  "success": true,
+  "reportId": "0f705480-3e49-427a-8a6d-7eef99b2d612",
+  "userEmail": "sarahmetobin@gmail.com",
+  "bucket": "admin-import-reports",
+  "storagePath": "0f705480-3e49-427a-8a6d-7eef99b2d612/iEQ9-Sarah-Tobin-STD-19-Feb-2026.pdf",
+  "sourceFileName": "iEQ9-Sarah-Tobin-STD-19-Feb-2026.pdf",
+  "parsedPrimaryType": 7,
+  "parsedInstinctualVariant": "sp",
+  "parserModel": "gpt-5.4-mini",
+  "mlStatus": "applied",
+  "mlTrainingSamples": 4,
+  "parseStatus": "incomplete",
+  "parsePages": 16,
+  "parseMinExpectedPages": 42,
+  "reviewStatus": "needs_review"
+}
+[batch-reparse] DONE sarahmetobin@gmail.com 2026-06-17T18:09:27Z
