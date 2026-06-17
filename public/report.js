@@ -865,7 +865,6 @@ const ASSIGNED_HYDRATION_REQUIRED_SLOTS = Object.freeze([
   "instinctGoalSelfPres",
   "instinctGoalSocial",
   "instinctGoalOneOnOne",
-  "feedbackGuideMatrixBody",
   "devExercisePaths",
   "teamStageForming",
   "teamStageStorming",
@@ -4332,15 +4331,6 @@ async function ingestAssignedReportIntoDashboard(data) {
     );
     const feedbackGuideDeterministicRows = mergeFeedbackGuideRows(targetedFeedbackRows, jsFeedbackGuideRows);
     const feedbackGuideMatrix = mergeFeedbackGuideRows(feedbackGuideDeterministicRows, parsedProfileFeedbackRows);
-    hydrationAudit.record(
-      "feedbackGuideMatrixBody",
-      [
-        { source: "targeted_sections", value: targetedFeedbackRows },
-        { source: "js_deterministic", value: jsFeedbackGuideRows },
-        { source: "parsed_profile_llm", value: parsedProfileFeedbackRows },
-      ],
-      feedbackGuideMatrix,
-    );
 
     const jsStrainRows = mergeCategoryWriteups(
       extractStrainQualitativeFromReportContent(parsedProfile),
@@ -11969,25 +11959,6 @@ function renderReportFromState(isExampleMode) {
   setText('insightStrategicLeadership', formatOptionalText(REPORT.insightStrategicLeadership, 'Not detected in parsed PDF text.'));
   setText('insightFeedbackGuide', formatOptionalText(REPORT.insightFeedbackGuide, 'Not detected in parsed PDF text.'));
   setText('insightComposite', formatOptionalText(REPORT.insightComposite, 'Not detected in parsed PDF text.'));
-
-  const feedbackRows = Array.isArray(REPORT.feedbackGuideMatrix) && REPORT.feedbackGuideMatrix.length
-    ? REPORT.feedbackGuideMatrix
-    : Array.from({ length: 9 }, (_, idx) => ({
-        type: `Type ${idx + 1}`,
-        label: "",
-        guidance: "Not detected in assigned PDF.",
-      }));
-  setHtml(
-    'feedbackGuideMatrixBody',
-    feedbackRows
-      .map(
-        (row, idx) => `<tr>
-  <td style="padding:8px;${idx < feedbackRows.length - 1 ? "border-bottom:1px solid var(--border2);" : ""}"><strong>${row.type}</strong>${row.label ? ` · ${row.label}` : ""}</td>
-  <td style="padding:8px;${idx < feedbackRows.length - 1 ? "border-bottom:1px solid var(--border2);" : ""}">${renderFeedbackGuidanceCell(formatOptionalText(row.guidance, "Not detected in assigned PDF."))}</td>
-</tr>`,
-      )
-      .join(""),
-  );
 
   const strainNarratives = Array.isArray(REPORT.strainQualitativeWriteups) && REPORT.strainQualitativeWriteups.length
     ? REPORT.strainQualitativeWriteups
