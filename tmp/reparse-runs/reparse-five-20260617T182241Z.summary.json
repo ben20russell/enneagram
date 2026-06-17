@@ -1,0 +1,72 @@
+{
+  "generatedAt": "2026-06-17T18:31:37.541Z",
+  "runTimestamp": "20260617T182241Z",
+  "total": 5,
+  "rows": [
+    {
+      "email": "ben20russell@gmail.com",
+      "sourceFileName": "iEQ9-Ben-Russell-PRO.pdf",
+      "reportId": "2833c314-28e4-440b-96cc-7ab3f31f820e",
+      "parsedPrimaryType": 8,
+      "parsedInstinctualVariant": "sx",
+      "parseStatus": "incomplete",
+      "parsePages": 1,
+      "parseMinExpectedPages": 42,
+      "reviewStatus": "needs_review",
+      "mlStatus": "applied",
+      "logFile": "tmp/reparse-runs/20260617T182241Z-ben20russell_at_gmail.com.log"
+    },
+    {
+      "email": "coach@ashmipatel.com",
+      "sourceFileName": "iEQ9-Ashmi-Patel-PRO-05-Mar-2026.pdf",
+      "reportId": "89eb5f1f-2c27-4968-8cab-1ddc91bb5e40",
+      "parsedPrimaryType": 2,
+      "parsedInstinctualVariant": "sp",
+      "parseStatus": "incomplete",
+      "parsePages": 1,
+      "parseMinExpectedPages": 42,
+      "reviewStatus": "needs_review",
+      "mlStatus": "applied",
+      "logFile": "tmp/reparse-runs/20260617T182241Z-coach_at_ashmipatel.com.log"
+    },
+    {
+      "email": "corinne.aparis@gmail.com",
+      "sourceFileName": "iEQ9-Corinne-Aparis-PRO-UPDATED.pdf",
+      "reportId": "193e1c97-df34-49e7-b034-7f228ece00d5",
+      "parsedPrimaryType": 4,
+      "parsedInstinctualVariant": "so",
+      "parseStatus": "incomplete",
+      "parsePages": 1,
+      "parseMinExpectedPages": 42,
+      "reviewStatus": "needs_review",
+      "mlStatus": "applied",
+      "logFile": "tmp/reparse-runs/20260617T182241Z-corinne.aparis_at_gmail.com.log"
+    },
+    {
+      "email": "sarahmetobin@gmail.com",
+      "sourceFileName": "iEQ9-Sarah-Tobin-STD-19-Feb-2026.pdf",
+      "reportId": "0f705480-3e49-427a-8a6d-7eef99b2d612",
+      "parsedPrimaryType": 7,
+      "parsedInstinctualVariant": "sp",
+      "parseStatus": "incomplete",
+      "parsePages": 1,
+      "parseMinExpectedPages": 42,
+      "reviewStatus": "needs_review",
+      "mlStatus": "applied",
+      "logFile": "tmp/reparse-runs/20260617T182241Z-sarahmetobin_at_gmail.com.log"
+    },
+    {
+      "email": "wayshinet@gmail.com",
+      "sourceFileName": "iEQ9-Wayshine-Tseng-STD.pdf",
+      "reportId": "c9eff0dc-21b0-4dc6-a295-9cbe81025178",
+      "parsedPrimaryType": 9,
+      "parsedInstinctualVariant": "sp",
+      "parseStatus": "incomplete",
+      "parsePages": 1,
+      "parseMinExpectedPages": 42,
+      "reviewStatus": "needs_review",
+      "mlStatus": "applied",
+      "logFile": "tmp/reparse-runs/20260617T182241Z-wayshinet_at_gmail.com.log"
+    }
+  ]
+}
