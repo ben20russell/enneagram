@@ -1,57 +1,200 @@
 #!/usr/bin/env python3
-"""Extract Docling markdown from an iEQ9 PDF.
+"""Extract layout-aware markdown/HTML from an iEQ9 PDF.
 
 Usage:
   python3 scripts/extract_report_pdf.py "/path/to/report.pdf"
 
 Install dependency:
-  pip install docling
+  pip install pymupdf4llm pymupdf
 """
 
 from __future__ import annotations
 
+import html
+import inspect
 import json
+import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+SOURCE_LABEL = "layout_html_markdown"
+TABLE_FORMAT = "html"
+PIPE_TABLE_SEPARATOR_PATTERN = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$")
 
 
-def build_success_payload(markdown: str) -> dict[str, Any]:
+def build_success_payload(structured_document: str) -> dict[str, Any]:
+    normalized = str(structured_document or "")
     return {
-        "source": "docling_markdown",
-        "markdown": str(markdown or ""),
+        "source": SOURCE_LABEL,
+        "table_format": TABLE_FORMAT,
+        "structured_document": normalized,
+        # Compatibility key retained for existing Node parser reads.
+        "markdown": normalized,
     }
 
 
 def build_error_payload(message: str) -> dict[str, Any]:
     return {
-        "source": "docling_markdown",
+        "source": SOURCE_LABEL,
+        "table_format": TABLE_FORMAT,
+        "structured_document": "",
+        # Compatibility key retained for existing Node parser reads.
         "markdown": "",
         "error": str(message or "unknown_error"),
     }
 
 
-def extract_markdown_with_docling(pdf_path: Path, converter: Any | None = None) -> str:
-    active_converter = converter
-    if active_converter is None:
-        # Local import keeps script resilient if docling is not installed.
-        from docling.document_converter import DocumentConverter
+def normalize_layout_markdown(markdown_text: str) -> str:
+    lines = [line.rstrip() for line in str(markdown_text or "").splitlines()]
+    return "\n".join(lines).strip()
 
-        active_converter = DocumentConverter()
 
-    result = active_converter.convert(str(pdf_path))
-    document = getattr(result, "document", None)
-    if document is None or not hasattr(document, "export_to_markdown"):
-        raise RuntimeError("Docling did not return a document with export_to_markdown().")
+def parse_pipe_table_row(line: str) -> list[str]:
+    normalized = str(line or "").strip()
+    if normalized.startswith("|"):
+        normalized = normalized[1:]
+    if normalized.endswith("|"):
+        normalized = normalized[:-1]
+    return [cell.strip() for cell in normalized.split("|")]
 
-    markdown = document.export_to_markdown()
-    return str(markdown or "")
+
+def render_html_table(header_cells: list[str], body_rows: list[list[str]]) -> str:
+    column_count = max(1, len(header_cells), *(len(row) for row in body_rows if row))
+    safe_headers = (header_cells + [""] * column_count)[:column_count]
+    safe_rows = [((row or []) + [""] * column_count)[:column_count] for row in body_rows]
+
+    header_html = "".join(f"<th>{html.escape(cell, quote=False)}</th>" for cell in safe_headers)
+    body_html = "\n".join(
+        "<tr>" + "".join(f"<td>{html.escape(cell, quote=False)}</td>" for cell in row) + "</tr>"
+        for row in safe_rows
+    )
+    if body_html:
+        return f"<table>\n<thead><tr>{header_html}</tr></thead>\n<tbody>\n{body_html}\n</tbody>\n</table>"
+    return f"<table>\n<thead><tr>{header_html}</tr></thead>\n<tbody></tbody>\n</table>"
+
+
+def ensure_html_tables(markdown_text: str) -> str:
+    lines = str(markdown_text or "").splitlines()
+    if not lines:
+        return ""
+
+    output_lines: list[str] = []
+    index = 0
+    while index < len(lines):
+        current_line = lines[index]
+        if (
+            "|" in current_line
+            and index + 1 < len(lines)
+            and PIPE_TABLE_SEPARATOR_PATTERN.match(lines[index + 1] or "")
+        ):
+            header_cells = parse_pipe_table_row(current_line)
+            body_rows: list[list[str]] = []
+            index += 2
+            while index < len(lines) and "|" in lines[index]:
+                row_cells = parse_pipe_table_row(lines[index])
+                if len(row_cells) == 1 and row_cells[0] == "":
+                    break
+                body_rows.append(row_cells)
+                index += 1
+            output_lines.append(render_html_table(header_cells, body_rows))
+            continue
+
+        output_lines.append(current_line)
+        index += 1
+
+    return "\n".join(output_lines).strip()
+
+
+def normalize_markdown_output(raw_output: Any) -> str:
+    if raw_output is None:
+        return ""
+    if isinstance(raw_output, str):
+        return raw_output
+    if isinstance(raw_output, dict):
+        for candidate_key in ("markdown", "content", "text"):
+            candidate = raw_output.get(candidate_key)
+            if isinstance(candidate, str):
+                return candidate
+        return json.dumps(raw_output, ensure_ascii=False)
+    if isinstance(raw_output, list):
+        parts = [normalize_markdown_output(entry) for entry in raw_output]
+        return "\n\n".join([part for part in parts if part]).strip()
+    return str(raw_output)
+
+
+def supports_kwargs(callable_obj: Callable[..., Any]) -> bool:
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return True
+    return any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+
+
+def filter_supported_kwargs(callable_obj: Callable[..., Any], kwargs: dict[str, Any]) -> dict[str, Any]:
+    if supports_kwargs(callable_obj):
+        return dict(kwargs)
+
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return dict(kwargs)
+
+    accepted_names = set(signature.parameters.keys())
+    return {key: value for key, value in kwargs.items() if key in accepted_names}
+
+
+def call_to_markdown_with_fallbacks(
+    to_markdown_fn: Callable[..., Any],
+    pdf_path: Path,
+) -> Any:
+    candidate_kwargs = [
+        {"table_strategy": "lines_strict", "extract_tables": True, "table_output": "html"},
+        {"table_strategy": "lines_strict", "extract_tables": True},
+        {"extract_tables": True},
+        {},
+    ]
+
+    attempted_signatures: set[tuple[tuple[str, Any], ...]] = set()
+    for kwargs in candidate_kwargs:
+        supported = filter_supported_kwargs(to_markdown_fn, kwargs)
+        signature_key = tuple(sorted(supported.items()))
+        if signature_key in attempted_signatures:
+            continue
+        attempted_signatures.add(signature_key)
+        try:
+            return to_markdown_fn(str(pdf_path), **supported)
+        except TypeError:
+            continue
+
+    return to_markdown_fn(str(pdf_path))
+
+
+def extract_markdown_with_pymupdf4llm(
+    pdf_path: Path,
+    to_markdown_fn: Callable[..., Any] | None = None,
+) -> str:
+    active_to_markdown = to_markdown_fn
+    if active_to_markdown is None:
+        # Local import keeps script resilient if pymupdf4llm is not installed.
+        import pymupdf4llm  # type: ignore
+
+        active_to_markdown = getattr(pymupdf4llm, "to_markdown", None)
+        if not callable(active_to_markdown):
+            raise RuntimeError("pymupdf4llm.to_markdown is not available.")
+
+    raw_markdown = call_to_markdown_with_fallbacks(active_to_markdown, pdf_path)
+    normalized_markdown = normalize_layout_markdown(normalize_markdown_output(raw_markdown))
+    return ensure_html_tables(normalized_markdown)
 
 
 def extract_payload_from_pdf(pdf_path: Path) -> dict[str, Any]:
     try:
-        markdown = extract_markdown_with_docling(pdf_path)
-        return build_success_payload(markdown)
+        structured_document = extract_markdown_with_pymupdf4llm(pdf_path)
+        return build_success_payload(structured_document)
     except Exception as error:  # pragma: no cover - runtime dependency / IO path
         return build_error_payload(str(error))
 
