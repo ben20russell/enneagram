@@ -7862,36 +7862,23 @@ function formatStrainCardDetailContent(detail, item) {
     return `<p style="font-size:13px;color:var(--text2)">${escapeHtml(normalizedDetail)}</p>`;
   }
 
-  const rowItems = extractBulletItemsFromText(normalizedDetail, 6);
-  if (!rowItems.length) {
-    return `<p style="font-size:13px;color:var(--text2)">${escapeHtml(normalizedDetail)}</p>`;
-  }
-
-  const leadSentenceMatch = normalizedDetail.match(/^[^.?!]{8,220}[.?!]/);
-  const introCandidate = cleanPdfExtractedValue(leadSentenceMatch?.[0] || "");
-  const introText = /\bstrain\s+is\s+(?:LOW|MEDIUM|HIGH|MODERATE)\b/i.test(introCandidate) ? introCandidate : "";
+  const rowItems = extractNarrativeBulletItems(normalizedDetail, 6);
   const dedupedRows = Array.from(
     new Set(
       rowItems
-        .map((row) => cleanPdfExtractedValue(row || ""))
+        .map((row) => ensureSentenceStartsCapitalized(cleanPdfExtractedValue(row || "")))
         .filter(Boolean),
     ),
-  ).filter((row) => row.toLowerCase() !== introText.toLowerCase());
-
-  if (!dedupedRows.length) {
-    return `<p style="font-size:13px;color:var(--text2)">${escapeHtml(normalizedDetail)}</p>`;
-  }
-
-  const introHtml = introText
-    ? `<p class="strain-detail-intro">${escapeHtml(introText)}</p>`
-    : "";
-  const rowsHtml = dedupedRows
+  );
+  const fallbackRow = ensureSentenceStartsCapitalized(cleanPdfExtractedValue(normalizedDetail));
+  const renderedRows = dedupedRows.length ? dedupedRows : (fallbackRow ? [fallbackRow] : []);
+  const rowsHtml = renderedRows
     .map(
       (row) =>
         `<div class="ti"><div class="tic inf strain-detail-row-icon">•</div><div class="tt strain-detail-row-text">${escapeHtml(row)}</div></div>`,
     )
     .join("");
-  return `${introHtml}<div class="tlist strain-detail-list">${rowsHtml}</div>`;
+  return `<div class="tlist strain-detail-list">${rowsHtml}</div>`;
 }
 
 function getStrainCardVisual(level, category) {
