@@ -268,12 +268,14 @@ function buildParseContract({ diagnostics, parseStatus, parseReason }) {
 
 function computeCompletenessFromParsed(parsed, diagnostics, fileName) {
   const pages = Number(diagnostics?.extraction?.pages ?? parsed?.reportContent?.pages?.length ?? 0);
+  const detectedTotalPages = Number(diagnostics?.extraction?.detectedTotalPages ?? null);
   const minPages = resolveReportMinExpectedPages(fileName, diagnostics?.extraction?.minExpectedPages ?? null);
   const typeNonNull = getNonNullCount(parsed?.typeScores);
   const instinctNonNull = getNonNullCount(parsed?.instinctScores);
   const centerNonNull = getNonNullCount(parsed?.centerScores);
   const hasAllChartScores = typeNonNull === 9 && instinctNonNull === 3 && centerNonNull === 3;
-  const hasMinPages = pages >= minPages;
+  const coverageTarget = detectedTotalPages || minPages || null;
+  const hasCoverageComplete = coverageTarget != null ? pages >= coverageTarget : pages > 0;
   const hasCoreIdentity = Boolean(parsed?.primaryType || parsed?.typeName);
   const criticalHydrated = Number(diagnostics?.sectionCoverage?.criticalHydrated ?? 0);
   const criticalTotal = Number(diagnostics?.sectionCoverage?.criticalTotal ?? 0);
@@ -284,11 +286,13 @@ function computeCompletenessFromParsed(parsed, diagnostics, fileName) {
     ? diagnostics.verification.criticalMismatchKeys.filter(Boolean)
     : [];
   const hasVerificationConsistency = verificationCriticalMismatchCount <= 0;
-  const isComplete = hasMinPages && hasCoreIdentity && hasVerificationConsistency;
+  const isComplete = hasCoverageComplete && hasCoreIdentity && hasVerificationConsistency;
   let incompleteReason = null;
   const warnings = [];
-  if (!hasMinPages) {
-    incompleteReason = `Extracted ${pages} pages, expected at least ${minPages}`;
+  if (!hasCoverageComplete) {
+    incompleteReason = detectedTotalPages > 0
+      ? `Extracted ${pages} pages, detected ${detectedTotalPages}`
+      : `Extracted ${pages} pages, expected at least ${minPages}`;
   } else if (!hasCoreIdentity) {
     incompleteReason = "Core identity incomplete: missing primary type and type name";
   } else if (!hasVerificationConsistency) {
@@ -296,6 +300,11 @@ function computeCompletenessFromParsed(parsed, diagnostics, fileName) {
       ? verificationCriticalMismatchKeys.join(", ")
       : "identity fields";
     incompleteReason = `Python cross-check mismatch detected in ${mismatchLabel}`;
+  }
+  if (detectedTotalPages > 0 && minPages > 0 && detectedTotalPages < minPages) {
+    warnings.push(
+      `Detected total pages (${detectedTotalPages}) are below configured min expected pages (${minPages}); completeness uses detected coverage.`,
+    );
   }
   if (!hasAllChartScores) {
     warnings.push("Chart numerics are partial; keeping parse result usable with warning.");
@@ -308,6 +317,8 @@ function computeCompletenessFromParsed(parsed, diagnostics, fileName) {
     incompleteReason,
     hasCoreIdentity,
     pages,
+    detectedTotalPages,
+    coverageTarget,
     minPages,
     typeNonNull,
     instinctNonNull,

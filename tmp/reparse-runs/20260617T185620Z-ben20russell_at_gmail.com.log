@@ -1,0 +1,113 @@
+(node:80473) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/brussell/Downloads/Code/enneagram-main/lib/supabaseAdmin.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/brussell/Downloads/Code/enneagram-main/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[reparse-assigned-report] Extraction learning context prepared {
+  reportId: '2833c314-28e4-440b-96cc-7ab3f31f820e',
+  status: 'active',
+  reason: null,
+  trainingSamples: 4,
+  hints: 6
+}
+[reparse-assigned-report] local raw-text-first extraction disabled by default. Using layout-html -> agentic OCR parser path first.
+[parsePdf] Starting agentic OCR parsing pipeline for new report...
+[parsePdf] Extraction learning context status before extraction. {
+  modelVersion: 'identity-priors-v1',
+  status: 'active',
+  reason: null,
+  generatedAt: '2026-06-17T18:56:23.576Z',
+  scannedRowCount: 5,
+  trainingSampleCount: 4,
+  hintCount: 6
+}
+[parsePdf] Canonical RAG status before extraction. {
+  enabled: true,
+  available: false,
+  reason: 'no_document_text',
+  source: 'uploaded_report_text',
+  sourcePath: null,
+  queryTokenCount: 0,
+  retrievedChunkCount: 0,
+  retrievedChars: 0
+}
+[parsePdf] Stage 1 layout extraction completed. {
+  sourceFileName: 'iEQ9-Ben-Russell-PRO.pdf',
+  source: 'layout_html_markdown',
+  tableFormat: 'html',
+  structuredChars: 118378,
+  pythonBin: '/Users/brussell/Downloads/Code/enneagram-main/.venv/bin/python3'
+}
+[parsePdf] Using Stage 1 layout-aware extraction output for parsing. {
+  pages: 1,
+  chars: 118378,
+  sourceFileName: 'iEQ9-Ben-Russell-PRO.pdf',
+  parserVersion: 'attached-agentic-ocr-v1'
+}
+[parsePdf] Running agentic OCR repair stage. { rawChars: 118378, sourceFileName: 'iEQ9-Ben-Russell-PRO.pdf' }
+[parsePdf] Agentic OCR repair stage completed. {
+  repairedChars: 118419,
+  normalizedChanged: true,
+  sourceFileName: 'iEQ9-Ben-Russell-PRO.pdf'
+}
+[parsePdf] Stage 2 agentic OCR repair completed. {
+  pages: 1,
+  repairedChars: 118419,
+  sourceFileName: 'iEQ9-Ben-Russell-PRO.pdf',
+  parserVersion: 'attached-agentic-ocr-v1'
+}
+[parsePdf] In-document RAG context retrieved. {
+  source: 'uploaded_report_text',
+  queryTokenCount: 96,
+  retrievedChunkCount: 4,
+  retrievedChars: 4874,
+  keywords: [
+    'strain profile',
+    'instinct',
+    'dominant instinct',
+    'main type',
+    'level of integration',
+    'core motivation',
+    'core fear',
+    'centers of expression'
+  ]
+}
+[parsePdf] Canonical RAG context refreshed from repaired HTML. {
+  enabled: true,
+  available: true,
+  reason: null,
+  source: 'uploaded_report_text',
+  sourcePath: null,
+  queryTokenCount: 96,
+  retrievedChunkCount: 4,
+  retrievedChars: 4874
+}
+[parsePdf] Applied deterministic raw-text fallback extraction for critical identity fields. {
+  patchedPrimaryType: false,
+  patchedDominantInstinct: false,
+  detectedPrimaryType: 8,
+  detectedDominantInstinct: null
+}
+[reparse-assigned-report] ML score learning completed {
+  reportId: '2833c314-28e4-440b-96cc-7ab3f31f820e',
+  mlStatus: 'applied',
+  mlReason: null,
+  mlTrainingSamples: 4,
+  mlAppliedScoreCount: 4
+}
+{
+  "success": true,
+  "reportId": "2833c314-28e4-440b-96cc-7ab3f31f820e",
+  "userEmail": "ben20russell@gmail.com",
+  "bucket": "admin-import-reports",
+  "storagePath": "2833c314-28e4-440b-96cc-7ab3f31f820e/iEQ9-Ben-Russell-PRO.pdf",
+  "sourceFileName": "iEQ9-Ben-Russell-PRO.pdf",
+  "parsedPrimaryType": 8,
+  "parsedInstinctualVariant": "sx",
+  "parserModel": "gpt-5.4-mini",
+  "mlStatus": "applied",
+  "mlTrainingSamples": 4,
+  "parseStatus": "complete",
+  "parsePages": 1,
+  "parseMinExpectedPages": 42,
+  "reviewStatus": "auto_approved"
+}

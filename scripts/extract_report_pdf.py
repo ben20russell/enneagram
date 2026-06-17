@@ -23,6 +23,7 @@ from typing import Any, Callable
 
 SOURCE_LABEL = "layout_html_markdown"
 TABLE_FORMAT = "html"
+ORDERED_LAYOUT_SECTION_TITLE = "Ordered Layout Reading Flow"
 PIPE_TABLE_SEPARATOR_PATTERN = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$")
 
 
@@ -107,6 +108,62 @@ def ensure_html_tables(markdown_text: str) -> str:
         index += 1
 
     return "\n".join(output_lines).strip()
+
+
+def normalize_block_text(text: Any) -> str:
+    normalized = normalize_layout_markdown(str(text or ""))
+    return re.sub(r"\s*\n\s*", " ", normalized).strip()
+
+
+def sorted_page_blocks(page: Any) -> list[str]:
+    blocks = page.get_text("blocks") or []
+    ordered_blocks: list[tuple[float, float, str]] = []
+    for block in blocks:
+        if not isinstance(block, (tuple, list)) or len(block) < 5:
+            continue
+        x0, y0, _x1, _y1, text = block[:5]
+        block_text = normalize_block_text(text)
+        if not block_text:
+            continue
+        ordered_blocks.append((float(y0), float(x0), block_text))
+
+    ordered_blocks.sort(key=lambda item: (round(item[0], 3), round(item[1], 3)))
+    return [entry[2] for entry in ordered_blocks]
+
+
+def extract_sorted_layout_blocks_markdown(pdf_path: Path) -> str:
+    if not pdf_path.exists():
+        return ""
+
+    try:
+        import fitz  # type: ignore
+    except Exception:
+        return ""
+
+    pages_output: list[str] = []
+    try:
+        with fitz.open(str(pdf_path)) as document:
+            for page_index, page in enumerate(document):
+                ordered_text_blocks = sorted_page_blocks(page)
+                if not ordered_text_blocks:
+                    continue
+                page_lines = "\n".join(f"- {line}" for line in ordered_text_blocks)
+                pages_output.append(f"### Page {page_index + 1}\n{page_lines}")
+    except Exception:
+        return ""
+
+    if not pages_output:
+        return ""
+
+    return f"## {ORDERED_LAYOUT_SECTION_TITLE}\n\n" + "\n\n".join(pages_output).strip()
+
+
+def merge_structured_with_sorted_layout(structured_markdown: str, ordered_layout_markdown: str) -> str:
+    normalized_structured = str(structured_markdown or "").strip()
+    normalized_ordered_layout = str(ordered_layout_markdown or "").strip()
+    if normalized_structured and normalized_ordered_layout:
+        return f"{normalized_structured}\n\n---\n\n{normalized_ordered_layout}"
+    return normalized_structured or normalized_ordered_layout
 
 
 def normalize_markdown_output(raw_output: Any) -> str:
@@ -213,7 +270,9 @@ def extract_markdown_with_pymupdf4llm(
     with suppress_native_stdout_stderr(), redirect_stdout(captured_stdout), redirect_stderr(captured_stderr):
         raw_markdown = call_to_markdown_with_fallbacks(active_to_markdown, pdf_path)
     normalized_markdown = normalize_layout_markdown(normalize_markdown_output(raw_markdown))
-    return ensure_html_tables(normalized_markdown)
+    structured_markdown = ensure_html_tables(normalized_markdown)
+    ordered_layout_markdown = extract_sorted_layout_blocks_markdown(pdf_path)
+    return merge_structured_with_sorted_layout(structured_markdown, ordered_layout_markdown)
 
 
 def extract_payload_from_pdf(pdf_path: Path) -> dict[str, Any]:
