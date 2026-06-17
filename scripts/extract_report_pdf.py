@@ -11,6 +11,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 from PyPDF2 import PdfReader
 
@@ -23,6 +24,254 @@ CONTROL_NOISE_PATTERN = re.compile(r"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u00
 REPLACEMENT_CHAR_PATTERN = re.compile(r"\uFFFD")
 CID_ARTIFACT_PATTERN = re.compile(r"\(\s*c\s*i\s*d\s*:\s*\d+\s*\)", re.I)
 CID_INLINE_PATTERN = re.compile(r"\bC\s*I\s*D\s*:\s*\d+\b", re.I)
+CID_TOKEN_PATTERN = re.compile(r"\(cid:\d+\)", re.I)
+NON_PRINTABLE_PATTERN = re.compile(r"[^\x09\x0A\x0D\x20-\x7E]")
+
+DEFAULT_NOISE_THRESHOLDS: dict[str, int | float] = {
+    "cid_count_threshold": 16,
+    "replacement_count_threshold": 3,
+    "min_length_for_ratio_check": 80,
+    "min_alnum_ratio": 0.22,
+}
+
+
+def resolve_noise_thresholds(thresholds: dict[str, int | float] | None = None) -> dict[str, int | float]:
+    merged = {
+        "cid_count_threshold": int(DEFAULT_NOISE_THRESHOLDS["cid_count_threshold"]),
+        "replacement_count_threshold": int(DEFAULT_NOISE_THRESHOLDS["replacement_count_threshold"]),
+        "min_length_for_ratio_check": int(DEFAULT_NOISE_THRESHOLDS["min_length_for_ratio_check"]),
+        "min_alnum_ratio": float(DEFAULT_NOISE_THRESHOLDS["min_alnum_ratio"]),
+    }
+    source = thresholds if isinstance(thresholds, dict) else {}
+    for key in merged:
+        if key not in source:
+            continue
+        value = source[key]
+        if key == "min_alnum_ratio":
+            merged[key] = float(value)
+        else:
+            merged[key] = int(value)
+    return merged
+
+
+def log_debug(message: str, details: dict[str, Any] | None = None) -> None:
+    payload = details or {}
+    print(
+        f"[extract_report_pdf] {message} {json.dumps(payload, ensure_ascii=False)}",
+        file=sys.stderr,
+    )
+
+
+def compute_text_health_snapshot(
+    text: str,
+    thresholds: dict[str, int | float] | None = None,
+) -> dict[str, int | float | bool]:
+    resolved = resolve_noise_thresholds(thresholds)
+    source = str(text or "")
+    total_chars = len(source)
+    cid_count = len(CID_TOKEN_PATTERN.findall(source))
+    replacement_count = len(REPLACEMENT_CHAR_PATTERN.findall(source))
+    non_printable_count = len(NON_PRINTABLE_PATTERN.findall(source))
+    alnum_count = len(re.findall(r"[A-Za-z0-9]", source))
+    alnum_ratio = (alnum_count / total_chars) if total_chars > 0 else 0.0
+
+    cid_noise = cid_count >= max(1, int(resolved["cid_count_threshold"]))
+    replacement_noise = replacement_count >= max(1, int(resolved["replacement_count_threshold"]))
+    low_alnum_noise = (
+        total_chars >= int(resolved["min_length_for_ratio_check"])
+        and alnum_ratio < float(resolved["min_alnum_ratio"])
+    )
+    is_noisy = cid_noise or replacement_noise or low_alnum_noise
+
+    return {
+        "is_noisy": is_noisy,
+        "cid_count": cid_count,
+        "replacement_count": replacement_count,
+        "non_printable_count": non_printable_count,
+        "alnum_count": alnum_count,
+        "total_chars": total_chars,
+        "alnum_ratio": round(alnum_ratio, 4),
+        "cid_noise": cid_noise,
+        "replacement_noise": replacement_noise,
+        "low_alnum_noise": low_alnum_noise,
+    }
+
+
+def is_text_noisy(
+    text: str,
+    thresholds: dict[str, int | float] | None = None,
+) -> bool:
+    """Return True when extracted text quality is likely corrupted."""
+
+    snapshot = compute_text_health_snapshot(text, thresholds=resolve_noise_thresholds(thresholds))
+    return bool(snapshot.get("is_noisy"))
+
+
+def extract_text_with_pdfplumber(pdf_path: Path) -> list[str]:
+    import pdfplumber
+
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        return [(page.extract_text() or "") for page in pdf.pages]
+
+
+def extract_text_with_pypdf(pdf_path: Path) -> list[str]:
+    reader = PdfReader(str(pdf_path))
+    return [(page.extract_text() or "") for page in reader.pages]
+
+
+def extract_text_primary_attempt(pdf_path: Path) -> tuple[list[str], str]:
+    """Primary text extraction using pdfplumber first, then PyPDF2 fallback."""
+
+    errors: list[str] = []
+    try:
+        pages = extract_text_with_pdfplumber(pdf_path)
+        return pages, "pdfplumber"
+    except Exception as error:  # pragma: no cover - environment-dependent
+        errors.append(f"pdfplumber:{error}")
+        log_debug(
+            "Primary extraction with pdfplumber failed. Falling back to PyPDF2.",
+            {"file": str(pdf_path), "details": str(error)},
+        )
+
+    try:
+        pages = extract_text_with_pypdf(pdf_path)
+        return pages, "pypdf2"
+    except Exception as error:
+        errors.append(f"pypdf2:{error}")
+        raise RuntimeError(
+            f"Unable to extract PDF text with primary engines for {pdf_path}: {' | '.join(errors)}"
+        ) from error
+
+
+def extract_text_with_tesseract_ocr(
+    pdf_path: Path,
+    page_numbers: list[int],
+    *,
+    dpi: int = 350,
+    language: str = "eng",
+    tesseract_config: str = "--oem 3 --psm 6",
+) -> dict[int, str]:
+    """OCR selected pages via pdf2image + pytesseract."""
+
+    if not page_numbers:
+        return {}
+
+    from pdf2image import convert_from_path
+    import pytesseract
+
+    ocr_text_by_page: dict[int, str] = {}
+    unique_pages = sorted({int(page) for page in page_numbers if int(page) > 0})
+    for page_number in unique_pages:
+        images = convert_from_path(
+            str(pdf_path),
+            dpi=dpi,
+            first_page=page_number,
+            last_page=page_number,
+            fmt="png",
+            grayscale=True,
+        )
+        if not images:
+            continue
+        ocr_text = pytesseract.image_to_string(
+            images[0],
+            lang=language,
+            config=tesseract_config,
+        )
+        ocr_text_by_page[page_number] = str(ocr_text or "")
+    return ocr_text_by_page
+
+
+def extract_page_texts_with_ocr_fallback(
+    pdf_path: Path,
+    *,
+    thresholds: dict[str, int | float] | None = None,
+    ocr_dpi: int = 350,
+    ocr_language: str = "eng",
+    ocr_tesseract_config: str = "--oem 3 --psm 6",
+) -> tuple[list[str], dict[str, Any]]:
+    """Extract page text; fallback to OCR when text health is noisy."""
+
+    primary_pages, primary_engine = extract_text_primary_attempt(pdf_path)
+    pages = [str(page or "") for page in primary_pages]
+
+    resolved_thresholds = resolve_noise_thresholds(thresholds)
+    page_health = [compute_text_health_snapshot(page, thresholds=resolved_thresholds) for page in pages]
+    noisy_page_numbers = [
+        index + 1
+        for index, health in enumerate(page_health)
+        if bool(health.get("is_noisy"))
+    ]
+
+    joined_primary = "\n".join(pages)
+    overall_health = compute_text_health_snapshot(joined_primary, thresholds=resolved_thresholds)
+    fallback_triggered = bool(noisy_page_numbers) or bool(overall_health.get("is_noisy"))
+
+    diagnostics: dict[str, Any] = {
+        "primaryEngine": primary_engine,
+        "primaryPageCount": len(pages),
+        "fallbackTriggered": fallback_triggered,
+        "noisyPageNumbers": noisy_page_numbers,
+        "overallPrimaryHealth": overall_health,
+        "heuristics": resolved_thresholds,
+        "ocrAppliedPageNumbers": [],
+        "ocrFailedPageNumbers": [],
+        "fallbackError": None,
+    }
+
+    if not fallback_triggered:
+        return pages, diagnostics
+
+    target_pages = noisy_page_numbers if noisy_page_numbers else list(range(1, len(pages) + 1))
+    try:
+        ocr_pages = extract_text_with_tesseract_ocr(
+            pdf_path,
+            target_pages,
+            dpi=ocr_dpi,
+            language=ocr_language,
+            tesseract_config=ocr_tesseract_config,
+        )
+    except Exception as error:  # pragma: no cover - dependency/environment dependent
+        diagnostics["fallbackError"] = str(error)
+        diagnostics["ocrFailedPageNumbers"] = target_pages
+        log_debug(
+            "OCR fallback failed. Returning primary text layer.",
+            {"file": str(pdf_path), "details": str(error), "targetPages": target_pages},
+        )
+        return pages, diagnostics
+
+    for page_number in target_pages:
+        page_index = page_number - 1
+        ocr_text = str(ocr_pages.get(page_number, "") or "")
+        if page_index < 0 or page_index >= len(pages):
+            continue
+        if normalize(ocr_text):
+            pages[page_index] = ocr_text
+            diagnostics["ocrAppliedPageNumbers"].append(page_number)
+        else:
+            diagnostics["ocrFailedPageNumbers"].append(page_number)
+
+    return pages, diagnostics
+
+
+def extract_clean_text_with_ocr_fallback(
+    pdf_path: Path,
+    *,
+    thresholds: dict[str, int | float] | None = None,
+    ocr_dpi: int = 350,
+    ocr_language: str = "eng",
+    ocr_tesseract_config: str = "--oem 3 --psm 6",
+) -> tuple[str, dict[str, Any]]:
+    """Return a normalized clean string for downstream hydration logic."""
+
+    page_texts, diagnostics = extract_page_texts_with_ocr_fallback(
+        pdf_path,
+        thresholds=thresholds,
+        ocr_dpi=ocr_dpi,
+        ocr_language=ocr_language,
+        ocr_tesseract_config=ocr_tesseract_config,
+    )
+    clean_text = normalize("\n".join(str(page or "") for page in page_texts))
+    return clean_text, diagnostics
 
 
 def strip_control_noise_characters(text: str) -> str:
@@ -413,8 +662,7 @@ def main() -> int:
         print(f"File not found: {pdf_path}")
         return 1
 
-    reader = PdfReader(str(pdf_path))
-    page_texts = [(page.extract_text() or "") for page in reader.pages]
+    page_texts, extraction_diagnostics = extract_page_texts_with_ocr_fallback(pdf_path)
     text = normalize("\n".join(page_texts))
     detected_type, detected_type_source = extract_type_from_pages(page_texts, preferred_page_number=6)
     if not detected_type:
@@ -486,11 +734,30 @@ def main() -> int:
     integration_level = title_case_level(integration_level)
     level_of_development = clean_metadata_value(level_of_development)
     text_noise = compute_text_noise_metrics(page_texts)
+    extraction_diagnostics = {
+        **(extraction_diagnostics if isinstance(extraction_diagnostics, dict) else {}),
+        "finalPageCount": len(page_texts),
+        "ocrApplied": bool(
+            (extraction_diagnostics or {}).get("fallbackTriggered")
+            and len((extraction_diagnostics or {}).get("ocrAppliedPageNumbers", [])) > 0
+        ),
+    }
+    if extraction_diagnostics.get("fallbackTriggered"):
+        log_debug(
+            "OCR fallback decision complete.",
+            {
+                "fileName": pdf_path.name,
+                "noisyPageNumbers": extraction_diagnostics.get("noisyPageNumbers", []),
+                "ocrAppliedPageNumbers": extraction_diagnostics.get("ocrAppliedPageNumbers", []),
+                "ocrFailedPageNumbers": extraction_diagnostics.get("ocrFailedPageNumbers", []),
+                "fallbackError": extraction_diagnostics.get("fallbackError"),
+            },
+        )
 
     payload = {
         "source": "python_extract_report_pdf",
         "fileName": pdf_path.name,
-        "pageCount": len(reader.pages),
+        "pageCount": len(page_texts),
         "detectedType": detected_type,
         "detectedTypeSource": detected_type_source,
         "typeName": type_name,
@@ -503,6 +770,7 @@ def main() -> int:
         "levelOfDevelopment": level_of_development,
         "centreOfIntelligence": centre_of_intelligence,
         "textNoise": text_noise,
+        "extractionDiagnostics": extraction_diagnostics,
         "containsMarkers": {
             "resonanceSentence": bool(
                 re.search(r"you\s+resonate\s+with\s+the\s+Enneagram\s+type\s*[1-9]\b", text, re.I)
