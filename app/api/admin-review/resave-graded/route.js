@@ -445,6 +445,9 @@ async function runSanitizeAndParsePipeline({
   const storagePath = normalizeOptionalString(
     row?.report_pdf?.storagePath || results?.file?.storagePath || null,
   );
+  const sourceFileName = normalizeOptionalString(
+    row?.report_pdf?.fileName || results?.file?.fileName || storagePath?.split("/").pop() || "report.pdf",
+  );
 
   if (!bucket) {
     throw new Error("Report is missing storage bucket metadata");
@@ -468,6 +471,7 @@ async function runSanitizeAndParsePipeline({
   });
 
   const parsed = await parsePdf(sanitizedPdf.buffer, {
+    sourceFileName,
     disableImagePipeline: true,
     disableImageScoreRescue: true,
     allowLocalTextFallback: true,

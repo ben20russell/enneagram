@@ -207,12 +207,13 @@ async function main() {
           "[reparse-assigned-report] local OCR-aware extraction is missing pypdf in current python interpreter. Install with: python3 -m pip install pypdf pdfplumber pdf2image pytesseract pillow",
         );
       }
-      console.log("[reparse-assigned-report] local OCR-aware extraction failed; continuing with attached parse.", {
+      console.log("[reparse-assigned-report] local OCR-aware extraction failed; continuing with markdown-first parse.", {
         details,
       });
     }
   }
   const parsed = await parsePdf(pdfBuffer, {
+    sourceFileName: fileName || "report.pdf",
     allowLocalTextFallback: true,
     enablePythonCrossCheck: true,
     rawTextOverride,

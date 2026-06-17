@@ -611,6 +611,7 @@ async function finalizeImport({
         hints: extractionLearningContext?.hintCount ?? 0,
       });
       const parsed = await parsePdf(sanitizedPdf.buffer, {
+        sourceFileName: safeFileName,
         disableImagePipeline: true,
         disableImageScoreRescue: true,
         allowLocalTextFallback: true,
@@ -795,6 +796,7 @@ async function reparseImportedReport({ requesterEmail, reportId }) {
       hints: extractionLearningContext?.hintCount ?? 0,
     });
     const parsed = await parsePdf(sanitizedPdf.buffer, {
+      sourceFileName: fileName || "report.pdf",
       disableImagePipeline: true,
       disableImageScoreRescue: true,
       allowLocalTextFallback: true,

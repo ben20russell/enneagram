@@ -384,6 +384,7 @@ export async function POST(req) {
       hints: extractionLearningContext?.hintCount ?? 0,
     });
     const parsed = await parsePdf(sanitizedPdf.buffer, {
+      sourceFileName: fileName || "report.pdf",
       disableImagePipeline: true,
       disableImageScoreRescue: true,
       allowLocalTextFallback: true,

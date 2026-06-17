@@ -232,6 +232,7 @@ export async function POST(req) {
     });
 
     const parsed = await parsePdf(sanitizedPdf.buffer, {
+      sourceFileName: report.name,
       imagePrimaryFullDocMaxPages: routeImagePageLimit,
       requireChartScoresForComplete: false,
       allowLocalTextFallback: true,
