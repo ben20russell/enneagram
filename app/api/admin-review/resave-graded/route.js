@@ -91,6 +91,32 @@ function hasAnyNumericScores(scoreMap, keys) {
   return keys.some((key) => Number.isFinite(Number(scoreMap?.[key])));
 }
 
+function hasUsableExtractedTextRows(rows) {
+  return Array.isArray(rows) && rows.some((row) => String(row?.extractedText || "").trim().length > 0);
+}
+
+function hasRichParsedReportContent(profile) {
+  if (!profile || typeof profile !== "object") return false;
+  const reportContent =
+    profile?.reportContent && typeof profile.reportContent === "object"
+      ? profile.reportContent
+      : null;
+  if (!reportContent) return false;
+  const pages = Array.isArray(reportContent?.pages) ? reportContent.pages : [];
+  const sections = Array.isArray(reportContent?.sections) ? reportContent.sections : [];
+  const summary = normalizeOptionalString(reportContent?.documentSummary);
+  return hasUsableExtractedTextRows(pages) || sections.length > 0 || Boolean(summary);
+}
+
+function resolveProfileParseState(profile) {
+  const value =
+    profile?._parseStatus ||
+    profile?._parseState ||
+    profile?._parseDiagnostics?.parseState ||
+    "";
+  return String(value || "").trim().toLowerCase();
+}
+
 function resolvePrimaryTypeFromTypeScores(typeScores, fallbackPrimaryType = null) {
   const fallback = normalizeTypeNumber(fallbackPrimaryType);
   if (!typeScores || typeof typeScores !== "object") {
@@ -180,9 +206,20 @@ function buildBackfilledRow({
   const existingProfile = results?.parsedProfile && typeof results.parsedProfile === "object"
     ? results.parsedProfile
     : null;
-  const activeProfile = parsedProfile && typeof parsedProfile === "object"
+  const parsedPipelineProfile = parsedProfile && typeof parsedProfile === "object"
     ? parsedProfile
-    : existingProfile;
+    : null;
+  const parsedPipelineState = resolveProfileParseState(parsedPipelineProfile);
+  const shouldPreferExistingProfile = Boolean(existingProfile) && (
+    parsedPipelineState === "failed" ||
+    (
+      !hasRichParsedReportContent(parsedPipelineProfile) &&
+      hasRichParsedReportContent(existingProfile)
+    )
+  );
+  const activeProfile = shouldPreferExistingProfile
+    ? existingProfile
+    : (parsedPipelineProfile || existingProfile);
 
   if (!activeProfile) {
     return { skipReason: "missing_parsed_profile" };
@@ -300,12 +337,7 @@ function buildBackfilledRow({
     },
   };
 
-  const parseState = String(
-    activeProfile?._parseStatus ||
-      activeProfile?._parseState ||
-      activeProfile?._parseDiagnostics?.parseState ||
-      "",
-  ).toLowerCase();
+  const parseState = resolveProfileParseState(activeProfile);
   const isParseComplete = parseState === "complete";
 
   const nextParsedProfile = {

@@ -5266,18 +5266,26 @@ function setSignedInAuthUi(user) {
 }
 
 function sanitizeExportFileName(value) {
-  return String(value || "dashboard")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 72) || "dashboard";
+  return String(value || "")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\.+$/g, "")
+    .trim();
+}
+
+function resolveDashboardExportClientName() {
+  const normalizedClientName = sanitizeExportFileName(REPORT?.clientName || "");
+  if (!normalizedClientName) return "";
+  if (/^not\s+detected(?:\s+in\s+assigned\s+pdf)?\.?$/i.test(normalizedClientName)) {
+    return "";
+  }
+  return normalizedClientName.slice(0, 120);
 }
 
 function buildDashboardExportTitle() {
-  const type = String(REPORT?.typeNumber || "").trim();
-  const label = sanitizeExportFileName(REPORT?.typeName || "dashboard");
-  const date = new Date().toISOString().slice(0, 10);
-  return `enneagram-dashboard-${type || "report"}-${label}-${date}`;
+  const clientName = resolveDashboardExportClientName();
+  if (!clientName) return "Enneagram Dashboard";
+  return `${clientName} Enneagram Dashboard`;
 }
 
 function snapshotChartsForExport() {
@@ -5315,6 +5323,7 @@ async function exportDashboardPdf() {
   console.log("[report-export] Export dashboard PDF requested from account dropdown");
   const exportButton = getExportPdfButton();
   const previousButtonText = exportButton?.textContent || "Export PDF";
+  const previousDocumentTitle = document.title;
   const exportTitle = buildDashboardExportTitle();
   let cleanupSnapshots = null;
   let exportFinalized = false;
@@ -5327,6 +5336,7 @@ async function exportDashboardPdf() {
     }
     document.body.classList.remove("exporting-dashboard-pdf");
     document.body.removeAttribute("data-export-title");
+    document.title = previousDocumentTitle;
     if (exportButton) {
       exportButton.disabled = false;
       exportButton.textContent = previousButtonText;
@@ -5348,6 +5358,7 @@ async function exportDashboardPdf() {
 
     document.body.setAttribute("data-export-title", exportTitle);
     document.body.classList.add("exporting-dashboard-pdf");
+    document.title = exportTitle;
 
     if (profileChart) profileChart.resize();
     cleanupSnapshots = snapshotChartsForExport();
@@ -7896,6 +7907,35 @@ function splitDevelopmentExercisesTextBlock(value) {
 function mergeFeedbackGuideRows(structuredRows, pdfRows) {
   const fallbackRows = Array.isArray(pdfRows) ? pdfRows : [];
   const primaryRows = Array.isArray(structuredRows) ? structuredRows : [];
+  const isIndexedType = (value) => /^Type\s*[1-9]\b/i.test(String(value || ""));
+  const hasGuidance = (row) => !isMissingExtractedText(String(row?.guidance || ""));
+  const hasIndexedGuidance = (rows) =>
+    Array.isArray(rows) && rows.some((row) => isIndexedType(row?.type) && hasGuidance(row));
+
+  // Some reports only provide "Giving/Receiving feedback" guidance instead of Type 1-9 rows.
+  // Preserve these rows instead of forcing 9 placeholder rows.
+  if (!hasIndexedGuidance(primaryRows) && !hasIndexedGuidance(fallbackRows)) {
+    const out = [];
+    const seen = new Set();
+    const appendRows = (rows) => {
+      rows.forEach((row) => {
+        const guidance = normalizeExtractedText(row?.guidance || "");
+        if (!guidance || isMissingExtractedText(guidance)) return;
+        const type = normalizeExtractedText(row?.type || row?.label || "") || `Guidance ${out.length + 1}`;
+        const label = normalizeExtractedText(row?.label || "");
+        const signature = `${type.toLowerCase()}|${guidance.toLowerCase().slice(0, 180)}`;
+        if (seen.has(signature)) return;
+        seen.add(signature);
+        out.push({ type, label, guidance });
+      });
+    };
+    appendRows(primaryRows);
+    appendRows(fallbackRows);
+    if (out.length) {
+      return out.slice(0, 9);
+    }
+  }
+
   return Array.from({ length: 9 }, (_, index) => {
     const primary = primaryRows[index] || null;
     const fallback = fallbackRows[index] || null;
@@ -8135,6 +8175,86 @@ function extractIndexedGuidanceRows(rawText, options) {
   return rows;
 }
 
+function extractGeneralFeedbackRowsFromText(rawText, options) {
+  const safeOptions = options && typeof options === "object" ? options : {};
+  const fallbackText = String(safeOptions.fallbackText || "Not detected in assigned PDF.");
+  const normalized = normalizeExtractedText(rawText || "");
+  if (!normalized) return [];
+
+  const parseArrayItems = (sourceText, key) => {
+    const blockPattern = new RegExp(`"${escapeRegex(key)}"\\s*:\\s*\\[([\\s\\S]{10,8000}?)\\]`, "i");
+    const blockMatch = String(sourceText || "").match(blockPattern);
+    if (!blockMatch?.[1]) return [];
+    return Array.from(blockMatch[1].matchAll(/"([^"]{3,420})"/g))
+      .map((match) => cleanPdfExtractedValue(match?.[1] || ""))
+      .filter(Boolean)
+      .slice(0, 18);
+  };
+
+  const givingItems = parseArrayItems(normalized, "giving");
+  const receivingItems = parseArrayItems(normalized, "receiving");
+  const rowsFromObjectArrays = [];
+  if (givingItems.length) {
+    rowsFromObjectArrays.push({
+      type: "Giving Feedback",
+      label: "",
+      guidance: cleanPdfExtractedValue(givingItems.join(" ")) || fallbackText,
+    });
+  }
+  if (receivingItems.length) {
+    rowsFromObjectArrays.push({
+      type: "Receiving Feedback",
+      label: "",
+      guidance: cleanPdfExtractedValue(receivingItems.join(" ")) || fallbackText,
+    });
+  }
+  if (rowsFromObjectArrays.length) return rowsFromObjectArrays;
+
+  const extractLabeledSnippet = (label, nextLabels) => {
+    const anchors = Array.isArray(nextLabels) && nextLabels.length
+      ? `${nextLabels.map((item) => buildFlexiblePhrasePattern(item)).join("|")}|$`
+      : "$";
+    const pattern = new RegExp(
+      `${buildFlexiblePhrasePattern(label)}\\s*[:\\-]?\\s*([\\s\\S]{18,1200}?)(?=\\s*(?:${anchors}))`,
+      "i",
+    );
+    const match = normalized.match(pattern);
+    return cleanPdfExtractedValue(match?.[1] || "") || "";
+  };
+
+  const giving = extractLabeledSnippet("Giving Feedback", [
+    "Receiving Feedback",
+    "Conflict",
+    "Decision Making",
+    "Leadership",
+    "Coaching Relationship",
+    "Team Behaviour",
+  ]);
+  const receiving = extractLabeledSnippet("Receiving Feedback", [
+    "Conflict",
+    "Decision Making",
+    "Leadership",
+    "Coaching Relationship",
+    "Team Behaviour",
+  ]);
+  const rows = [];
+  if (giving && !isMissingExtractedText(giving)) {
+    rows.push({
+      type: "Giving Feedback",
+      label: "",
+      guidance: giving,
+    });
+  }
+  if (receiving && !isMissingExtractedText(receiving)) {
+    rows.push({
+      type: "Receiving Feedback",
+      label: "",
+      guidance: receiving,
+    });
+  }
+  return rows;
+}
+
 function extractFeedbackGuideMatrix(pdfText) {
   const normalized = normalizeExtractedText(pdfText);
   const names = {
@@ -8159,6 +8279,10 @@ function extractFeedbackGuideMatrix(pdfText) {
   if (indexedRows.some((row) => !isMissingExtractedText(row?.guidance))) {
     return indexedRows;
   }
+  const generalRows = extractGeneralFeedbackRowsFromText(feedbackBlock, {
+    fallbackText: "Not detected in assigned PDF.",
+  });
+  if (generalRows.length) return generalRows;
   const rows = [];
   for (let type = 1; type <= 9; type += 1) {
     const pattern = new RegExp(`Type\\s*${type}\\b\\s*[:\\-]?\\s*([\\s\\S]{12,340}?)(?=Type\\s*[1-9]\\b|$)`, "i");
@@ -9152,6 +9276,10 @@ function extractFeedbackGuideFromReportContent(parsedProfile) {
   if (indexedRows.some((row) => !isMissingExtractedText(row?.guidance))) {
     return indexedRows;
   }
+  const generalRows = extractGeneralFeedbackRowsFromText(feedbackBlock, {
+    fallbackText: "Not detected in structured report content.",
+  });
+  if (generalRows.length) return generalRows;
 
   const rows = [];
   for (let type = 1; type <= 9; type += 1) {
@@ -11518,43 +11646,43 @@ function renderGrowthKeyChallenges({ report, isExampleMode }) {
   });
 }
 
+function setDashboardSectionVisibility(sectionId, isVisible) {
+  const normalizedSectionId = String(sectionId || "").trim().replace(/^sec-/, "");
+  if (!normalizedSectionId) return;
+  const shouldShow = Boolean(isVisible);
+  const sectionNode = document.getElementById(`sec-${normalizedSectionId}`);
+  if (sectionNode) sectionNode.style.display = shouldShow ? "" : "none";
+
+  const sectionButtons = document.querySelectorAll(
+    `.nav button[data-sec="${normalizedSectionId}"],.mobile-menu-item[data-sec="${normalizedSectionId}"]`,
+  );
+  sectionButtons.forEach((button) => {
+    button.style.display = shouldShow ? "" : "none";
+    if (!shouldShow) {
+      button.classList.remove("active");
+    }
+  });
+
+  if (!shouldShow && sectionNode?.classList.contains("active")) {
+    showSec("overview");
+  }
+
+  console.log("[report-render] section visibility toggled", {
+    sectionId: normalizedSectionId,
+    shouldShow,
+    selectionKey: activeReportSelectionState.selectionKey,
+  });
+}
+
 function setIntegrationUiVisibility(isVisible) {
   const shouldShow = Boolean(isVisible);
   const rowNode = document.getElementById("integrationValueRow");
   if (rowNode) rowNode.style.display = shouldShow ? "" : "none";
-
-  const integrationSectionNode = document.getElementById("sec-integration");
-  if (integrationSectionNode) integrationSectionNode.style.display = shouldShow ? "" : "none";
-
-  const integrationButtons = document.querySelectorAll('.nav button[data-sec="integration"],.mobile-menu-item[data-sec="integration"]');
-  integrationButtons.forEach((button) => {
-    button.style.display = shouldShow ? "" : "none";
-    if (!shouldShow) {
-      button.classList.remove("active");
-    }
-  });
-
-  if (!shouldShow && integrationSectionNode?.classList.contains("active")) {
-    showSec("overview");
-  }
+  setDashboardSectionVisibility("integration", shouldShow);
 }
 
 function setStrainUiVisibility(isVisible) {
-  const shouldShow = Boolean(isVisible);
-  const strainSectionNode = document.getElementById("sec-strain");
-  if (strainSectionNode) strainSectionNode.style.display = shouldShow ? "" : "none";
-
-  const strainButtons = document.querySelectorAll('.nav button[data-sec="strain"],.mobile-menu-item[data-sec="strain"]');
-  strainButtons.forEach((button) => {
-    button.style.display = shouldShow ? "" : "none";
-    if (!shouldShow) {
-      button.classList.remove("active");
-    }
-  });
-
-  if (!shouldShow && strainSectionNode?.classList.contains("active")) {
-    showSec("overview");
-  }
+  setDashboardSectionVisibility("strain", isVisible);
 }
 
 function renderReportFromState(isExampleMode) {
@@ -11598,12 +11726,17 @@ function renderReportFromState(isExampleMode) {
   }
   setText('releaseValue', formatTypeLine(REPORT.release));
   setText('stretchValue', formatTypeLine(REPORT.stretch));
+  const isStdReportLayout = !isExampleMode && String(REPORT?.reportType || "").trim().toUpperCase() === "STD";
+  setDashboardSectionVisibility("leadership", !isStdReportLayout);
+  setDashboardSectionVisibility("communication", !isStdReportLayout);
   const supportsStrainProfile = REPORT?.supportsStrainProfile !== false;
-  setStrainUiVisibility(supportsStrainProfile);
+  setStrainUiVisibility(!isStdReportLayout && supportsStrainProfile);
   const supportsIntegrationLevel = REPORT?.supportsIntegrationLevel !== false;
-  setIntegrationUiVisibility(supportsIntegrationLevel);
+  setIntegrationUiVisibility(!isStdReportLayout && supportsIntegrationLevel);
   console.log('[report-render] section visibility support flags', {
     reportType: String(REPORT?.reportType || ""),
+    isStdReportLayout,
+    supportsLeadershipAndCommunication: !isStdReportLayout,
     supportsStrainProfile,
     supportsIntegrationLevel,
     selectionKey: activeSelectionKey,
