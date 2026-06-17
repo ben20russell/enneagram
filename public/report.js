@@ -5288,6 +5288,145 @@ function buildDashboardExportTitle() {
   return `${clientName} Enneagram Dashboard`;
 }
 
+const DASHBOARD_EXPORT_PDF_CONFIG = Object.freeze({
+  format: "letter",
+  unit: "pt",
+  orientation: "portrait",
+  marginPt: 28,
+  imageType: "JPEG",
+  imageQuality: 0.92,
+  renderScale: 2,
+});
+
+function getDashboardPdfExportTargets() {
+  const targets = [];
+  const header = document.querySelector(".header");
+  if (header) {
+    targets.push(header);
+  }
+  const sectionNodes = Array.from(document.querySelectorAll(".main-col .sec"));
+  sectionNodes.forEach((sectionNode) => {
+    const sectionId = String(sectionNode?.id || "").trim().toLowerCase();
+    if (!sectionId) return;
+    if (sectionId === "sec-focus" || sectionId === "sec-test") return;
+    targets.push(sectionNode);
+  });
+  console.log("[report-export] Resolved PDF export targets", {
+    targetCount: targets.length,
+    targetIds: targets.map((node, index) => String(node?.id || `node-${index}`)),
+  });
+  return targets;
+}
+
+function getDashboardExportTargetLabel(node, index) {
+  const sectionId = String(node?.id || "").trim();
+  if (sectionId) return sectionId;
+  const testId = String(node?.dataset?.testid || "").trim();
+  if (testId) return testId;
+  return `section-${index + 1}`;
+}
+
+async function captureDashboardExportCanvas(node, { index, html2canvasFn }) {
+  const label = getDashboardExportTargetLabel(node, index);
+  console.log("[report-export] Capturing section for PDF", {
+    label,
+    index,
+    width: Number(node?.scrollWidth || node?.clientWidth || 0),
+    height: Number(node?.scrollHeight || node?.clientHeight || 0),
+  });
+  const canvas = await html2canvasFn(node, {
+    backgroundColor: "#ffffff",
+    scale: DASHBOARD_EXPORT_PDF_CONFIG.renderScale,
+    useCORS: true,
+    allowTaint: true,
+    logging: false,
+    scrollX: 0,
+    scrollY: -window.scrollY,
+    windowWidth: Math.max(document.documentElement.scrollWidth, window.innerWidth || 0),
+    windowHeight: Math.max(document.documentElement.scrollHeight, window.innerHeight || 0),
+    imageTimeout: 0,
+  });
+  console.log("[report-export] Section capture complete", {
+    label,
+    index,
+    canvasWidth: Number(canvas?.width || 0),
+    canvasHeight: Number(canvas?.height || 0),
+  });
+  return canvas;
+}
+
+function appendCanvasToPdf({ pdf, canvas, index, node, exportState }) {
+  const pageWidthPt = Number(pdf.internal.pageSize.getWidth());
+  const pageHeightPt = Number(pdf.internal.pageSize.getHeight());
+  const marginPt = DASHBOARD_EXPORT_PDF_CONFIG.marginPt;
+  const contentWidthPt = Math.max(1, pageWidthPt - marginPt * 2);
+  const contentHeightPt = Math.max(1, pageHeightPt - marginPt * 2);
+  const sourceWidthPx = Math.max(1, Number(canvas?.width || 1));
+  const sourceHeightPx = Math.max(1, Number(canvas?.height || 1));
+  const maxSliceHeightPx = Math.max(1, Math.floor((contentHeightPt * sourceWidthPx) / contentWidthPt));
+  const label = getDashboardExportTargetLabel(node, index);
+  let offsetYpx = 0;
+  let sliceIndex = 0;
+
+  while (offsetYpx < sourceHeightPx) {
+    const remainingHeightPx = sourceHeightPx - offsetYpx;
+    const sliceHeightPx = Math.min(maxSliceHeightPx, remainingHeightPx);
+    const sliceCanvas = document.createElement("canvas");
+    sliceCanvas.width = sourceWidthPx;
+    sliceCanvas.height = sliceHeightPx;
+    const sliceContext = sliceCanvas.getContext("2d");
+    if (!sliceContext) {
+      throw new Error("Failed to initialize PDF export slice canvas context.");
+    }
+    sliceContext.drawImage(
+      canvas,
+      0,
+      offsetYpx,
+      sourceWidthPx,
+      sliceHeightPx,
+      0,
+      0,
+      sourceWidthPx,
+      sliceHeightPx,
+    );
+
+    const renderedSliceHeightPt = (sliceHeightPx * contentWidthPt) / sourceWidthPx;
+    if (exportState.hasRenderedPage) {
+      pdf.addPage();
+    } else {
+      exportState.hasRenderedPage = true;
+    }
+
+    const imageDataUrl = sliceCanvas.toDataURL("image/jpeg", DASHBOARD_EXPORT_PDF_CONFIG.imageQuality);
+    pdf.addImage(
+      imageDataUrl,
+      DASHBOARD_EXPORT_PDF_CONFIG.imageType,
+      marginPt,
+      marginPt,
+      contentWidthPt,
+      renderedSliceHeightPt,
+      undefined,
+      "FAST",
+    );
+
+    exportState.pageCount += 1;
+    console.log("[report-export] Added PDF page slice", {
+      label,
+      sectionIndex: index,
+      sliceIndex,
+      pageCount: exportState.pageCount,
+      sourceWidthPx,
+      sourceHeightPx,
+      offsetYpx,
+      sliceHeightPx,
+      renderedSliceHeightPt,
+    });
+
+    offsetYpx += sliceHeightPx;
+    sliceIndex += 1;
+  }
+}
+
 function snapshotChartsForExport() {
   const snapshots = [];
   document.querySelectorAll("canvas").forEach((canvas) => {
@@ -5323,8 +5462,9 @@ async function exportDashboardPdf() {
   console.log("[report-export] Export dashboard PDF requested from account dropdown");
   const exportButton = getExportPdfButton();
   const previousButtonText = exportButton?.textContent || "Export PDF";
-  const previousDocumentTitle = document.title;
   const exportTitle = buildDashboardExportTitle();
+  const jsPdfCtor = window.jspdf?.jsPDF;
+  const html2canvasFn = window.html2canvas;
   let cleanupSnapshots = null;
   let exportFinalized = false;
 
@@ -5335,8 +5475,6 @@ async function exportDashboardPdf() {
       cleanupSnapshots();
     }
     document.body.classList.remove("exporting-dashboard-pdf");
-    document.body.removeAttribute("data-export-title");
-    document.title = previousDocumentTitle;
     if (exportButton) {
       exportButton.disabled = false;
       exportButton.textContent = previousButtonText;
@@ -5345,38 +5483,77 @@ async function exportDashboardPdf() {
     console.log("[report-export] Dashboard PDF export cleanup complete");
   };
 
-  const onAfterPrint = () => {
-    window.removeEventListener("afterprint", onAfterPrint);
-    finalizeExport();
-  };
-
   try {
-    if (exportButton) {
-      exportButton.disabled = true;
-      exportButton.textContent = "Preparing PDF...";
+    if (typeof jsPdfCtor !== "function") {
+      throw new Error("Missing jsPDF runtime (window.jspdf.jsPDF).");
+    }
+    if (typeof html2canvasFn !== "function") {
+      throw new Error("Missing html2canvas runtime (window.html2canvas).");
     }
 
-    document.body.setAttribute("data-export-title", exportTitle);
+    if (exportButton) {
+      exportButton.disabled = true;
+      exportButton.textContent = "Building PDF...";
+    }
+
     document.body.classList.add("exporting-dashboard-pdf");
-    document.title = exportTitle;
+    await sleep(120);
 
     if (profileChart) profileChart.resize();
     cleanupSnapshots = snapshotChartsForExport();
+    await sleep(80);
 
-    console.log("[report-export] Opening print dialog for dashboard PDF", {
-      exportTitle,
-      trigger: "synchronous-user-click",
+    const exportTargets = getDashboardPdfExportTargets();
+    if (!exportTargets.length) {
+      throw new Error("No exportable dashboard sections were found.");
+    }
+
+    const pdf = new jsPdfCtor({
+      orientation: DASHBOARD_EXPORT_PDF_CONFIG.orientation,
+      unit: DASHBOARD_EXPORT_PDF_CONFIG.unit,
+      format: DASHBOARD_EXPORT_PDF_CONFIG.format,
+      compress: true,
+      putOnlyUsedFonts: true,
     });
-    window.addEventListener("afterprint", onAfterPrint, { once: true });
-    window.print();
+    const exportState = {
+      hasRenderedPage: false,
+      pageCount: 0,
+    };
 
-    window.setTimeout(() => {
-      finalizeExport();
-    }, 2000);
+    console.log("[report-export] Starting PDF render + download flow", {
+      exportTitle,
+      targetCount: exportTargets.length,
+    });
+    for (let index = 0; index < exportTargets.length; index += 1) {
+      const targetNode = exportTargets[index];
+      const canvas = await captureDashboardExportCanvas(targetNode, {
+        index,
+        html2canvasFn,
+      });
+      appendCanvasToPdf({
+        pdf,
+        canvas,
+        index,
+        node: targetNode,
+        exportState,
+      });
+    }
+
+    if (exportButton) {
+      exportButton.textContent = "Downloading PDF...";
+    }
+    pdf.save(`${exportTitle}.pdf`);
+    console.log("[report-export] PDF download triggered", {
+      exportTitle,
+      pageCount: exportState.pageCount,
+    });
+    finalizeExport();
   } catch (error) {
     console.log("[report-export] Dashboard export failed", error);
     finalizeExport();
-    alert("Unable to export dashboard PDF right now. Please try again.");
+    alert(
+      "Unable to download your dashboard PDF right now. Please refresh the page and try Export PDF again.",
+    );
   }
 }
 
