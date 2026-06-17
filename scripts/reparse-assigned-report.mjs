@@ -1,5 +1,7 @@
 import { getSupabaseAdmin, getSupabaseStorageBucket } from "../lib/supabaseAdmin.js";
 import { parsePdf } from "../lib/parsePdf.js";
+import { buildMlExtractionLearningContext } from "../lib/mlExtractionLearning.js";
+import { applyMlScoreLearningToParsedProfile } from "../lib/mlScoreLearning.js";
 import { readFileSync, existsSync, promises as fs } from "node:fs";
 import os from "node:os";
 import { execFile } from "node:child_process";
@@ -181,6 +183,18 @@ async function main() {
   }
 
   const pdfBuffer = Buffer.from(await fileBlob.arrayBuffer());
+  const extractionLearningContext = await buildMlExtractionLearningContext({
+    supabase,
+    table,
+    reportId: report.id,
+  });
+  console.log("[reparse-assigned-report] Extraction learning context prepared", {
+    reportId: report.id,
+    status: extractionLearningContext?.status || "unknown",
+    reason: extractionLearningContext?.reason || null,
+    trainingSamples: extractionLearningContext?.training?.trainingSampleCount ?? 0,
+    hints: extractionLearningContext?.hintCount ?? 0,
+  });
   let rawTextOverride = null;
   let pageCountOverride = null;
   let localExtractedPages = [];
@@ -216,24 +230,52 @@ async function main() {
     sourceFileName: fileName || "report.pdf",
     allowLocalTextFallback: true,
     enablePythonCrossCheck: true,
+    extractionLearningContext,
     rawTextOverride,
     pageCountOverride,
     pagesOverride: localExtractedPages,
   });
-  const parseDiagnostics =
-    parsed && typeof parsed === "object" && parsed._parseDiagnostics && typeof parsed._parseDiagnostics === "object"
-      ? parsed._parseDiagnostics
+  const mlLearningResult = await applyMlScoreLearningToParsedProfile({
+    supabase,
+    table,
+    parsedProfile: parsed,
+    reportId: report.id,
+  });
+  const parsedForSave =
+    mlLearningResult?.parsedProfile && typeof mlLearningResult.parsedProfile === "object"
+      ? mlLearningResult.parsedProfile
+      : parsed;
+  const mlLearning =
+    mlLearningResult?.ml && typeof mlLearningResult.ml === "object"
+      ? mlLearningResult.ml
       : null;
-  const parseState = String(parsed?._parseState || parsed?.parseState || "").trim().toLowerCase();
-  const parseFailureReason = String(parsed?._parseReason || parsed?.parseReason || "Unknown parse failure").trim();
+  console.log("[reparse-assigned-report] ML score learning completed", {
+    reportId: report.id,
+    mlStatus: mlLearning?.status || "unknown",
+    mlReason: mlLearning?.reason || null,
+    mlTrainingSamples: mlLearning?.training?.trainingSampleCount ?? null,
+    mlAppliedScoreCount: mlLearning?.applied?.appliedCounts?.total ?? 0,
+  });
+  const parseDiagnostics =
+    parsedForSave &&
+    typeof parsedForSave === "object" &&
+    parsedForSave._parseDiagnostics &&
+    typeof parsedForSave._parseDiagnostics === "object"
+      ? parsedForSave._parseDiagnostics
+      : null;
+  const parseState = String(parsedForSave?._parseState || parsedForSave?.parseState || "").trim().toLowerCase();
+  const parseFailureReason = String(parsedForSave?._parseReason || parsedForSave?.parseReason || "Unknown parse failure").trim();
   if (failOnParserFailure && parseState === "failed") {
     throw new Error(`Parser returned failed state: ${parseFailureReason}`);
   }
   const parseReview =
-    parsed && typeof parsed === "object" && parsed._review && typeof parsed._review === "object"
-      ? parsed._review
+    parsedForSave &&
+    typeof parsedForSave === "object" &&
+    parsedForSave._review &&
+    typeof parsedForSave._review === "object"
+      ? parsedForSave._review
       : null;
-  const recomputed = computeCompletenessFromParsed(parsed, parseDiagnostics);
+  const recomputed = computeCompletenessFromParsed(parsedForSave, parseDiagnostics);
   const localTextFirstDiagnostics = rawTextOverride
     ? {
       enabled: true,
@@ -287,7 +329,7 @@ async function main() {
   const reviewStatus = parseReview?.status || (recomputed.isComplete ? "auto_approved" : "needs_review");
   const extractedContentPages = localExtractedPages.length > 0
     ? localExtractedPages
-    : (Array.isArray(parsed?.reportContent?.pages) ? parsed.reportContent.pages : []);
+    : (Array.isArray(parsedForSave?.reportContent?.pages) ? parsedForSave.reportContent.pages : []);
 
   const nextResultsData = {
     ...(report.results_data && typeof report.results_data === "object" ? report.results_data : {}),
@@ -311,32 +353,36 @@ async function main() {
     },
     dashboardContext: {
       ...(report.results_data?.dashboardContext || {}),
-      detectedType: parsed?.primaryType ? String(parsed.primaryType) : null,
+      detectedType: parsedForSave?.primaryType ? String(parsedForSave.primaryType) : null,
       detectedTypeSource: `azure-openai:${process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini"}`,
       sourceFileName: fileName,
-      basicFear: parsed?.coreFear || null,
-      basicDesire: parsed?.coreDesire || null,
+      basicFear: parsedForSave?.coreFear || null,
+      basicDesire: parsedForSave?.coreDesire || null,
       passion: report?.results_data?.dashboardContext?.passion || null,
-      integrationLevel: parsed?.integrationLevel || null,
-      instinct: parsed?.instinctualVariant || null,
-      reportSummary: parsed?.reportSummary || null,
+      integrationLevel: parsedForSave?.integrationLevel || null,
+      instinct: parsedForSave?.instinctualVariant || null,
+      reportSummary: parsedForSave?.reportSummary || null,
     },
     extractedContent: {
       ...(report.results_data?.extractedContent || {}),
-      documentSummary: parsed?.reportContent?.documentSummary || null,
+      documentSummary: parsedForSave?.reportContent?.documentSummary || null,
       pages: extractedContentPages,
-      sections: Array.isArray(parsed?.reportContent?.sections) ? parsed.reportContent.sections : [],
+      sections: Array.isArray(parsedForSave?.reportContent?.sections) ? parsedForSave.reportContent.sections : [],
       extractedAt: new Date().toISOString(),
       parserVersion: nextDiagnostics?.parserVersion || "multi-pass-v3",
     },
-    parsedProfile: parsed,
+    parsedProfile: parsedForSave,
+    ml: {
+      ...(report.results_data?.ml && typeof report.results_data.ml === "object" ? report.results_data.ml : {}),
+      ...(mlLearning || {}),
+    },
   };
 
   const { error: updateErr } = await supabase
     .from(table)
     .update({
       results_data: nextResultsData,
-      enneagram_type: parsed?.primaryType ? String(parsed.primaryType) : report.enneagram_type,
+      enneagram_type: parsedForSave?.primaryType ? String(parsedForSave.primaryType) : report.enneagram_type,
     })
     .eq("id", report.id);
 
@@ -351,9 +397,11 @@ async function main() {
         bucket,
         storagePath,
         sourceFileName: fileName,
-        parsedPrimaryType: parsed?.primaryType || null,
-        parsedInstinctualVariant: parsed?.instinctualVariant || null,
+        parsedPrimaryType: parsedForSave?.primaryType || null,
+        parsedInstinctualVariant: parsedForSave?.instinctualVariant || null,
         parserModel: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
+        mlStatus: mlLearning?.status || null,
+        mlTrainingSamples: mlLearning?.training?.trainingSampleCount ?? null,
         parseStatus,
         parsePages: nextDiagnostics?.extraction?.pages ?? null,
         parseMinExpectedPages: nextDiagnostics?.extraction?.minExpectedPages ?? null,
