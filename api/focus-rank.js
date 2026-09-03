@@ -32,6 +32,8 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+import { normalizeAzureOpenAiEndpoint } from "../lib/normalizeAzureOpenAiEndpoint.js";
+
 function buildAzureResponsesUrl(endpoint, apiVersion) {
   const base = endpoint.replace(/\/+$/, '');
   if (base.includes('/openai/responses')) {
@@ -180,7 +182,8 @@ export default async function handler(req, res) {
     return json(res, 405, { error: 'method_not_allowed' });
   }
 
-  const endpoint = process.env.AZURE_OPENAI_ENDPOINT || '';
+  const endpointRaw = process.env.AZURE_OPENAI_ENDPOINT || '';
+  const endpoint = normalizeAzureOpenAiEndpoint(endpointRaw);
   const apiKey = process.env.AZURE_OPENAI_API_KEY || '';
   const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-11-20';
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-5.4-mini';

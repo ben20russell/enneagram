@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { normalizeAzureOpenAiEndpoint } from "../../../../../lib/normalizeAzureOpenAiEndpoint.js";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -1280,7 +1281,8 @@ export async function POST(request) {
     );
   }
 
-  const endpoint = normalizeText(process.env.AZURE_OPENAI_ENDPOINT, { fallback: null, maxChars: 240 });
+  const endpointRaw = normalizeText(process.env.AZURE_OPENAI_ENDPOINT, { fallback: null, maxChars: 240 });
+  const endpoint = normalizeAzureOpenAiEndpoint(endpointRaw);
   const deployment = normalizeText(process.env.AZURE_OPENAI_DEPLOYMENT_NAME, { fallback: null, maxChars: 120 });
   const apiKey = normalizeText(process.env.AZURE_OPENAI_API_KEY, { fallback: null, maxChars: 400 });
   const apiVersion = normalizeText(process.env.AZURE_OPENAI_API_VERSION, { fallback: null, maxChars: 80 }) || "2024-08-01-preview";
