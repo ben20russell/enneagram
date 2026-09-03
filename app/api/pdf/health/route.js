@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export async function GET() {
   const hasEndpoint = Boolean(process.env.AZURE_OPENAI_ENDPOINT);
   const hasApiKey = Boolean(process.env.AZURE_OPENAI_API_KEY);
-  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini";
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.6-sol";
 
   const ok = hasEndpoint && hasApiKey;
 
@@ -15,7 +15,7 @@ export async function GET() {
       azureEndpoint: hasEndpoint ? "present" : "missing",
       azureApiKey: hasApiKey ? "present" : "missing",
       deployment,
-      model: "gpt-5.4-mini",
+      model: "gpt-5.6-sol",
     },
     { status: 200 },
   );

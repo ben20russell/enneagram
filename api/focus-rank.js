@@ -186,7 +186,7 @@ export default async function handler(req, res) {
   const endpoint = normalizeAzureOpenAiEndpoint(endpointRaw);
   const apiKey = process.env.AZURE_OPENAI_API_KEY || '';
   const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-11-20';
-  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-5.4-mini';
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-5.6-sol';
 
   if (!endpoint || !apiKey || !deployment) {
     return json(res, 500, { error: 'focus_ai_not_configured' });

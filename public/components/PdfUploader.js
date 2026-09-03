@@ -28,7 +28,7 @@ const PdfUploader = (() => {
           </div>
           <div class="uploader-loading" id="pu-loading" style="display:none">
             <div class="uploader-spinner" aria-label="Parsing…"></div>
-            <p class="uploader-text">gpt-5.4-mini is reading the report…</p>
+            <p class="uploader-text">gpt-5.6-sol is reading the report…</p>
             <p class="uploader-sub">~20–40 seconds for a full iEQ9 PDF</p>
           </div>
         </div>

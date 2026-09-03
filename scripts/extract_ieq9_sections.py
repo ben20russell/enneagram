@@ -13,7 +13,7 @@ Usage:
 
 Environment:
   OPENAI_API_KEY=<key>             # required unless --skip-llm
-  OPENAI_MODEL=gpt-4o-mini         # optional
+    OPENAI_MODEL=gpt-5.6-sol         # optional
 """
 
 from __future__ import annotations
@@ -350,7 +350,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract structured sections from iEQ9 Individual Professional PDF reports.")
     parser.add_argument("pdf_path", type=Path, help="Path to the iEQ9 PDF report file.")
     parser.add_argument("-o", "--output", type=Path, default=None, help="Output JSON path. Defaults to <input>_structured.json")
-    parser.add_argument("--model", default="gpt-4o-mini", help="OpenAI model name (default: gpt-4o-mini).")
+    parser.add_argument("--model", default="gpt-5.6-sol", help="OpenAI model name (default: gpt-5.6-sol).")
     parser.add_argument("--skip-llm", action="store_true", help="Skip OpenAI structuring and output cleaned section text only.")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logs.")
     return parser.parse_args(argv)

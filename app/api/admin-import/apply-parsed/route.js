@@ -215,7 +215,7 @@ function resolveHydrationIdentityFields({ parsed, diagnostics, fileName }) {
   const detectedTypeSource =
     verificationType != null
       ? `python-cross-check:${verification?.source || "extract_report_pdf"}`
-      : `azure-openai:${process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini"}`;
+      : `azure-openai:${process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.6-sol"}`;
 
   return {
     primaryType: primaryTypeValue != null ? String(primaryTypeValue) : null,
@@ -465,7 +465,7 @@ export async function POST(req) {
         reportId: report.id,
         parser: {
           provider: "azure-openai",
-          model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
+          model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.6-sol",
         },
         ml: mlLearning && typeof mlLearning === "object"
           ? mlLearning

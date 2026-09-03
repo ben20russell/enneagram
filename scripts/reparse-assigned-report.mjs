@@ -459,9 +459,9 @@ async function main() {
       mode: "admin-import-auto",
       ingestedAt: new Date().toISOString(),
       reportId: report.id,
-      parser: {
+        parser: {
         provider: "azure-openai",
-        model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
+        model: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.6-sol",
       },
       parseDiagnostics: nextDiagnostics,
     },
@@ -474,7 +474,7 @@ async function main() {
     dashboardContext: {
       ...(report.results_data?.dashboardContext || {}),
       detectedType: parsedForSave?.primaryType ? String(parsedForSave.primaryType) : null,
-      detectedTypeSource: `azure-openai:${process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini"}`,
+      detectedTypeSource: `azure-openai:${process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.6-sol"}`,
       sourceFileName: fileName,
       basicFear: parsedForSave?.coreFear || null,
       basicDesire: parsedForSave?.coreDesire || null,
@@ -519,7 +519,7 @@ async function main() {
         sourceFileName: fileName,
         parsedPrimaryType: parsedForSave?.primaryType || null,
         parsedInstinctualVariant: parsedForSave?.instinctualVariant || null,
-        parserModel: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.4-mini",
+        parserModel: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "gpt-5.6-sol",
         mlStatus: mlLearning?.status || null,
         mlTrainingSamples: mlLearning?.training?.trainingSampleCount ?? null,
         parseStatus,
