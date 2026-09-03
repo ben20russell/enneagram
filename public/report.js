@@ -5653,6 +5653,25 @@ async function openGoogleSignInPopup(event) {
     return false;
   }
 
+  // Prefer the provider signin URL from the backend to avoid host mismatches
+  let signInUrl = authUrl;
+  try {
+    const providersRes = await fetch(`${baseUrl}/api/auth/providers`, { method: "GET", cache: "no-store" });
+    if (providersRes.ok) {
+      const providers = await providersRes.json();
+      if (providers && providers.google && providers.google.signinUrl) {
+        signInUrl = providers.google.signinUrl;
+        // Ensure callbackUrl is present and points to our popup handler
+        const callbackParam = `callbackUrl=${encodeURIComponent(callbackUrl)}`;
+        if (!signInUrl.includes("callbackUrl=")) {
+          signInUrl += (signInUrl.includes("?") ? "&" : "?") + callbackParam;
+        }
+      }
+    }
+  } catch (err) {
+    console.log("[auth] Failed to fetch providers, falling back to constructed URL:", err);
+  }
+
   const popup = window.open(
     "about:blank",
     "googleAuthPopup",
@@ -5661,7 +5680,7 @@ async function openGoogleSignInPopup(event) {
 
   if (!popup) {
     console.log("[auth] Popup blocked by browser. Falling back to full-page redirect.");
-    window.location.href = authUrl;
+    window.location.href = signInUrl || authUrl;
     return false;
   }
 
@@ -5701,7 +5720,7 @@ async function openGoogleSignInPopup(event) {
 
     const form = popup.document.createElement("form");
     form.method = "POST";
-    form.action = `${baseUrl}/api/auth/signin/google`;
+    form.action = signInUrl || `${baseUrl}/api/auth/signin/google`;
     form.style.display = "none";
 
     const csrfInput = popup.document.createElement("input");
@@ -5720,7 +5739,7 @@ async function openGoogleSignInPopup(event) {
     form.submit();
   } catch (error) {
     console.log("[auth] Direct sign-in POST failed, falling back to GET sign-in URL:", error);
-    popup.location.href = authUrl;
+    popup.location.href = signInUrl || authUrl;
   }
 
   const popupWatcher = window.setInterval(() => {

@@ -15,7 +15,15 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body suppressHydrationWarning>
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+        </Providers>
+        {/* Inject AUTH_BASE_URL into the client for public/report.js to read. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `if (typeof window !== 'undefined') { window.__AUTH_BASE_URL__ = "${process.env.NEXT_PUBLIC_AUTH_BASE_URL || ''}"; }`,
+          }}
+        />
       </body>
     </html>
   );
