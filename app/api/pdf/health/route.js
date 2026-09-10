@@ -15,7 +15,7 @@ export async function GET() {
       azureEndpoint: hasEndpoint ? "present" : "missing",
       azureApiKey: hasApiKey ? "present" : "missing",
       deployment,
-      model: "gpt-5.6-sol",
+      model: deployment,
     },
     { status: 200 },
   );

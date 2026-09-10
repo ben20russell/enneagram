@@ -36,6 +36,9 @@ import { normalizeAzureOpenAiEndpoint } from "../lib/normalizeAzureOpenAiEndpoin
 
 function buildAzureResponsesUrl(endpoint, apiVersion) {
   const base = endpoint.replace(/\/+$/, '');
+  if (base.includes('/openai/v1/responses')) {
+    return base;
+  }
   if (base.includes('/openai/responses')) {
     const parsed = new URL(base);
     if (!parsed.searchParams.has('api-version')) {
@@ -117,8 +120,7 @@ async function callAzureFocusRank({ promptText, candidates, config }) {
       { role: 'system', content: [{ type: 'input_text', text: systemPrompt }] },
       { role: 'user', content: [{ type: 'input_text', text: userPrompt }] }
     ],
-    max_output_tokens: 500,
-    temperature: 0.2
+    max_output_tokens: 500
   };
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -184,7 +186,7 @@ export default async function handler(req, res) {
 
   const endpointRaw = process.env.AZURE_OPENAI_ENDPOINT || '';
   const endpoint = normalizeAzureOpenAiEndpoint(endpointRaw);
-  const apiKey = process.env.AZURE_OPENAI_API_KEY || '';
+  const apiKey = process.env.AZURE_OPENAI_API_KEY || '67HkMKwjoDEu9kPbwghmE2y80UwRYv0U067nzp7nRYI7DTYKI598JQQJ99CEACYeBjFXJ3w3AAAAACOGIhCA';
   const apiVersion = process.env.AZURE_OPENAI_API_VERSION || '2024-11-20';
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-5.6-sol';
 

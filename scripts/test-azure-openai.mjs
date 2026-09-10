@@ -37,6 +37,9 @@ const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME;
 
 function buildAzureResponsesUrl(endpoint, apiVersion) {
   const base = endpoint.replace(/\/+$/, '');
+  if (base.includes('/openai/v1/responses')) {
+    return base;
+  }
   if (base.includes('/openai/responses')) {
     const parsed = new URL(base);
     if (!parsed.searchParams.has('api-version')) {
@@ -69,8 +72,7 @@ async function run() {
       { role: 'system', content: [{ type: 'input_text', text: systemPrompt }] },
       { role: 'user', content: [{ type: 'input_text', text: userPrompt }] }
     ],
-    max_output_tokens: 200,
-    temperature: 0.2
+    max_output_tokens: 200
   };
 
   try {

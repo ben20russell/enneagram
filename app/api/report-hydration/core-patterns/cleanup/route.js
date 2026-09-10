@@ -259,7 +259,6 @@ function buildOpenAiRequestPayload({ bullets, detectedType, reportFileName, repo
         content: `Clean these core-pattern bullets for hydration:\n${JSON.stringify(modelInput, null, 2)}`,
       },
     ],
-    temperature: 0,
     max_completion_tokens: OPENAI_MAX_COMPLETION_TOKENS,
     response_format: {
       type: "json_schema",
@@ -404,7 +403,7 @@ export async function POST(request) {
   const endpoint = normalizeAzureOpenAiEndpoint(endpointRaw);
   const deployment = normalizeStringOrNull(process.env.AZURE_OPENAI_DEPLOYMENT_NAME);
   const apiKey = normalizeStringOrNull(process.env.AZURE_OPENAI_API_KEY);
-  const apiVersion = normalizeStringOrNull(process.env.AZURE_OPENAI_API_VERSION) || "2024-08-01-preview";
+  const apiVersion = normalizeStringOrNull(process.env.AZURE_OPENAI_API_VERSION) || "2025-04-01-preview";
 
   if (!endpoint || !deployment || !apiKey) {
     console.log("[core-pattern-hydration] Missing Azure OpenAI env vars; skipping LLM cleanup", {

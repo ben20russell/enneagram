@@ -1140,7 +1140,6 @@ function buildOpenAiRequestPayload({ payload, detectedType, reportFileName, repo
         content: `Clean this dashboard hydration narrative payload:\n${JSON.stringify(modelInput, null, 2)}`,
       },
     ],
-    temperature: 0,
     max_completion_tokens: OPENAI_MAX_COMPLETION_TOKENS,
     response_format: {
       type: "json_schema",
@@ -1285,7 +1284,7 @@ export async function POST(request) {
   const endpoint = normalizeAzureOpenAiEndpoint(endpointRaw);
   const deployment = normalizeText(process.env.AZURE_OPENAI_DEPLOYMENT_NAME, { fallback: null, maxChars: 120 });
   const apiKey = normalizeText(process.env.AZURE_OPENAI_API_KEY, { fallback: null, maxChars: 400 });
-  const apiVersion = normalizeText(process.env.AZURE_OPENAI_API_VERSION, { fallback: null, maxChars: 80 }) || "2024-08-01-preview";
+  const apiVersion = normalizeText(process.env.AZURE_OPENAI_API_VERSION, { fallback: null, maxChars: 80 }) || "2025-04-01-preview";
 
   if (!endpoint || !deployment || !apiKey) {
     console.log("[dashboard-copy-hydration] Missing Azure OpenAI env vars; skipping LLM cleanup", {
