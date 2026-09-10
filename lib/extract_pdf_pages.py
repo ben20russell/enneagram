@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract PDF page text with heuristic OCR fallback for noisy text layers.
+"""Extract text-layer content from PDF pages without rendering pages as images.
 
 Output JSON shape:
 {
@@ -304,7 +304,8 @@ def extract_pages_with_ocr_fallback(
   diagnostics: dict[str, Any] = {
     "primaryEngine": primary_engine,
     "primaryPageCount": len(pages),
-    "fallbackTriggered": fallback_triggered,
+    "fallbackTriggered": False,
+    "textOnly": True,
     "noisyPageNumbers": noisy_page_numbers,
     "overallPrimaryHealth": overall_health,
     "heuristics": resolved_thresholds,
@@ -313,55 +314,6 @@ def extract_pages_with_ocr_fallback(
     "fallbackError": None,
     "ocrDependencies": None,
   }
-
-  if not fallback_triggered:
-    return [normalize_page_text(page) for page in pages], diagnostics
-
-  dependencies = ensure_ocr_dependencies()
-  diagnostics["ocrDependencies"] = dependencies
-  if not bool(dependencies.get("available")):
-    missing = ", ".join(dependencies.get("missing") or ["unknown"])
-    message = (
-      "OCR fallback required for noisy PDF text, but required OCR dependencies are missing: "
-      f"{missing}. Install Poppler (pdftoppm or pdftocairo) and Tesseract."
-    )
-    diagnostics["fallbackError"] = message
-    raise RuntimeError(message)
-
-  target_pages = noisy_page_numbers if noisy_page_numbers else list(range(1, len(pages) + 1))
-  try:
-    ocr_pages = extract_text_with_tesseract_ocr(
-      pdf_path,
-      target_pages,
-      dependencies=dependencies,
-      dpi=ocr_dpi,
-      language=ocr_language,
-      tesseract_config=ocr_tesseract_config,
-    )
-  except Exception as error:
-    diagnostics["fallbackError"] = str(error)
-    diagnostics["ocrFailedPageNumbers"] = target_pages
-    raise RuntimeError(f"OCR fallback failed for noisy pages in {pdf_path}: {error}") from error
-
-  for page_number in target_pages:
-    page_index = page_number - 1
-    if page_index < 0 or page_index >= len(pages):
-      continue
-    ocr_text = normalize_page_text(ocr_pages.get(page_number, ""))
-    if ocr_text:
-      pages[page_index] = ocr_text
-      diagnostics["ocrAppliedPageNumbers"].append(page_number)
-    else:
-      diagnostics["ocrFailedPageNumbers"].append(page_number)
-
-  if not diagnostics["ocrAppliedPageNumbers"]:
-    message = (
-      "OCR fallback was triggered for noisy PDF text, but no pages were recovered. "
-      "Review Poppler/Tesseract installation and OCR runtime access."
-    )
-    diagnostics["fallbackError"] = message
-    raise RuntimeError(message)
-
   return [normalize_page_text(page) for page in pages], diagnostics
 
 

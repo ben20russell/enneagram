@@ -5,7 +5,6 @@ import { resolvePdfSanitizeFormFieldMode, sanitizePdfForParsing } from "../../..
 export const runtime = "nodejs";
 export const maxDuration = 300;
 const MAX_PDF_BYTES = 25 * 1024 * 1024;
-const DEFAULT_ROUTE_IMAGE_PAGE_LIMIT = 24;
 const ADMIN_INLINE_SAFE_MODE = "admin-inline-safe";
 
 function mergeSanitizationIntoParsedPayload(parsed, sanitizationDiagnostics) {
@@ -204,14 +203,6 @@ export async function POST(req) {
     }
 
     const buffer = Buffer.from(await report.arrayBuffer());
-    const routeImagePageLimitRaw = Number(
-      process.env.PDF_PARSE_ROUTE_IMAGE_FULL_DOC_MAX_PAGES ??
-        process.env.PDF_PARSE_IMAGE_FULL_DOC_MAX_PAGES ??
-        DEFAULT_ROUTE_IMAGE_PAGE_LIMIT,
-    );
-    const routeImagePageLimit = Number.isFinite(routeImagePageLimitRaw) && routeImagePageLimitRaw > 0
-      ? Math.floor(routeImagePageLimitRaw)
-      : DEFAULT_ROUTE_IMAGE_PAGE_LIMIT;
     const sanitizedPdf = await sanitizePdfForParsing(buffer, {
       source: "/api/pdf/parse",
       formFieldMode: resolvePdfSanitizeFormFieldMode(process.env.PDF_SANITIZE_FORM_FIELDS_MODE),
@@ -233,13 +224,11 @@ export async function POST(req) {
 
     const parsed = await parsePdf(sanitizedPdf.buffer, {
       sourceFileName: report.name,
-      imagePrimaryFullDocMaxPages: routeImagePageLimit,
       requireChartScoresForComplete: false,
       allowLocalTextFallback: true,
       enablePythonCrossCheck: true,
       ...(mode === ADMIN_INLINE_SAFE_MODE
         ? {
-            disableImagePipeline: true,
             disableImageScoreRescue: true,
           }
         : {}),
