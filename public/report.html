@@ -969,11 +969,9 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
 
         <div class="devbox mb24" id="devExerciseComponent" data-testid="dev-exercise-component">
           <div class="devbox-title">Development Exercises</div>
-          <p class="dev-summary" id="devExerciseSummary">Not detected in assigned PDF.</p>
+          <p class="dev-summary" id="devExerciseSummary" data-testid="dev-exercise-summary">Development priorities will appear when exercises are available in your report.</p>
           <div class="dev-grid" id="devExercisePaths" data-testid="dev-exercise-paths">
-            <div class="dev-item"><div class="dev-item-title">Exercise 1</div><p>Not detected in assigned PDF.</p></div>
-            <div class="dev-item"><div class="dev-item-title">Exercise 2</div><p>Not detected in assigned PDF.</p></div>
-            <div class="dev-item"><div class="dev-item-title">Exercise 3</div><p>Not detected in assigned PDF.</p></div>
+            <p data-testid="development-exercises-empty">No development exercises were found in this report. Refresh the report or contact your administrator to check the source PDF.</p>
           </div>
         </div>
       </div>

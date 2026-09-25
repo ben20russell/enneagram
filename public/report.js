@@ -3717,9 +3717,13 @@ function applyFallbackAssignedReportFromServerData(data) {
     feedbackGuideMatrix: Array.isArray(parsedProfile?.feedbackGuideMatrix) ? parsedProfile.feedbackGuideMatrix : [],
     strainQualitativeWriteups: Array.isArray(parsedProfile?.strainQualitativeWriteups) ? parsedProfile.strainQualitativeWriteups : [],
     overallStrainSummary:
-      extractOverallStrainSummaryFromLlmProfile(parsedProfile) ||
-      sanitizeSnippet(parsedProfile?.overallStrainSummary, null),
+      resolveOverallStrainDisplaySummary(
+        parsedProfile,
+        extractOverallStrainSummaryFromLlmProfile(parsedProfile) ||
+          sanitizeSnippet(parsedProfile?.overallStrainSummary, null),
+      ),
     developmentExercises: parsedDevelopmentExercises,
+    developmentExerciseCandidates: parsedDevelopmentExercises,
     spreadsheetFocuses:
       parsedProfile?.spreadsheetFocuses && typeof parsedProfile.spreadsheetFocuses === "object"
         ? parsedProfile.spreadsheetFocuses
@@ -4318,7 +4322,10 @@ async function ingestAssignedReportIntoDashboard(data) {
           : []);
     const parsedProfileDevelopmentExercises = Array.isArray(parsedProfile?.developmentExercises)
       ? parsedProfile.developmentExercises
-          .map((value, index) => ({ title: `Exercise ${index + 1}`, text: String(value || "").trim() }))
+          .map((value, index) => ({
+            title: `Exercise ${index + 1}`,
+            text: String(value?.text || value?.guidance || value?.description || (typeof value === "string" ? value : "")).trim(),
+          }))
           .filter((row) => Boolean(row.text))
       : [];
     const targetedDevelopmentExercises = extractDevelopmentExercisesFromTargetedSections(parsedProfile);
@@ -4577,10 +4584,12 @@ async function ingestAssignedReportIntoDashboard(data) {
     strainQualitativeWriteups = Array.isArray(narrativeCleanupPayload?.strainQualitativeWriteups)
       ? narrativeCleanupPayload.strainQualitativeWriteups
       : strainQualitativeWriteups;
-    overallStrainSummary = normalizeDashboardNarrativeCleanupText(
-      narrativeCleanupPayload?.overallStrainSummary,
+    // Keep this card extractive: model cleanup must not expand or reinterpret the PDF statement.
+    overallStrainSummary = resolveOverallStrainDisplaySummary(
+      parsedProfile,
       overallStrainSummary,
-    ) || overallStrainSummary;
+      pdfText,
+    );
     developmentExercises = Array.isArray(narrativeCleanupPayload?.developmentExercises)
       ? narrativeCleanupPayload.developmentExercises
       : developmentExercises;
@@ -4698,6 +4707,12 @@ async function ingestAssignedReportIntoDashboard(data) {
       strainQualitativeWriteups,
       overallStrainSummary,
       developmentExercises,
+      // Preserve later exercises for prioritization; extraction/cleanup grids have smaller caps.
+      developmentExerciseCandidates: [
+        ...developmentExercises,
+        ...targetedDevelopmentExercises,
+        ...parsedProfileDevelopmentExercises,
+      ],
       spreadsheetFocuses,
       teamStageBreakdown,
       instinctScoresRaw,
@@ -7432,7 +7447,7 @@ function buildDevExercisePathHtml(paths) {
         : `<p>${escapeHtml(text)}</p>`;
       const source = sanitizeSnippet(formatOptionalText(path?.source, ""), "");
       const showSource = Boolean(source) && !/extracted\s+from\s+assigned\s+pdf/i.test(source);
-      return `<div class="dev-item"><div class="dev-item-title">${escapeHtml(title)}</div>${textMarkup}${showSource ? `<div class="subh" style="margin:8px 0 0">${escapeHtml(source)}</div>` : ""}</div>`;
+      return `<div class="dev-item" data-testid="development-exercise-${index + 1}"><div class="dev-item-title">${escapeHtml(title)}</div>${textMarkup}${showSource ? `<div class="subh" style="margin:8px 0 0">${escapeHtml(source)}</div>` : ""}</div>`;
     })
     .join("");
 }
@@ -7454,6 +7469,7 @@ function normalizeDevelopmentExerciseGridItems(exercises, maxItems = 20) {
     out.push({
       title: `Exercise ${out.length + 1}`,
       text: rawText,
+      ...(entry?.source ? { source: String(entry.source) } : {}),
     });
     if (out.length >= max) break;
   }
@@ -7465,106 +7481,118 @@ function normalizeDevelopmentExerciseGridItems(exercises, maxItems = 20) {
 }
 
 function renderDevelopmentExerciseGridItems(exercises) {
-  const normalized = normalizeDevelopmentExerciseGridItems(exercises, 20);
+  const normalized = normalizeDevelopmentExerciseGridItems(exercises, 3)
+    .filter((row) => !isMissingExtractedText(row.text));
   const html = buildDevExercisePathHtml(normalized);
   console.log("[development-exercises] grid hydrated", {
     count: normalized.length,
   });
-  return html || '<div class="dev-item"><div class="dev-item-title">Exercise 1</div><p>Not detected in assigned PDF.</p></div>';
+  return html || '<p data-testid="development-exercises-empty">No development exercises were found in this report. Refresh the report or contact your administrator to check the source PDF.</p>';
+}
+
+function selectCriticalDevelopmentExercises(report) {
+  // These growth themes follow the canonical copy source. They rank source
+  // exercises only; they never generate advice or change the report's wording.
+  const typeThemes = {
+    1: [[/self[- ]critic|inner critic|self[- ]compassion|self[- ]judg/i, "Self-compassion"], [/perfect|resentment|anger|rigid/i, "Letting go of perfectionism"], [/accept|relax|patience/i, "Acceptance"]],
+    2: [[/(?:own|personal|your) (?:feelings and )?needs|care for yourself|caring for yourself/i, "Feelings and needs"], [/boundar|permission|over[- ]giv/i, "Personal boundaries"], [/self[- ]worth|self[- ]love|appreciat.*yourself/i, "Self-worth"]],
+    3: [[/authentic|self[- ]worth|worth.*(?:achieve|perform)|honest/i, "Authenticity"], [/feelings|emotions|inner experience/i, "Feelings and needs"], [/slow down|rest|stop.*work/i, "Presence"]],
+    4: [[/self[- ]judg|self[- ]critic|comparison|shame|envy/i, "Self-acceptance"], [/emotions.*(?:consumed|identity)|observe.*emotions|emotional balance/i, "Awareness of emotions"], [/gratitude|ordinary|routine/i, "Presence in everyday life"]],
+    5: [[/engag|participat|isolat|withdraw/i, "Engagement"], [/body|physical|action|grounded/i, "Presence in the body"], [/share.*(?:feel|need)|emotional|connect.*others/i, "Connection"]],
+    6: [[/inner (?:voice|authority)|trust.*(?:self|your)|self[- ]trust/i, "Self-trust"], [/fear|anxiety|doubt|certainty/i, "Awareness of fear"], [/ground|present|relax/i, "Presence"]],
+    7: [[/pain|suffering|escape|distraction|emptiness/i, "Staying with your experience"], [/complet|commit|one thing|\bfocus(?:ed|ing)?\b/i, "Focus and follow-through"], [/moderat|restraint|indulg/i, "Moderation"]],
+    8: [[/vulnerab|toughness|fears and feelings/i, "Openness to vulnerability"], [/anger|revenge|grudges|forgiv/i, "Awareness of anger"], [/share power|receptiv|collaborat|control|compassion/i, "Receptivity to others"]],
+    9: [[/(?:own|personal|your) (?:needs|wants|priorit)|assert|express.*(?:want|opinion)/i, "Your needs and priorities"], [/action|inertia|procrastinat|disengag/i, "Engagement in action"], [/anger|conflict|disagree/i, "Awareness of anger"]],
+  };
+  const themes = typeThemes[Number(report?.typeNumber)] || [];
+  const isStandard = String(report?.reportType || "").toUpperCase() === "STD";
+  const lowIntegration = !isStandard && report?.supportsIntegrationLevel !== false
+    && /^(?:very[ _-]+)?low$/i.test(String(report?.integration || "").trim());
+  const strainKeys = ["overall", "physical", "psychological", "interpersonal", "vocational", "environmental", "happiness"];
+  const highStrainKeys = strainKeys.filter((key) => {
+    if (isStandard || report?.supportsStrainProfile === false) return false;
+    const score = toFiniteScoreOrNull(report?.strainScoresRaw?.[key]);
+    // Happiness runs in the opposite direction to strain; unknown values stay unknown.
+    return score != null && (key === "happiness" ? score <= 33 : score >= 67);
+  });
+  const strainThemes = {
+    physical: [/physical|body|bodi|sleep|rest\b|exhaust|health|self[- ]care/i, "Physical well-being"],
+    psychological: [/anxiety|anxious|worry|ruminat|mindful|mental|stress/i, "Psychological well-being"],
+    interpersonal: [/relationship|conflict|boundar|listen|connect.*others|communicat/i, "Relationships"],
+    vocational: [/work|delegat|commitment|career/i, "Work and commitments"],
+    environmental: [/environment|surrounding|living|stability/i, "Stability"],
+    happiness: [/gratitude|joy|enjoy|fulfil|meaning/i, "Appreciation and enjoyment"],
+  };
+  const awarenessPattern = /self[- ](?:observation|awareness)|mindful|meditat|pause before|before reacting|remain(?:ing)? present|notice.*react/i;
+  const recoveryPattern = /rest\b|recover|well[- ]?being|self[- ]care|exhaust|coping|stress|strain|sleep|physical.*health/i;
+  const actionablePattern = /^(?:(?:you (?:can|may|might|need to|are invited to|are encouraged to|should)|try to)\s+)?(?:practi[cs]e|practice|build|develop|notice|observe|identify|explore|reflect|ask|express|take|make|allow|learn|listen|share|slow|pause|name|use|focus|pay|tune|request|attend|reduce|cultivate|strengthen|recognise|recognize|acknowledge|examine|consider|protect|invest|connect|stay|reach|replace|distinguish|complete|set|seek|work|discuss|reclaim|affirm|integrate|balance|breathe|shift|look|avoid|be\b|don['’]t)\b/i;
+  const context = [report?.coreFear, report?.vice, report?.viceDesc,
+    ...(Array.isArray(report?.spreadsheetFocuses?.developingAsBullets) ? report.spreadsheetFocuses.developingAsBullets : []),
+  ].filter((value) => typeof value === "string" && !isMissingExtractedText(value)).join(" ");
+  const words = (text) => new Set((text.toLowerCase().match(/[a-z]{5,}/g) || [])
+    .filter((word) => !["their", "there", "these", "those", "others", "yourself", "about", "which", "would", "could", "should", "rather", "practise", "practice"].includes(word)));
+  const contextWords = words(context);
+  const candidates = [
+    ...(Array.isArray(report?.developmentExercises) ? report.developmentExercises : []),
+    ...(Array.isArray(report?.developmentExerciseCandidates) ? report.developmentExerciseCandidates : []),
+  ];
+  const normalizedCandidates = normalizeDevelopmentExerciseGridItems(candidates, Math.max(1, candidates.length));
+  const ranked = normalizedCandidates
+    // Imports may include both a whole section and its individual exercises.
+    // Rank the individual entries so a bundled section cannot evade the limit.
+    .filter((row) => normalizedCandidates.filter((other) => other !== row
+      && other.text.length >= 30 && other.text.length < row.text.length
+      && row.text.toLowerCase().includes(other.text.toLowerCase())).length < 2)
+    .filter((row) => !isMissingExtractedText(row.text) && !isLikelyGarbledDevelopmentExerciseText(row.text)
+      && actionablePattern.test(row.text) && row.text.split(/\s+/).length >= 5)
+    .map((row, index) => {
+      const matchedThemes = themes.filter(([pattern]) => pattern.test(row.text));
+      const matchedTheme = matchedThemes[0];
+      const strainTheme = highStrainKeys.map((key) => strainThemes[key])
+        .find((theme) => theme?.[0].test(row.text));
+      const tokens = words(row.text);
+      const overlap = [...tokens].filter((word) => contextWords.has(word)).length;
+      const priorities = [
+        { score: matchedTheme ? 60 : 0, focus: matchedTheme?.[1] },
+        { score: awarenessPattern.test(row.text) ? (lowIntegration ? 85 : 35) : 0, focus: "Presence and self-observation" },
+        { score: highStrainKeys.length && recoveryPattern.test(row.text) ? 100 : 0, focus: "Recovery and well-being" },
+        { score: strainTheme ? (recoveryPattern.test(row.text) ? 110 : 75) : 0, focus: strainTheme?.[1] },
+        { score: overlap >= 2 ? 45 : 0, focus: "Your development goals" },
+      ].sort((a, b) => b.score - a.score);
+      const focuses = [
+        ...matchedThemes.map(([, focus]) => focus),
+        ...priorities.filter((priority) => priority.score >= 35 && priority.focus !== "Your development goals").map((priority) => priority.focus),
+      ];
+      return { ...row, index, tokens, focuses, score: priorities[0].score + Math.min(overlap, 4), focus: priorities[0].focus || "Your development goals" };
+    });
+  const selected = [];
+  const usedFocuses = new Set();
+  const hasRelevantMatches = ranked.some((row) => row.score >= 35);
+  let remaining = ranked.filter((row) => !hasRelevantMatches || row.score >= 35);
+  while (remaining.length && selected.length < 3) {
+    // Spread attention across distinct needs instead of filling all slots with
+    // variations on one theme. Stable source order breaks equally strong ties.
+    const adjustedScore = (row) => row.score - (row.focuses.some((focus) => usedFocuses.has(focus)) ? 50 : 0);
+    remaining.sort((a, b) => adjustedScore(b) - adjustedScore(a) || a.index - b.index);
+    const next = remaining.shift();
+    selected.push(next);
+    next.focuses.forEach((focus) => usedFocuses.add(focus));
+    remaining = remaining.filter((row) => {
+      const intersection = [...row.tokens].filter((word) => next.tokens.has(word)).length;
+      const smaller = Math.min(row.tokens.size, next.tokens.size);
+      return smaller < 4 || intersection / smaller < 0.8;
+    });
+  }
+  return selected.map((row, index) => ({ title: `Exercise ${index + 1}`, text: row.text, source: `Focus: ${row.focus}` }));
 }
 
 function buildDevExerciseComponentData(report) {
-  const typeLabel = `Type ${String(report?.typeNumber || "?")}`;
-  const supportsIntegrationLevel = report?.supportsIntegrationLevel !== false;
-  const integrationLevel = supportsIntegrationLevel
-    ? normalizeIntegrationLevel(report?.integration)
-    : null;
-  const overallStrainDirect = toFiniteScoreOrNull(report?.strainScoresRaw?.overall);
-  const fallbackStrainValues = Array.isArray(report?.strain)
-    ? report.strain.map((value) => toFiniteScoreOrNull(value)).filter((value) => Number.isFinite(value))
-    : [];
-  const overallStrainScore = Number.isFinite(overallStrainDirect)
-    ? overallStrainDirect
-    : (fallbackStrainValues.length
-        ? Math.round(fallbackStrainValues.reduce((acc, value) => acc + Number(value || 0), 0) / fallbackStrainValues.length)
-        : null);
-  const overallStrainLevel = Number.isFinite(overallStrainScore) ? scoreBandLabel(overallStrainScore) : "Medium";
-
-  const integrationPriority = {
-    "Very Low": "Start with regulation and short daily reset rituals before pushing performance targets.",
-    Low: "Build steadier self-observation so reactivity does not drive decisions under pressure.",
-    Moderate: "Strengthen consistency by linking insight to repeatable weekly behavioral commitments.",
-    High: "Maintain growth by scaling reflective practices into team-level habits and mentoring.",
-    "Very High": "Consolidate mastery through service, teaching, and deliberate recovery cycles.",
-  };
-  const strainPriority = {
-    High: "Protect recovery windows, lower cognitive load, and de-escalate commitments that are not essential.",
-    Medium: "Use rhythm-based recovery and one deliberate check-in each day to prevent stress buildup.",
-    Low: "Preserve energy gains with light maintenance habits and intentional long-range planning.",
-  };
-
-  const extractedExercises = Array.isArray(report?.developmentExercises) ? report.developmentExercises : [];
-  const extractedPaths = extractedExercises
-    .map((entry, index) => {
-      const title = formatOptionalText(entry?.title, `Exercise ${index + 1}`);
-      const text = formatOptionalText(entry?.text || entry, "");
-      if (!text || isMissingExtractedText(text)) return null;
-      return {
-        title,
-        text: ensureSentenceStartsCapitalized(sanitizeSnippet(text, text)),
-        source: "",
-      };
-    })
-    .filter(Boolean);
-
-  const generatedPaths = [
-    {
-      title: "Integration Stabilizer",
-      text: supportsIntegrationLevel
-        ? (integrationPriority[integrationLevel] || integrationPriority.Moderate)
-        : "Integration level is not available in this STD report. Focus on steady, repeatable regulation habits and clear communication checks.",
-      source: supportsIntegrationLevel
-        ? `Integration signal: ${integrationLevel.toUpperCase()}`
-        : "Integration signal unavailable for STD report",
-    },
-    {
-      title: "Strain Regulator",
-      text: strainPriority[overallStrainLevel] || strainPriority.Medium,
-      source: `Overall strain signal: ${overallStrainLevel.toUpperCase()}${Number.isFinite(overallStrainScore) ? ` (${overallStrainScore})` : ""}`,
-    },
-    {
-      title: "Applied Leadership Loop",
-      text: "Close each week by naming one behavior to stop, one to continue, and one collaborative behavior to increase.",
-      source: `${typeLabel} execution practice`,
-    },
-  ];
-
-  const mergedPaths = [...generatedPaths];
-  const deduped = [];
-  const seenTexts = new Set();
-  for (const item of mergedPaths) {
-    const key = normalizeExtractedText(item?.text || "").toLowerCase();
-    if (!key || seenTexts.has(key)) continue;
-    seenTexts.add(key);
-    deduped.push(item);
-    if (deduped.length >= 6) break;
-  }
-
-  const summary = supportsIntegrationLevel
-    ? `${typeLabel} growth path currently prioritizes ${integrationLevel.toUpperCase()} integration behaviors with ${overallStrainLevel.toUpperCase()} strain recovery tactics.`
-    : `${typeLabel} growth path currently prioritizes strain recovery and steady behavioral consistency because integration level is not available in this STD report.`;
-  console.log("[dev-exercise] built component data", {
-    typeLabel,
-    integrationLevel,
-    supportsIntegrationLevel,
-    overallStrainScore,
-    overallStrainLevel,
-    extractedExerciseCount: extractedPaths.length,
-    renderedPathCount: deduped.length,
-  });
+  const paths = selectCriticalDevelopmentExercises(report);
   return {
-    summary,
-    paths: deduped,
+    summary: paths.length
+      ? `Focus on ${paths.length === 1 ? "this 1 priority" : `these ${paths.length} priorities`} from your report. Practise one at a time.`
+      : "Development priorities will appear when exercises are available in your report.",
+    paths,
   };
 }
 
@@ -7868,7 +7896,7 @@ function renderWingInfluencePanel(report, integrationLevelRaw) {
 function formatStrainCardDetailContent(detail, item) {
   const normalizedDetail = formatOptionalText(detail, "Not detected in assigned PDF.");
   if (item.key === "overall") {
-    return `<p style="font-size:13px;color:var(--text2)">${escapeHtml(normalizedDetail)}</p>`;
+    return `<p data-testid="overall-strain-summary-copy" style="font-size:13px;color:var(--text2)">${escapeHtml(consolidateOverallStrainSummary(normalizedDetail) || "Overall strain summary was not detected in the assigned report.")}</p>`;
   }
 
   const rowItems = extractNarrativeBulletItems(normalizedDetail, 6);
@@ -8638,6 +8666,56 @@ function summarizeOverallStrainText(rawText, options = {}) {
     }
   }
   return summary;
+}
+
+function consolidateOverallStrainSummary(rawText) {
+  if (typeof rawText !== "string") return null;
+  const text = rawText.replace(/\s+/g, " ").trim();
+  if (!text || /^not detected\b/i.test(text)) return null;
+
+  const sentences = Array.from(
+    new Intl.Segmenter("en", { granularity: "sentence" }).segment(text),
+    (entry) => entry.segment.trim(),
+  );
+  const ratingIndex = sentences.findIndex((sentence) =>
+    /\byour\s+perceived\s+level\s+of\s+overall\s+strain\s+is\s+(?:low|medium|moderate|high)\b/i.test(sentence),
+  );
+  const candidates = ratingIndex >= 0 ? sentences.slice(ratingIndex) : sentences;
+  const selected = [];
+  const seen = new Set();
+  let wordCount = 0;
+  for (const sentence of candidates) {
+    // Select complete source sentences, never clipped words or newly written interpretations.
+    if (!/[.!?]["'”’)\]]*$/.test(sentence)) break;
+    if (/^(?:Copyright\b|Development\s*Exercises?\b|(?:Vocational|Interpersonal|Environmental|Physical|Psychological|Happiness)\s+Strain\b)/i.test(sentence)) break;
+    const key = sentence.toLowerCase();
+    if (seen.has(key)) continue;
+    const sentenceWords = sentence.split(/\s+/).length;
+    if (selected.length && wordCount + sentenceWords > 60) break;
+    seen.add(key);
+    selected.push(sentence);
+    wordCount += sentenceWords;
+    if (selected.length === 2) break;
+  }
+  return selected.join(" ") || null;
+}
+
+function resolveOverallStrainDisplaySummary(parsedProfile, fallbackSummary, pdfText = "") {
+  const pages = Array.isArray(parsedProfile?.reportContent?.pages) ? parsedProfile.reportContent.pages : [];
+  const sourceTexts = [...pages.map((page) => page?.extractedText), pdfText];
+  const source = sourceTexts.find((text) =>
+    typeof text === "string" &&
+    /\byour\s+perceived\s+level\s+of\s+overall\s+strain\s+is\s+(?:low|medium|moderate|high)\b/i.test(text),
+  );
+  return consolidateOverallStrainSummary(source) || consolidateOverallStrainSummary(fallbackSummary);
+}
+
+function resolveOverallStrainDisplayLevel(summary, numericScore) {
+  const reportedLevel = String(summary || "").match(
+    /\boverall\s+strain(?:\s+level)?\s+is\s+(low|medium|moderate|high)\b/i,
+  )?.[1]?.toLowerCase();
+  if (reportedLevel) return { low: "Low", medium: "Medium", moderate: "Medium", high: "High" }[reportedLevel];
+  return numericScore != null && Number.isFinite(Number(numericScore)) ? scoreBandLabel(numericScore) : null;
 }
 
 function extractOverallStrainSummaryFromLlmProfile(parsedProfile) {
@@ -11676,6 +11754,7 @@ function buildPdfOnlyReport(payload) {
     strainQualitativeWriteups: Array.isArray(payload?.strainQualitativeWriteups) ? payload.strainQualitativeWriteups : [],
     overallStrainSummary: sanitizeSnippet(payload?.overallStrainSummary, null),
     developmentExercises: Array.isArray(payload?.developmentExercises) ? payload.developmentExercises : [],
+    developmentExerciseCandidates: Array.isArray(payload?.developmentExerciseCandidates) ? payload.developmentExerciseCandidates : [],
     spreadsheetFocuses: payload?.spreadsheetFocuses && typeof payload.spreadsheetFocuses === "object"
       ? {
           motivationSummary: sanitizeSnippet(payload.spreadsheetFocuses.motivationSummary, "Not detected in assigned PDF."),
@@ -11990,28 +12069,28 @@ function renderReportFromState(isExampleMode) {
         "Psychological",
       ].map((category) => ({ category, text: "Not detected in assigned PDF." }));
 
-  const exercises = Array.isArray(REPORT.developmentExercises) && REPORT.developmentExercises.length
-    ? REPORT.developmentExercises
-    : [
-        { title: "Exercise 1", text: "Not detected in assigned PDF." },
-        { title: "Exercise 2", text: "Not detected in assigned PDF." },
-        { title: "Exercise 3", text: "Not detected in assigned PDF." },
-      ];
-  const devExerciseComponentData = buildDevExerciseComponentData({
-    ...REPORT,
-    developmentExercises: exercises,
-  });
+  const devExerciseComponentData = buildDevExerciseComponentData(REPORT);
   setText(
     'devExerciseSummary',
     formatOptionalText(
       devExerciseComponentData.summary,
-      "Growth paths are generated from integration and strain context once report data is available.",
+      "Development priorities will appear when exercises are available in your report.",
     ),
   );
   setHtml(
     'devExercisePaths',
-    renderDevelopmentExerciseGridItems(exercises),
+    renderDevelopmentExerciseGridItems(devExerciseComponentData.paths),
   );
+  console.log("[development-exercises] critical priorities rendered", {
+    selectionKey: activeSelectionKey,
+    reportId: activeSelectionSnapshot.reportId,
+    clientReportId: activeSelectionSnapshot.clientReportId,
+    typeNumber: REPORT.typeNumber,
+    integration: REPORT.integration,
+    strainScores: REPORT.strainScoresRaw,
+    candidateCount: REPORT.developmentExerciseCandidates?.length || REPORT.developmentExercises?.length || 0,
+    selectedExercises: devExerciseComponentData.paths,
+  });
 
   const diagnostics = REPORT.dataQualityDiagnostics || null;
   setText('diagnosticsSummary', formatOptionalText(diagnostics?.summary, 'No diagnostics loaded yet.'));
@@ -12055,8 +12134,10 @@ function renderReportFromState(isExampleMode) {
     : (fallbackStrainValues.length
         ? Math.round(fallbackStrainValues.reduce((a, b) => a + Number(b || 0), 0) / fallbackStrainValues.length)
         : null);
-  if (Number.isFinite(overall)) {
-    const level = scoreBandLabel(overall).toUpperCase();
+  const overallStrainSummary = consolidateOverallStrainSummary(REPORT.overallStrainSummary) || "";
+  const overallDisplayLevel = resolveOverallStrainDisplayLevel(overallStrainSummary, overall);
+  if (overallDisplayLevel) {
+    const level = overallDisplayLevel.toUpperCase();
     setText('strainOverallScore', `Overall level: ${level}`);
     setText('strainOverallLabel', `Overall strain is ${level}.`);
   } else {
@@ -12067,13 +12148,14 @@ function renderReportFromState(isExampleMode) {
   const narrativeMap = new Map(
     strainNarratives.map((item) => [String(item.category || "").toLowerCase(), formatOptionalText(item.text, "Not detected in assigned PDF.")]),
   );
-  const overallStrainSummary = formatOptionalText(REPORT.overallStrainSummary, "");
   const overallStrainSummaryText = overallStrainSummary
-    || (Number.isFinite(overall)
-      ? `Overall strain is ${String(scoreBandLabel(overall) || "moderate").toLowerCase()} in this report.`
+    || (overallDisplayLevel
+      ? `Overall strain is ${overallDisplayLevel.toLowerCase()} in this report.`
       : "Overall strain summary was not detected in the assigned report.");
   setText('overallStrainSummary', overallStrainSummaryText);
-  const strainWriteupRows = buildSortedStrainWriteupRows(strain, REPORT.strain, overall);
+  const strainWriteupRows = buildSortedStrainWriteupRows(strain, REPORT.strain, overall).map((item) =>
+    item.key === "overall" && overallDisplayLevel ? { ...item, level: overallDisplayLevel } : item,
+  );
   setHtml(
     'strainWriteupCards',
     strainWriteupRows
@@ -12081,13 +12163,21 @@ function renderReportFromState(isExampleMode) {
         const visual = getStrainCardVisual(item.level, item.title);
         const detail =
           item.key === "overall"
-            ? (overallStrainSummary || `Overall strain is ${String(item.level).toLowerCase()} in this report.`)
+            ? overallStrainSummaryText
             : (narrativeMap.get(item.title.toLowerCase()) || getStrainCardFallbackText(item.title, item.level));
         const detailBody = formatStrainCardDetailContent(detail, item);
         return `<div class="card"><div class="ct">${item.title} — ${item.level}</div><div class="chip ${visual.chipClass}" style="margin-bottom:10px">${visual.chipLabel}</div>${detailBody}</div>`;
       })
       .join(""),
   );
+  console.log('[strain] rendered concise overall summary', {
+    selectionKey: activeSelectionKey,
+    reportId: activeSelectionSnapshot.reportId,
+    clientReportId: activeSelectionSnapshot.clientReportId,
+    level: overallDisplayLevel,
+    wordCount: overallStrainSummaryText.split(/\s+/).length,
+    text: overallStrainSummaryText,
+  });
   syncStrainOverviewCardHeight();
   if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
     window.requestAnimationFrame(syncStrainOverviewCardHeight);
@@ -12383,6 +12473,7 @@ function renderReportFromState(isExampleMode) {
     },
     growth: {
       devExerciseCount: Array.isArray(REPORT?.developmentExercises) ? REPORT.developmentExercises.length : 0,
+      criticalExercises: devExerciseComponentData.paths,
       hasMotivationSummary: Boolean(REPORT?.spreadsheetFocuses?.motivationSummary),
     },
   });
