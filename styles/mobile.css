@@ -24,6 +24,20 @@ body:is([data-report-state="loading"], [data-report-state="error"]) :is(.body-gr
   @apply outline-2 outline-offset-4 outline-[var(--blue)];
 }
 
+.report-passage-details { @apply mt-2; }
+.report-passage-details > summary {
+  @apply w-fit cursor-pointer rounded-sm text-xs font-medium text-[var(--blue)];
+}
+.report-passage-details > summary:focus-visible {
+  @apply outline-2 outline-offset-4 outline-[var(--blue)];
+}
+.report-passage-source {
+  @apply mt-2 mb-0 border-l-2 border-solid border-[var(--border)] pl-3 text-sm leading-relaxed;
+  overflow-wrap: anywhere;
+}
+.report-passage-collapse, .report-passage-details[open] .report-passage-expand { @apply hidden; }
+.report-passage-details[open] .report-passage-collapse { @apply inline; }
+
 @media screen and (min-width: 761px) and (max-width: 1000px) {
   .g2, .g3 { @apply grid-cols-1; }
   .page { @apply px-5; }

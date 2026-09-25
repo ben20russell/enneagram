@@ -7225,38 +7225,83 @@ function resolveCenterPatternItems(corePatternBullets, patternKey, maxItems = 3)
   const matchedRow = (Array.isArray(corePatternBullets) ? corePatternBullets : []).find(
     (row) => String(row?.key || "").trim().toLowerCase() === targetKey,
   );
-  const text = sanitizeCorePatternBulletText(matchedRow?.text);
-  if (!text) return [];
+  const text = typeof matchedRow?.text === "string" ? matchedRow.text.trim() : "";
+  if (!text || /^not detected\b/i.test(text)) return [];
 
-  const inlineBulletItems = extractInlineCorePatternBulletItems(text, maxItems);
-  if (inlineBulletItems.length) {
-    return inlineBulletItems.slice(0, maxItems);
+  // Only source bullet boundaries divide entries. Cue words such as "You" or
+  // "As" can occur inside a sentence and must not detach its qualifications.
+  return text.split(/[•●▪◦·]/g)
+    .map((item) => item.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function summarizeReportPassage(value) {
+  if (typeof value !== "string") return null;
+  const source = value.replace(/\s+/g, " ").trim();
+  if (!source || /^not detected\b/i.test(source)) return null;
+
+  // Use source sentences only: no generated paraphrase, inferred repair,
+  // personality defaults, or word clipping. Stop before interleaved headings.
+  const boundary = /\b(?:Typical\s*(?:Action|Thinking|Feeling)\s*Patterns?|Worldview|World\s*View|Focus\s*of\s*Attention|Core\s*Fear|Blind\s*Spots?|Development\s*Exercises?)\b/.exec(source);
+  const text = boundary ? source.slice(0, boundary.index).trim() : source;
+  const segments = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+    ? Array.from(new Intl.Segmenter("en", { granularity: "sentence" }).segment(text), (entry) => entry.segment.trim())
+    : [text];
+  const sentences = [];
+  let pending = "";
+  for (const segment of segments) {
+    pending = pending ? `${pending} ${segment}` : segment;
+    // Segmenter can split "Dr. Smith" or initials; keep these with the rest
+    // of their sentence. A trailing abbreviation alone is not a safe excerpt.
+    if (/\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|[A-Za-z])\.["'”’)\]]*$/.test(pending)) continue;
+    sentences.push(pending);
+    pending = "";
   }
-
-  const narrativeItems = extractNarrativeBulletItems(text, maxItems)
-    .map((item) => ensureSentenceStartsCapitalized(cleanPdfExtractedValue(item)))
-    .filter(Boolean);
-  if (narrativeItems.length) {
-    return narrativeItems.slice(0, maxItems);
+  if (pending) return null;
+  const selected = [];
+  let wordCount = 0;
+  const isLong = source.split(/\s+/).length > 40 || source.length > 280;
+  for (const sentence of sentences) {
+    const qualifiesPrevious = /^(?:However|But|Yet|Although|Except|Unless|Only|Nevertheless|Instead|In contrast|This|That|These|Those|It|Such)\b/i.test(sentence);
+    // Incomplete or visibly damaged text stays in the full-text disclosure.
+    // Never guess what an OCR fragment was meant to say.
+    if (!/[.!?]["'”’)\]]*$/.test(sentence) || /…|\.{2,}|\uFFFD|\b[a-z]{2,}[A-Z][a-z]{2,}\b/.test(sentence)) {
+      if (selected.length && qualifiesPrevious) return null;
+      break;
+    }
+    const sentenceWords = sentence.split(/\s+/).length;
+    if (isLong && selected.length && !qualifiesPrevious && (selected.length >= 2 || wordCount + sentenceWords > 40)) break;
+    selected.push(sentence);
+    wordCount += sentenceWords;
   }
+  return selected.join(" ") || null;
+}
 
-  return [ensureSentenceStartsCapitalized(text)];
+function renderReportPassage(value) {
+  const source = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  if (!source || /^not detected\b/i.test(source)) {
+    return '<span data-testid="report-passage-unavailable">Text is unavailable. Refresh the report or ask your administrator to review the source.</span>';
+  }
+  const summary = summarizeReportPassage(source);
+  const preview = `<span data-testid="report-passage-summary">${escapeHtml(summary || "A reliable short summary is unavailable. View the full text.")}</span>`;
+  if (summary === source) return preview;
+  return `${preview}<details class="report-passage-details" data-testid="report-passage-details"><summary data-testid="report-passage-toggle"><span class="report-passage-expand">Show full text</span><span class="report-passage-collapse">Show less</span></summary><p class="report-passage-source" data-testid="report-passage-source">${escapeHtml(source)}</p></details>`;
 }
 
 function renderCenterPatternRows(items, options = {}) {
-  const rows = Array.isArray(items) ? items.filter(Boolean) : [];
+  const rows = Array.isArray(items) ? items.filter((item) => typeof item === "string" && item.trim()) : [];
   const fallbackRows = rows.length ? rows : ["Not detected in assigned PDF."];
   const defaultTone = String(options?.defaultTone || "neu");
   const defaultIcon = String(options?.icon || "•");
 
   return fallbackRows
     .map((item) => {
-      const text = ensureSentenceStartsCapitalized(formatOptionalText(item, "Not detected in assigned PDF."));
-      if (!text) return "";
+      const text = summarizeReportPassage(item) || "";
       const isNegative = /\b(?:not|dislike|weakness|forced|bribed|charmed|fear|angry|vulnerable|challenge)\b/i.test(text);
       const tone = isNegative ? "neg" : defaultTone;
       const icon = isNegative ? "!" : defaultIcon;
-      return `<div class="ti"><div class="tic ${tone}">${escapeHtml(icon)}</div><div class="tt">${escapeHtml(text)}</div></div>`;
+      return `<div class="ti" data-testid="center-pattern-row"><div class="tic ${tone}" aria-hidden="true">${escapeHtml(icon)}</div><div class="tt">${renderReportPassage(item)}</div></div>`;
     })
     .filter(Boolean)
     .join("");
@@ -12548,14 +12593,19 @@ function renderReportFromState(isExampleMode) {
   CENTER_PATTERN_COLUMNS.forEach((column) => {
     const items = resolveCenterPatternItems(corePatternBulletsForRender, column.patternKey, 3);
     centerPatternItemsByKey[column.patternKey] = items;
-    setHtml(column.listId, renderCenterPatternRows(items, column));
+    setHtml(column.listId, renderCenterPatternRows(items, column), { preserveSourceCopy: true });
+    console.log('[centers] source-based pattern summaries rendered', {
+      selectionKey: activeSelectionKey,
+      reportId: activeSelectionSnapshot.reportId,
+      clientReportId: activeSelectionSnapshot.clientReportId,
+      patternKey: column.patternKey,
+      sourceItems: items,
+      summaries: items.map((item) => summarizeReportPassage(item)),
+    });
   });
   CENTER_NARRATIVE_SLOTS.forEach((slot) => {
     const items = centerPatternItemsByKey[slot.patternKey] || [];
-    const narrative = ensureSentenceStartsCapitalized(
-      formatOptionalText(items[0], "Not detected in assigned PDF."),
-    );
-    setHtml(slot.id, `<strong>${escapeHtml(slot.label)}:</strong> ${escapeHtml(narrative)}`);
+    setHtml(slot.id, `<strong>${escapeHtml(slot.label)}:</strong> ${renderReportPassage(items[0])}`, { preserveSourceCopy: true });
   });
 
   const strain = REPORT.strainScoresRaw || {};
