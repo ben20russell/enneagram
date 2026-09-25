@@ -1,0 +1,131 @@
+{
+  "source": "tmp/reparse-runs/astra-2026-09-25T21-00-05-995Z/backup.json",
+  "note": "Concurrent local snapshot; not fetched or updated by this run.",
+  "reports": [
+    {
+      "id": "0f705480-3e49-427a-8a6d-7eef99b2d612",
+      "fileName": "iEQ9-Sarah-Tobin-STD-19-Feb-2026.pdf",
+      "type": "7",
+      "profileType": "7",
+      "instinct": "sp",
+      "ingestionStatus": "ready",
+      "parsedAt": "2026-09-25T19:30:30.262Z",
+      "parseState": "complete",
+      "extractedPages": 16,
+      "nonemptyPages": 16,
+      "profilePages": 16,
+      "sections": 11,
+      "diagnosticPages": 16,
+      "detectedPages": 1,
+      "verificationAvailable": true,
+      "criticalMismatches": 0,
+      "reviewStatus": "auto_approved",
+      "scoreCounts": {
+        "typeScores": 9,
+        "instinctScores": 3,
+        "centerScores": 3,
+        "strainScores": 0
+      }
+    },
+    {
+      "id": "193e1c97-df34-49e7-b034-7f228ece00d5",
+      "fileName": "iEQ9-Corinne-Aparis-PRO-UPDATED.pdf",
+      "type": "4",
+      "profileType": "4",
+      "instinct": "so",
+      "ingestionStatus": "ready",
+      "parsedAt": "2026-09-25T19:39:08.165Z",
+      "parseState": "complete",
+      "extractedPages": 42,
+      "nonemptyPages": 42,
+      "profilePages": 42,
+      "sections": 11,
+      "diagnosticPages": 42,
+      "detectedPages": 1,
+      "verificationAvailable": true,
+      "criticalMismatches": 0,
+      "reviewStatus": "auto_approved",
+      "scoreCounts": {
+        "typeScores": 9,
+        "instinctScores": 3,
+        "centerScores": 3,
+        "strainScores": 6
+      }
+    },
+    {
+      "id": "2833c314-28e4-440b-96cc-7ab3f31f820e",
+      "fileName": "iEQ9-Ben-Russell-PRO.pdf",
+      "type": "8",
+      "profileType": "8",
+      "instinct": "sx",
+      "ingestionStatus": "ready",
+      "parsedAt": "2026-09-25T19:42:32.362Z",
+      "parseState": "complete",
+      "extractedPages": 42,
+      "nonemptyPages": 42,
+      "profilePages": 42,
+      "sections": 11,
+      "diagnosticPages": 42,
+      "detectedPages": 1,
+      "verificationAvailable": true,
+      "criticalMismatches": 0,
+      "reviewStatus": "auto_approved",
+      "scoreCounts": {
+        "typeScores": 9,
+        "instinctScores": 3,
+        "centerScores": 3,
+        "strainScores": 6
+      }
+    },
+    {
+      "id": "89eb5f1f-2c27-4968-8cab-1ddc91bb5e40",
+      "fileName": "iEQ9-Ashmi-Patel-PRO-05-Mar-2026.pdf",
+      "type": "2",
+      "profileType": "2",
+      "instinct": "sp",
+      "ingestionStatus": "ready",
+      "parsedAt": "2026-09-25T19:35:35.520Z",
+      "parseState": "complete",
+      "extractedPages": 42,
+      "nonemptyPages": 42,
+      "profilePages": 42,
+      "sections": 11,
+      "diagnosticPages": 42,
+      "detectedPages": 1,
+      "verificationAvailable": true,
+      "criticalMismatches": 0,
+      "reviewStatus": "approved",
+      "scoreCounts": {
+        "typeScores": 9,
+        "instinctScores": 3,
+        "centerScores": 3,
+        "strainScores": 6
+      }
+    },
+    {
+      "id": "c9eff0dc-21b0-4dc6-a295-9cbe81025178",
+      "fileName": "iEQ9-Wayshine-Tseng-STD.pdf",
+      "type": "9",
+      "profileType": "9",
+      "instinct": "sp",
+      "ingestionStatus": "ready",
+      "parsedAt": "2026-09-25T19:32:11.489Z",
+      "parseState": "complete",
+      "extractedPages": 16,
+      "nonemptyPages": 16,
+      "profilePages": 16,
+      "sections": 11,
+      "diagnosticPages": 16,
+      "detectedPages": 1,
+      "verificationAvailable": true,
+      "criticalMismatches": 0,
+      "reviewStatus": "auto_approved",
+      "scoreCounts": {
+        "typeScores": 9,
+        "instinctScores": 3,
+        "centerScores": 3,
+        "strainScores": 0
+      }
+    }
+  ]
+}

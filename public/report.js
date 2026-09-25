@@ -1297,6 +1297,62 @@ const CORE_PATTERN_BULLET_DEFINITIONS = [
   },
 ];
 
+function resolveVerifiedCorePatternBullets(parsedProfile, parseDiagnostics, fallbackBullets = []) {
+  const selected = new Map();
+  const diagnostics = [parseDiagnostics, parsedProfile?._parseDiagnostics];
+  for (const metadata of diagnostics) {
+    const verification = metadata?.verification;
+    const python = verification?.python;
+    if (verification?.available === false || python?.available === false) continue;
+    const markdown = typeof python?.markdown === "string" ? python.markdown : "";
+    if (!markdown.trim()) continue;
+    for (const definition of CORE_PATTERN_BULLET_DEFINITIONS) {
+      if (selected.has(definition.key)) continue;
+      const heading = new RegExp(
+        "(?:^|\\s)#{1,6}\\s+(?:\\*{1,2})?Typical\\s+" + definition.key + "\\s+Patterns?\\s*:?(?:\\*{1,2})?[ \\t]*",
+        "i",
+      ).exec(markdown);
+      if (!heading) continue;
+      const remainder = markdown.slice(heading.index + heading[0].length);
+      const nextHeading = /\s#{1,6}\s+/.exec(remainder);
+      let text = (nextHeading ? remainder.slice(0, nextHeading.index) : remainder).trim();
+      // Layout-aware PDF extraction keeps columns separate. Remove only its
+      // explicit heading/footer structure, never infer or repair source words.
+      const footer = /\b(?:\d+\s+of\s+\d+\s+)?Copyright\s+(?:©\s*)?\d{4}(?:[-–]\d{4})?\s+Integrative\s+Enneagram\s+Solutions\b/i.exec(text);
+      if (footer) text = text.slice(0, footer.index).trim();
+      text = text
+        .replace(/(^|\r?\n)[ \t]*-[ \t]+/g, "$1● ")
+        .replace(/([.!?]["'”’)\]]*)[ \t]+-[ \t]+(?=[A-Z])/g, "$1 ● ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!/[A-Za-z]/.test(text)) continue;
+      selected.set(definition.key, {
+        key: definition.key,
+        label: definition.label,
+        text,
+        source: "verified_pdf_markdown",
+      });
+    }
+  }
+  const fallbackRows = Array.isArray(fallbackBullets) ? fallbackBullets : [];
+  if (!selected.size) return fallbackRows.map((row) => ({ ...row }));
+  const rows = CORE_PATTERN_BULLET_DEFINITIONS.map((definition) => (
+    selected.get(definition.key) || fallbackRows.find((row) => (
+      String(row?.key || "").toLowerCase() === definition.key ||
+      String(row?.label || "").toLowerCase() === definition.label.toLowerCase()
+    ))
+  )).filter(Boolean).map((row) => ({ ...row }));
+  console.log("[centers] selected report PDF markdown patterns resolved", {
+    source: "verified_pdf_markdown",
+    patternKeys: Array.from(selected.keys()),
+    sourceParagraphs: rows.filter((row) => row.source === "verified_pdf_markdown").map((row) => ({
+      key: row.key,
+      text: row.text,
+    })),
+  });
+  return rows;
+}
+
 function sanitizeCorePatternBulletText(value) {
   const source = cleanPdfExtractedValue(value || "");
   if (!source) return null;
@@ -1349,21 +1405,26 @@ function normalizeCorePatternBullets(value) {
     if (!row || typeof row !== "object") return;
     const key = String(row?.key || "").trim().toLowerCase();
     const label = String(row?.label || "").trim();
-    const text = sanitizeCorePatternBulletText(row?.text);
+    const preserveSourceCopy = row?.source === "verified_pdf_markdown";
+    const text = preserveSourceCopy
+      ? (typeof row?.text === "string" ? row.text.replace(/\s+/g, " ").trim() : "")
+      : sanitizeCorePatternBulletText(row?.text);
     if (!text) return;
-    if (key) byKey.set(key, text);
-    if (label) byLabel.set(label.toLowerCase(), text);
+    const candidate = { text, ...(preserveSourceCopy ? { source: row.source } : {}) };
+    if (key) byKey.set(key, candidate);
+    if (label) byLabel.set(label.toLowerCase(), candidate);
   });
 
   return CORE_PATTERN_BULLET_DEFINITIONS.map((definition) => {
-    const text =
+    const candidate =
       byKey.get(definition.key) ||
       byLabel.get(String(definition.label || "").toLowerCase()) ||
       null;
     return {
       key: definition.key,
       label: definition.label,
-      text: text || definition.fallbackText,
+      text: candidate?.text || definition.fallbackText,
+      ...(candidate?.source ? { source: candidate.source } : {}),
     };
   });
 }
@@ -2175,6 +2236,22 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
     spreadsheetFocuses,
     teamStageBreakdown,
   });
+  const isStaleIngestion = () => ingestionToken != null && ingestionToken !== activeAssignedIngestionToken;
+  const logSupersededCleanup = (stage) => {
+    console.log("[report-ingest] Skipping superseded dashboard narrative LLM cleanup", {
+      stage,
+      ingestionToken,
+      activeAssignedIngestionToken,
+      reportId: reportId || null,
+      reportFileName: reportFileName || null,
+    });
+  };
+  // An older PDF extraction may finish after the selected report starts cleanup.
+  // It must not cancel that newer request or reuse/populate its cache.
+  if (isStaleIngestion()) {
+    logSupersededCleanup("before-request");
+    return normalizedPayload;
+  }
   const shouldCleanup = shouldRequestDashboardNarrativesCleanup(normalizedPayload);
   if (!shouldCleanup) {
     return normalizedPayload;
@@ -2227,6 +2304,11 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
   const timeoutId = window.setTimeout(() => {
     abortController.abort(new Error("dashboard narrative llm cleanup timeout"));
   }, DASHBOARD_COPY_HYDRATION_LLM_TIMEOUT_MS);
+  const isSupersededCleanup = (stage) => {
+    if (!isStaleIngestion() && activeDashboardCleanupAbortController === abortController) return false;
+    logSupersededCleanup(stage);
+    return true;
+  };
 
   try {
     console.log("[report-ingest] Running dashboard narrative LLM hydration cleanup", {
@@ -2247,8 +2329,10 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
       body: JSON.stringify(requestBody),
       signal: abortController.signal,
     });
+    if (isSupersededCleanup("response")) return normalizedPayload;
     if (!response.ok) {
       const failureText = await response.text().catch(() => "");
+      if (isSupersededCleanup("error-body")) return normalizedPayload;
       console.log("[report-ingest] Dashboard narrative LLM cleanup route failed", {
         ingestionToken,
         status: response.status,
@@ -2260,6 +2344,7 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
     }
 
     const payload = await response.json().catch(() => ({}));
+    if (isSupersededCleanup("response-body")) return normalizedPayload;
     const copyCleanupValidation =
       payload?.copyCleanupValidation && typeof payload.copyCleanupValidation === "object"
         ? payload.copyCleanupValidation
@@ -2295,6 +2380,7 @@ async function hydrateDashboardNarrativesWithLlmCleanup({
     });
     return mergedPayload;
   } catch (error) {
+    if (isSupersededCleanup("request-error")) return normalizedPayload;
     const errorMessage = String(error?.message || "");
     const isAbortError =
       String(error?.name || "").toLowerCase() === "aborterror" ||
@@ -2403,6 +2489,49 @@ function extractSubtypeKeywordFromPdfText(pdfText, detectedType) {
     return instinctCode;
   }
   return null;
+}
+
+function normalizeAssignedSubtypeKeyword(value, detectedType) {
+  if (typeof value !== "string") return null;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized || /^(?:unknown|n\/a)$/i.test(normalized) || isMissingExtractedText(normalized)) return null;
+  const codeMatch = normalized.match(/^(SX|SO|SP)\s*[—–-]\s*([1-9])$/i);
+  if (codeMatch) {
+    if (detectedType && codeMatch[2] !== String(detectedType)) return null;
+    return `${codeMatch[1].toUpperCase()} - ${codeMatch[2]}`;
+  }
+  // A keyword is a short identity label, never section instructions or narrative copy.
+  if (normalized.length > 80 || normalized.split(/\s+/).length > 6 || /[.!?;:]/.test(normalized)) return null;
+  if (/\b(?:this|your|you|section|report|subtypes?|understand|personality)\b/i.test(normalized)) return null;
+  if (!/^[A-Za-z][A-Za-z\s'’—–-]*$/.test(normalized)) return null;
+  return normalized;
+}
+
+function resolveAssignedSubtypeKeyword({
+  parsedProfile = {},
+  verificationResolvedFields = {},
+  serverContext = {},
+  instinct,
+  detectedType,
+  pdfText = "",
+  reportContentText = "",
+}) {
+  for (const candidate of [
+    verificationResolvedFields?.subtypeKeyword,
+    parsedProfile?.subtypeKeyword,
+    serverContext?.subtypeKeyword,
+  ]) {
+    const keyword = normalizeAssignedSubtypeKeyword(candidate, detectedType);
+    if (keyword) return keyword;
+  }
+  const instinctCode = resolveDominantInstinctCode(
+    instinct || parsedProfile?.instinctualVariant || parsedProfile?.attachedProfile?.core_profile?.instinctual_subtype?.type,
+  );
+  // The master source describes identity as basic type plus dominant Instinctual Variant.
+  // Use the report's structured identity consistently across live PDF and stored-page reads.
+  if (instinctCode && /^[1-9]$/.test(String(detectedType || ""))) return `${instinctCode} - ${detectedType}`;
+  return normalizeAssignedSubtypeKeyword(extractSubtypeKeywordFromPdfText(pdfText, detectedType), detectedType) ||
+    normalizeAssignedSubtypeKeyword(extractSubtypeKeywordFromPdfText(reportContentText, detectedType), detectedType);
 }
 
 function extractLineTypeFromFlowSection(pdfText, kind) {
@@ -3591,6 +3720,39 @@ async function extractPdfTextFromSignedUrl(signedUrl) {
   return chunks.join("\n");
 }
 
+function resolveCompleteStoredReportText(parsedProfile, parseDiagnostics) {
+  const pages = parsedProfile?.reportContent?.pages;
+  if (!Array.isArray(pages) || !pages.length) return "";
+  const coverage = parsedProfile?.parseCoverage;
+  const diagnostics = parseDiagnostics || parsedProfile?._parseDiagnostics;
+  if (coverage?.isCoverageComplete === false || diagnostics?.isComplete === false) return "";
+  if (coverage?.isCoverageComplete !== true && diagnostics?.isComplete !== true) return "";
+  const detectedTotalPages = Number(coverage?.detectedTotalPages || diagnostics?.extraction?.detectedTotalPages);
+  const hasDetectedTotalPages = Number.isInteger(detectedTotalPages) && detectedTotalPages > 0;
+  const expectedPageCount = hasDetectedTotalPages
+    ? detectedTotalPages
+    : Number(coverage?.parsedPages || diagnostics?.extraction?.pages);
+  const minExpectedPages = Math.max(
+    Number(coverage?.minExpectedPages) || 0,
+    Number(diagnostics?.extraction?.minExpectedPages) || 0,
+  );
+  if (!Number.isInteger(expectedPageCount) || expectedPageCount !== pages.length) return "";
+  // A detected 16-page STD report is complete even if old metadata retains a PRO minimum.
+  if (!hasDetectedTotalPages && pages.length < minExpectedPages) return "";
+  const chunks = [];
+  for (let index = 0; index < pages.length; index += 1) {
+    const page = pages[index];
+    if (Number(page?.pageNumber) !== index + 1 || typeof page?.extractedText !== "string") return "";
+    const text = page.extractedText.trim();
+    const normalized = normalizeExtractedText(text);
+    if (!normalized || isMissingExtractedText(normalized) || hasExcessiveSymbolNoise(normalized)) return "";
+    chunks.push(text);
+  }
+  // report-active already hydrates these pages from this row's extractedContent
+  // when needed. Read the current row each time; never reuse another report's text.
+  return chunks.join("\n");
+}
+
 function buildProfileScoresFromTypeScores(typeScoresRaw) {
   if (!typeScoresRaw || typeof typeScoresRaw !== "object") return null;
 
@@ -3632,10 +3794,12 @@ function applyFallbackAssignedReportFromServerData(data) {
     sanitizeSnippet(parsedProfile?.typeName, "") ||
     sanitizeSnippet(serverContext?.typeName, "") ||
     sanitizeSnippet(fallbackExample?.typeName, "Not detected in assigned PDF.");
-  const fallbackSubtypeKeyword =
-    sanitizeSnippet(parsedProfile?.subtypeKeyword, "") ||
-    sanitizeSnippet(serverContext?.subtypeKeyword, "") ||
-    sanitizeSnippet(fallbackExample?.keyword, "Not detected in assigned PDF.");
+  const fallbackSubtypeKeyword = resolveAssignedSubtypeKeyword({
+    parsedProfile,
+    serverContext,
+    detectedType: fallbackType,
+    instinct: parsedProfile?.instinctualVariant || serverContext?.instinct || serverContext?.instinctCode,
+  });
   const fallbackConnectedLineA =
     sanitizeSnippet(parsedProfile?.connectedLineA, "") ||
     (parsedProfile?.arrowDynamics?.integration ? `Type ${parsedProfile.arrowDynamics.integration}` : "") ||
@@ -3721,11 +3885,12 @@ function applyFallbackAssignedReportFromServerData(data) {
     corePatternLines: Array.isArray(parsedProfile?.corePattern?.lines)
       ? parsedProfile.corePattern.lines
       : [],
-    corePatternBullets:
+    corePatternBullets: resolveVerifiedCorePatternBullets(parsedProfile, data?.parseDiagnostics,
       parsedProfile?.corePatternBullets ||
       parsedProfile?.corePattern?.bullets ||
       parsedProfile?.corePattern?.patterns ||
       [],
+    ),
     reportSummary: parsedProfile?.reportSummary || null,
     clientName:
       parsedProfile?.clientName ||
@@ -3881,7 +4046,16 @@ async function ingestAssignedReportIntoDashboard(data) {
             .join(" ")
         : "",
     );
-    let pdfText = "";
+    const storedReportText = resolveCompleteStoredReportText(parsedProfile, parseDiagnostics);
+    let pdfText = storedReportText;
+    console.log("[report-ingest] Selected assigned report extraction text source", {
+      ingestionToken,
+      reportId: data?.id || data?.reportId || null,
+      reportFileName: data?.reportFileName || null,
+      source: storedReportText ? "persisted-report-pages" : "live-pdf-required",
+      storedPageCount: Array.isArray(parsedProfile?.reportContent?.pages) ? parsedProfile.reportContent.pages.length : 0,
+      storedTextChars: storedReportText.length,
+    });
     let detectedType =
       normalizeDetectedTypeCandidate(verificationResolvedFields?.primaryType) ||
       normalizeDetectedTypeCandidate(parsedProfile?.primaryType) ||
@@ -3986,7 +4160,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       likelyProReport,
     });
 
-    if (data?.reportSignedUrl) {
+    if (!pdfText && data?.reportSignedUrl) {
       try {
         pdfText = await extractPdfTextFromSignedUrl(data.reportSignedUrl);
       } catch (error) {
@@ -4072,14 +4246,25 @@ async function ingestAssignedReportIntoDashboard(data) {
     }
     typeName = typeName || cleanupTypeName(extractTypeNameFromPdfText(pdfText, detectedType));
     instinct = instinct || extractInstinctFromPdfText(pdfText);
-    const canonicalSubtypeKeyword =
-      sanitizeSnippet(REPORT_EXAMPLES?.[String(detectedType || "")]?.keyword, null);
-    subtypeKeyword =
-      extractSubtypeKeywordFromPdfText(pdfText, detectedType) ||
-      extractSnippetFromLabels(pdfText, ["Subtype Keyword", "Subtype"]) ||
-      extractSnippetFromLabels(reportContentText, ["Subtype Keyword", "Subtype", "Keyword"]) ||
-      subtypeKeyword ||
-      canonicalSubtypeKeyword;
+    subtypeKeyword = resolveAssignedSubtypeKeyword({
+      parsedProfile,
+      verificationResolvedFields,
+      serverContext,
+      instinct,
+      detectedType,
+      pdfText,
+      reportContentText,
+    });
+    console.log("[report-ingest] Resolved report subtype identity", {
+      ingestionToken,
+      reportId: data?.id || null,
+      reportFileName: data?.reportFileName || null,
+      detectedType,
+      instinct,
+      subtypeKeyword,
+      hasLivePdfText: Boolean(pdfText && !storedReportText),
+      hasStoredReportText: Boolean(reportContentText),
+    });
     connectedLineA =
       connectedLineA ||
       extractLineTypeFromFlowSection(pdfText, "stress") ||
@@ -4328,6 +4513,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       extractCorePatternBulletsFromText(pdfText),
     );
     corePatternBullets = mergeCorePatternBullets(corePatternBullets, corePatternBulletsFromText);
+    corePatternBullets = resolveVerifiedCorePatternBullets(parsedProfile, parseDiagnostics, corePatternBullets);
 
     if (!corePatternLines.length) {
       corePatternLines = corePatternBullets
@@ -4622,6 +4808,9 @@ async function ingestAssignedReportIntoDashboard(data) {
     corePatternBullets = Array.isArray(narrativeCleanupPayload?.corePatternBullets)
       ? mergeCorePatternBullets(narrativeCleanupPayload.corePatternBullets, corePatternBullets)
       : corePatternBullets;
+    // Retain the selected PDF's words after cleanup, which can return paraphrases
+    // or the older extraction with interleaved sidebar columns.
+    corePatternBullets = resolveVerifiedCorePatternBullets(parsedProfile, parseDiagnostics, corePatternBullets);
     resolvedFeedbackGuideMatrix = Array.isArray(narrativeCleanupPayload?.feedbackGuideMatrix)
       ? narrativeCleanupPayload.feedbackGuideMatrix
       : resolvedFeedbackGuideMatrix;
@@ -7232,7 +7421,11 @@ function resolveCenterPatternItems(corePatternBullets, patternKey, maxItems = 3)
   // "As" can occur inside a sentence and must not detach its qualifications.
   return text.split(/[•●▪◦·]/g)
     .map((item) => item.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
+    // PDF headings can leave a colon or a heading before the first bullet.
+    // Discard those before limiting rows so they cannot displace real text.
+    .filter((item) => /[\p{L}\p{N}]/u.test(item))
+    .filter((item) => !/^(?:Typical\s*(?:Action|Thinking|Feeling)\s*Patterns?|World\s*view)\s*[:\-–—]*$/i.test(item))
+    .filter((item) => !/^not detected\b/i.test(item))
     .slice(0, maxItems);
 }
 
@@ -7261,15 +7454,19 @@ function summarizeReportPassage(value) {
   if (pending) return null;
   const selected = [];
   let wordCount = 0;
+  let skippedDamagedContext = false;
   const isLong = source.split(/\s+/).length > 40 || source.length > 280;
   for (const sentence of sentences) {
-    const qualifiesPrevious = /^(?:However|But|Yet|Although|Except|Unless|Only|Nevertheless|Instead|In contrast|This|That|These|Those|It|Such)\b/i.test(sentence);
-    // Incomplete or visibly damaged text stays in the full-text disclosure.
-    // Never guess what an OCR fragment was meant to say.
+    const qualifiesPrevious = /^(?:However|But|Yet|Although|Except|Unless|Only|Nevertheless|Instead|In contrast|This|That|These|Those|It|Such|Otherwise|Even so|At the same time|If|When|Even if|Provided that)\b/i.test(sentence);
+    // Select intact source sentences without guessing what damaged OCR meant.
+    // An independent later sentence can still provide a useful summary.
     if (!/[.!?]["'”’)\]]*$/.test(sentence) || /…|\.{2,}|\uFFFD|\b[a-z]{2,}[A-Z][a-z]{2,}\b/.test(sentence)) {
       if (selected.length && qualifiesPrevious) return null;
-      break;
+      if (selected.length) break;
+      skippedDamagedContext = true;
+      continue;
     }
+    if (!selected.length && skippedDamagedContext && qualifiesPrevious) continue;
     const sentenceWords = sentence.split(/\s+/).length;
     if (isLong && selected.length && !qualifiesPrevious && (selected.length >= 2 || wordCount + sentenceWords > 40)) break;
     selected.push(sentence);
@@ -7280,13 +7477,16 @@ function summarizeReportPassage(value) {
 
 function renderReportPassage(value) {
   const source = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
-  if (!source || /^not detected\b/i.test(source)) {
+  if (!/[\p{L}\p{N}]/u.test(source) || /^not detected\b/i.test(source) || /^(?:Typical\s*(?:Action|Thinking|Feeling)\s*Patterns?|World\s*view)\s*[:\-–—]*$/i.test(source)) {
     return '<span data-testid="report-passage-unavailable">Text is unavailable. Refresh the report or ask your administrator to review the source.</span>';
   }
   const summary = summarizeReportPassage(source);
-  const preview = `<span data-testid="report-passage-summary">${escapeHtml(summary || "A reliable short summary is unavailable. View the full text.")}</span>`;
-  if (summary === source) return preview;
-  return `${preview}<details class="report-passage-details" data-testid="report-passage-details"><summary data-testid="report-passage-toggle"><span class="report-passage-expand">Show full text</span><span class="report-passage-collapse">Show less</span></summary><p class="report-passage-source" data-testid="report-passage-source">${escapeHtml(source)}</p></details>`;
+  // When shortening would lose context, keep the existing wording visible.
+  // Never substitute generated personality copy or require a dropdown to read it.
+  if (!summary) {
+    console.log('[report-summary] retaining source wording without inferred repairs', { source });
+  }
+  return `<span data-testid="report-passage-summary">${escapeHtml(summary || source)}</span>`;
 }
 
 function renderCenterPatternRows(items, options = {}) {
@@ -7473,95 +7673,26 @@ function buildAdaptiveTriggerGridHtml(items) {
     .join("");
 }
 
-function ensureSentencePunctuation(text) {
-  const value = cleanPdfExtractedValue(text || "");
-  if (!value) return "";
-  return /[.?!]$/.test(value) ? value : `${value}.`;
-}
+function extractFeedbackGuidancePoints(text) {
+  if (typeof text !== "string" || !text.trim() || /^not detected\b/i.test(text.trim())) return [];
 
-function summarizeSentence(text, maxWords = 18) {
-  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return "";
-  if (words.length <= maxWords) return ensureSentencePunctuation(words.join(" "));
-  return `${ensureSentencePunctuation(words.slice(0, maxWords).join(" ")).replace(/[.?!]$/, "...")}`;
-}
-
-function extractFeedbackGuidancePoints(text, maxItems = 6) {
-  const normalized = normalizeExtractedText(text || "");
-  if (!normalized) return [];
-
-  const symbolRows = extractBulletItemsFromText(normalized, maxItems);
-  if (symbolRows.length) {
-    return symbolRows.map((row) => ensureSentencePunctuation(row)).filter(Boolean);
-  }
-
-  const cueSplitPattern =
-    /\s+(?=(?:Start|Keep|Be|Ask|Focus|Avoid|Reinforce|Position|Create|Allow|Answer|Use|Express|Give|Openly|State|Listen|Invite|Minimise|Don't|Do\s+not|Get|Try|Watch|When|If)\b)/g;
-  const cueRows = normalized
-    .split(cueSplitPattern)
-    .map((row) => ensureSentencePunctuation(row))
-    .filter(Boolean)
-    .filter((row) => row.length >= 16);
-  if (cueRows.length) {
-    return Array.from(new Set(cueRows)).slice(0, maxItems);
-  }
-
-  const sentenceRows = normalized
-    .split(/(?<=[.?!])\s+/)
-    .map((row) => ensureSentencePunctuation(row))
-    .filter(Boolean)
-    .filter((row) => row.length >= 16);
-  if (sentenceRows.length) {
-    return Array.from(new Set(sentenceRows)).slice(0, maxItems);
-  }
-
-  const fallback = ensureSentencePunctuation(normalized);
-  return fallback ? [fallback] : [];
+  // Keep each source passage intact, including conditions and exceptions.
+  // Only explicit bullets or line boundaries divide separate guidance items.
+  return text.split(/[•●▪◦·]|\r?\n/g)
+    .map((point) => point.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
 }
 
 function renderFeedbackGuidanceCell(text) {
-  const collapsedLimit = 3;
-  const points = extractFeedbackGuidancePoints(text, 6);
-  if (!points.length) return escapeHtml("Not detected in assigned PDF.");
-  const summary = summarizeSentence(points[0], 16);
-  const visiblePoints = points.slice(0, collapsedLimit);
-  const hiddenPoints = points.slice(collapsedLimit);
-  const visibleBullets = buildAdaptiveListHtml(
-    visiblePoints.map((point) => ({ tone: "neu", symbol: "•", text: point })),
-  );
-  if (!hiddenPoints.length) {
-    return `<div data-feedback-guidance-cell="true" data-testid="feedback-guide-cell"><div style="margin-bottom:6px;font-size:12px;color:var(--text3)"><strong>Summary:</strong> ${escapeHtml(summary)}</div>${visibleBullets}</div>`;
-  }
-  const hiddenBullets = buildAdaptiveListHtml(
-    hiddenPoints.map((point) => ({ tone: "neu", symbol: "•", text: point })),
-  );
-  console.log("[feedback-guide] rendering collapsed guidance cell", {
-    visibleCount: visiblePoints.length,
-    hiddenCount: hiddenPoints.length,
+  const points = extractFeedbackGuidancePoints(text);
+  const content = points.length
+    ? points.map((point) => `<div class="ti" data-testid="feedback-guide-point"><div class="tic neu" aria-hidden="true">•</div><div class="tt">${renderReportPassage(point)}</div></div>`).join("")
+    : renderReportPassage(null);
+  console.log("[feedback-guide] rendering source-based guidance summaries", {
+    pointCount: points.length,
+    sourcePassages: points,
   });
-  return `<div data-feedback-guidance-cell="true" data-testid="feedback-guide-cell"><div style="margin-bottom:6px;font-size:12px;color:var(--text3)"><strong>Summary:</strong> ${escapeHtml(summary)}</div><div data-feedback-guidance-primary="true">${visibleBullets}</div><div data-feedback-guidance-extra="true" style="display:none;margin-top:4px">${hiddenBullets}</div><button type="button" onclick="toggleFeedbackGuidanceExpansion(this)" data-feedback-guidance-toggle="collapsed" data-testid="feedback-guide-expand-button" aria-expanded="false" style="margin-top:8px;padding:0;background:none;border:none;color:var(--primary);font-size:12px;font-weight:400;cursor:pointer">Show more</button></div>`;
-}
-
-function toggleFeedbackGuidanceExpansion(button) {
-  if (!button) return;
-  const parentCell = button.closest('[data-feedback-guidance-cell="true"]');
-  if (!parentCell) return;
-  const extraRows = parentCell.querySelector('[data-feedback-guidance-extra="true"]');
-  if (!extraRows) return;
-  const isExpanded = button.getAttribute("data-feedback-guidance-toggle") === "expanded";
-  if (isExpanded) {
-    extraRows.style.display = "none";
-    button.setAttribute("data-feedback-guidance-toggle", "collapsed");
-    button.setAttribute("aria-expanded", "false");
-    button.textContent = "Show more";
-    console.log("[feedback-guide] collapsed extra guidance bullets");
-    return;
-  }
-  extraRows.style.display = "block";
-  button.setAttribute("data-feedback-guidance-toggle", "expanded");
-  button.setAttribute("aria-expanded", "true");
-  button.textContent = "Show less";
-  console.log("[feedback-guide] expanded extra guidance bullets");
+  return `<div data-feedback-guidance-cell="true" data-testid="feedback-guide-cell">${content}</div>`;
 }
 
 function buildAdaptiveSectionCopy(report) {
