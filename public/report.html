@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Enneagram Example Report</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -196,7 +196,8 @@ h1{font-family:var(--font-display);font-size:clamp(30px,4vw,46px);font-weight:70
 .sidebar-col{position:fixed;right:22px;bottom:22px;z-index:50;width:min(360px,calc(100vw - 24px))}
 @media(max-width:900px){.sidebar-col{right:12px;bottom:12px;width:min(360px,calc(100vw - 16px))}}
 @media(max-width:760px){.header{padding:18px 16px}.header-top{align-items:flex-start;flex-direction:column;gap:10px}.eyebrow{width:100%}.header-auth{width:100%;justify-content:flex-start}.header-controls{margin-top:10px;padding-left:0;gap:8px 12px;align-items:center}.report-switch{justify-content:flex-start;flex-wrap:wrap}.auth-btn{padding:7px 10px;font-size:11px}.nav-wrap{display:none}.mobile-menu-toggle{display:inline-flex}.mobile-menu-overlay.show{display:block}.focus-grid{grid-template-columns:1fr}.focus-result-grid{column-count:1}.search-popout-panel{width:calc(100vw - 16px)}}
-.nav-wrap{border:1px solid var(--border);border-radius:14px;padding:8px;background:rgba(255,255,255,.9);overflow-x:auto;scrollbar-width:none;margin-bottom:24px}
+.nav-wrap{position:sticky;top:0;z-index:100;border:1px solid var(--border);border-radius:14px;padding:8px;background:var(--surface);overflow-x:auto;scrollbar-width:none;margin-bottom:24px}
+@media(min-width:761px){html{scroll-padding-top:76px}}
 .nav-wrap::-webkit-scrollbar{display:none}
 .nav{display:flex;gap:6px;padding:0}
 .nav button{background:transparent;border:none;border-radius:10px;padding:10px 15px;font:600 12px var(--font-sans);line-height:1.2;color:var(--text3);cursor:pointer;transition:.18s;white-space:nowrap}
@@ -425,13 +426,20 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
   .card,.sidebar-box{break-inside:avoid;box-shadow:none!important}
 }
 </style>
+<link rel="stylesheet" href="/mobile.css" />
 </head>
 <body>
-<button class="mobile-menu-toggle" id="mobileMenuToggle" type="button" aria-label="Open navigation menu" data-testid="mobile-menu-toggle" onclick="toggleMobileMenu(true)">
+<div class="mobile-toolbar" id="mobileToolbar" data-testid="mobile-toolbar">
+<button class="mobile-menu-toggle" id="mobileMenuToggle" type="button" aria-label="Open report sections" aria-expanded="false" aria-controls="mobileMenu" data-testid="mobile-menu-toggle" onclick="toggleMobileMenu(true)">
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#36506f" stroke-width="1.8" stroke-linecap="round">
     <path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>
   </svg>
+  <span class="mobile-toolbar-copy"><span class="mobile-toolbar-eyebrow">Report sections</span><span class="mobile-section-label" id="mobileSectionLabel" data-testid="mobile-section-label">Overview</span></span>
 </button>
+<button class="mobile-search-button" id="mobileSearchButton" type="button" aria-label="Search report" data-testid="mobile-search-button" onclick="toggleSearchPopout(true)">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+</button>
+</div>
 <div class="search-popout-overlay" id="searchPopoutOverlay" aria-hidden="true">
   <div class="search-popout-panel" id="searchPopoutPanel" role="dialog" aria-modal="true" aria-label="Search report">
     <div class="search-popout-head">
@@ -443,7 +451,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
     <div class="search-wrap">
       <p style="font-size:13px;color:var(--text2)">Search your report and jump directly to the most relevant sections.</p>
       <div class="search-row">
-        <input class="search-input" id="searchEverywhereInput" type="text" placeholder="Try: leadership, communication, core fear..." />
+        <input class="search-input" id="searchEverywhereInput" type="search" aria-label="Search report" data-testid="report-search-input" enterkeyhint="search" placeholder="Try: leadership, communication, core fear..." />
         <button class="search-btn" id="searchEverywhereButton" type="button">Search</button>
       </div>
       <div class="search-results" id="searchEverywhereResults"></div>
@@ -451,9 +459,9 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
   </div>
 </div>
 <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="toggleMobileMenu(false)"></div>
-<aside class="mobile-menu" id="mobileMenu" aria-hidden="true">
+<aside class="mobile-menu" id="mobileMenu" role="dialog" aria-modal="true" aria-label="Report sections" aria-hidden="true" data-testid="mobile-menu" inert>
   <div class="mobile-menu-head">
-    <span class="mobile-menu-title">Menu</span>
+    <span class="mobile-menu-title">Report sections</span>
     <button class="mobile-menu-close" type="button" aria-label="Close navigation menu" onclick="toggleMobileMenu(false)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
         <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
@@ -461,7 +469,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
     </button>
   </div>
   <div class="mobile-menu-list">
-    <button class="mobile-menu-item" type="button" onclick="toggleSearchPopout(true);toggleMobileMenu(false)">Search</button>
+    <button class="mobile-menu-item" type="button" onclick="toggleMobileMenu(false);toggleSearchPopout(true)">Search</button>
     <button class="mobile-menu-item active" data-sec="overview" onclick="showSec('overview');toggleMobileMenu(false)">Overview</button>
     <button class="mobile-menu-item" data-sec="centers" onclick="showSec('centers');toggleMobileMenu(false)">Expressions &amp; Instincts</button>
     <button class="mobile-menu-item" data-sec="strengths" onclick="showSec('strengths');toggleMobileMenu(false)">Strengths &amp; Gaps</button>
@@ -556,10 +564,15 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
     </div>
   </div>
 
+  <div class="report-content" id="reportContent" data-testid="report-content" aria-busy="false">
+    <div class="report-loading" id="reportLoadingIndicator" data-testid="report-loading-indicator" hidden>
+      <span class="report-loading-spinner" data-testid="report-loading-spinner" aria-hidden="true"></span>
+      <span>Loading report…</span>
+    </div>
   <div class="body-grid">
     <div class="main-col">
-      <div class="nav-wrap">
-        <nav class="nav">
+      <div class="nav-wrap" data-testid="report-section-nav">
+        <nav class="nav" aria-label="Report sections">
           <button type="button" onclick="toggleSearchPopout(true)">Search</button>
           <button class="active" data-sec="overview" onclick="showSec('overview')">Overview</button>
           <button data-sec="centers" onclick="showSec('centers')">Expressions &amp; Instincts</button>
@@ -1078,6 +1091,7 @@ body.exporting-dashboard-pdf #sec-focus{display:none!important}
     </button>
   </div>
 
+  </div>
   <footer class="site-footer">© 2026 The Kapalaran Group LLC | All rights reserved. | <a href="/privacy" target="_top" data-testid="privacy-policy-link">Privacy Policy</a></footer>
 </div>
 

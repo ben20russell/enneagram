@@ -159,6 +159,7 @@ let activeReportSelectionState = {
   reason: "initial-state",
 };
 let lastCriticalRenderError = null;
+let reportSwitchStatusVersion = 0;
 
 function buildReportSelectionKey({ mode, exampleType, clientReportId, reportId }) {
   const normalizedMode = String(mode || "example").trim().toLowerCase();
@@ -223,10 +224,39 @@ function setReportSwitchStatus({ state = "idle", message = "", selectionKey = nu
   const statusNode = getReportSwitchStatusNode();
   if (!statusNode) return;
   const normalizedState = String(state || "idle").trim().toLowerCase();
-  statusNode.dataset.state = normalizedState;
-  statusNode.textContent = String(message || "").trim();
-  statusNode.dataset.selectionKey = String(selectionKey || activeReportSelectionState.selectionKey || "");
-  statusNode.dataset.reason = String(reason || "unknown");
+  const nextSelectionKey = String(selectionKey || activeReportSelectionState.selectionKey || "");
+  if (nextSelectionKey !== activeReportSelectionState.selectionKey) {
+    console.log("[report-switch] ignored stale loading status", { selectionKey: nextSelectionKey, state, reason });
+    return;
+  }
+  const statusVersion = ++reportSwitchStatusVersion;
+  const applyStatus = () => {
+    if (statusVersion !== reportSwitchStatusVersion || nextSelectionKey !== activeReportSelectionState.selectionKey) return;
+    const isLoading = normalizedState === "loading";
+    statusNode.dataset.state = normalizedState;
+    statusNode.textContent = String(message || "").trim();
+    statusNode.dataset.selectionKey = nextSelectionKey;
+    statusNode.dataset.reason = String(reason || "unknown");
+    document.body.dataset.reportState = normalizedState;
+    const contentNode = document.getElementById("reportContent");
+    const loadingNode = document.getElementById("reportLoadingIndicator");
+    const reportGrid = document.querySelector(".body-grid");
+    if (contentNode) contentNode.setAttribute("aria-busy", String(isLoading));
+    if (loadingNode) loadingNode.hidden = !isLoading;
+    if (reportGrid) reportGrid.inert = normalizedState !== "idle";
+    console.log("[report-switch] buffering state updated", {
+      state: normalizedState, selectionKey: nextSelectionKey, reason,
+      clientReportId: activeReportSelectionState.clientReportId,
+      reportId: activeReportSelectionState.reportId,
+    });
+  };
+  if (normalizedState === "idle" && statusNode.dataset.state === "loading") {
+    // Let the indicator paint even when cached report text renders synchronously.
+    // A newer loading/error state invalidates this pending completion.
+    requestAnimationFrame(() => requestAnimationFrame(applyStatus));
+  } else {
+    applyStatus();
+  }
 }
 
 function resetReportScopedUiState(selectionKey) {
@@ -242,11 +272,17 @@ function resetReportScopedUiState(selectionKey) {
   document.querySelectorAll(".search-hit").forEach((node) => {
     node.classList.remove("search-hit");
   });
+  REPORT_MODULES = [];
+  const searchResults = document.getElementById("searchEverywhereResults");
+  const searchStatus = document.getElementById("searchEverywhereStatus");
+  if (searchResults) searchResults.innerHTML = "";
+  if (searchStatus) searchStatus.textContent = "";
   console.log("[report-switch] reset report-scoped UI state", {
     selectionKey: normalizedSelectionKey,
     mode: activeReportSelectionState.mode,
     currentClientReportId,
     currentReportViewMode,
+    searchResultsCleared: true,
   });
 }
 
@@ -3724,10 +3760,13 @@ function applyFallbackAssignedReportFromServerData(data) {
       ),
     developmentExercises: parsedDevelopmentExercises,
     developmentExerciseCandidates: parsedDevelopmentExercises,
-    spreadsheetFocuses:
-      parsedProfile?.spreadsheetFocuses && typeof parsedProfile.spreadsheetFocuses === "object"
+    spreadsheetFocuses: {
+      ...(parsedProfile?.spreadsheetFocuses && typeof parsedProfile.spreadsheetFocuses === "object"
         ? parsedProfile.spreadsheetFocuses
-        : {},
+        : {}),
+      ...resolveConflictPatternsFromSource(parsedProfile),
+      decisionStrainCopy: resolveDecisionStrainCopy(parsedProfile) || "Not detected in assigned PDF.",
+    },
     teamStageBreakdown:
       parsedProfile?.teamStageBreakdown && typeof parsedProfile.teamStageBreakdown === "object"
         ? parsedProfile.teamStageBreakdown
@@ -4562,6 +4601,11 @@ async function ingestAssignedReportIntoDashboard(data) {
       teamStageBreakdown?.performing,
     );
 
+    const decisionStrainCopyFromSource = resolveDecisionStrainCopy(parsedProfile, pdfText);
+    spreadsheetFocuses = {
+      ...spreadsheetFocuses,
+      decisionStrainCopy: decisionStrainCopyFromSource || "Not detected in assigned PDF.",
+    };
     const narrativeCleanupPayload = await hydrateDashboardNarrativesWithLlmCleanup({
       corePatternBullets,
       strainQualitativeWriteups,
@@ -4597,6 +4641,8 @@ async function ingestAssignedReportIntoDashboard(data) {
       spreadsheetFocuses = {
         ...spreadsheetFocuses,
         ...narrativeCleanupPayload.spreadsheetFocuses,
+        // Preserve the full source section even when cleanup or its cache returns a fragment.
+        decisionStrainCopy: decisionStrainCopyFromSource || "Not detected in assigned PDF.",
         instinctGoals:
           narrativeCleanupPayload.spreadsheetFocuses.instinctGoals || spreadsheetFocuses?.instinctGoals,
         developingAsBullets: Array.isArray(narrativeCleanupPayload.spreadsheetFocuses.developingAsBullets)
@@ -4616,6 +4662,9 @@ async function ingestAssignedReportIntoDashboard(data) {
               : []),
       };
     }
+    // Keep complete conflict statements from the active PDF after legacy merges
+    // and model cleanup, which can return clipped excerpts or development advice.
+    spreadsheetFocuses = { ...spreadsheetFocuses, ...resolveConflictPatternsFromSource(parsedProfile) };
     if (narrativeCleanupPayload?.teamStageBreakdown && typeof narrativeCleanupPayload.teamStageBreakdown === "object") {
       teamStageBreakdown = {
         ...teamStageBreakdown,
@@ -4709,9 +4758,9 @@ async function ingestAssignedReportIntoDashboard(data) {
       developmentExercises,
       // Preserve later exercises for prioritization; extraction/cleanup grids have smaller caps.
       developmentExerciseCandidates: [
-        ...developmentExercises,
         ...targetedDevelopmentExercises,
         ...parsedProfileDevelopmentExercises,
+        ...developmentExercises,
       ],
       spreadsheetFocuses,
       teamStageBreakdown,
@@ -4772,7 +4821,7 @@ async function ingestAssignedReportIntoDashboard(data) {
       reportFileName: data?.reportFileName || null,
       fallbackApplied,
     });
-    if (!fallbackApplied) {
+    if (!fallbackApplied && ingestionToken === activeAssignedIngestionToken) {
       handleCriticalReportRenderError(error, {
         context: "ingestAssignedReportIntoDashboard",
         selectionKey: activeReportSelectionState.selectionKey,
@@ -4910,7 +4959,7 @@ async function refreshReportActiveUi() {
           selectionKey: activeReportSelectionState.selectionKey,
           reason: "refresh-report-active-current-client",
         });
-        ingestAssignedReportIntoDashboard(selectedClientReport);
+        await ingestAssignedReportIntoDashboard(selectedClientReport);
         return;
       }
       currentClientReportId = null;
@@ -4945,7 +4994,7 @@ async function refreshReportActiveUi() {
         selectionKey: activeReportSelectionState.selectionKey,
         reason: "refresh-report-active-email-matched-client",
       });
-      ingestAssignedReportIntoDashboard(emailMatchedClientReport);
+      await ingestAssignedReportIntoDashboard(emailMatchedClientReport);
       return;
     }
     if (hasAssignedReportAvailable) {
@@ -4969,7 +5018,7 @@ async function refreshReportActiveUi() {
         selectionKey: activeReportSelectionState.selectionKey,
         reason: "refresh-report-active-assigned-report",
       });
-      ingestAssignedReportIntoDashboard(data);
+      await ingestAssignedReportIntoDashboard(data);
     } else {
       latestAssignedPdfReport = null;
       currentClientReportId = null;
@@ -5461,13 +5510,45 @@ function snapshotChartsForExport() {
 async function exportDashboardPdf() {
   closeAuthMenu();
   console.log("[report-export] Export dashboard PDF requested from account dropdown");
+  const exportReportState = {
+    state: document.body.dataset.reportState || "idle",
+    selectionKey: activeReportSelectionState.selectionKey,
+    sequence: activeReportSelectionState.sequence,
+    statusVersion: reportSwitchStatusVersion,
+  };
+  if (exportReportState.state !== "idle") {
+    console.log("[report-export] Export postponed until the report is ready", exportReportState);
+    alert(exportReportState.state === "error"
+      ? "Your report could not finish loading. Use Retry Render or refresh the report, then try Export PDF again."
+      : "Your report is still loading. Please wait for it to finish, then try Export PDF again.");
+    return;
+  }
   const exportButton = getExportPdfButton();
+  const previousButtonDisabled = Boolean(exportButton?.disabled);
   const previousButtonText = exportButton?.textContent || "Export PDF";
   const exportTitle = buildDashboardExportTitle();
   const jsPdfCtor = window.jspdf?.jsPDF;
   const html2canvasFn = window.html2canvas;
   let cleanupSnapshots = null;
   let exportFinalized = false;
+  let reportChangedDuringExport = false;
+
+  const assertReportUnchanged = () => {
+    if ((document.body.dataset.reportState || "idle") !== "idle"
+      || activeReportSelectionState.selectionKey !== exportReportState.selectionKey
+      || activeReportSelectionState.sequence !== exportReportState.sequence
+      || reportSwitchStatusVersion !== exportReportState.statusVersion) {
+      reportChangedDuringExport = true;
+      console.log("[report-export] Cancelled export after the report changed", {
+        exportSelectionKey: exportReportState.selectionKey,
+        currentSelectionKey: activeReportSelectionState.selectionKey,
+        reportState: document.body.dataset.reportState,
+        exportStatusVersion: exportReportState.statusVersion,
+        currentStatusVersion: reportSwitchStatusVersion,
+      });
+      throw new Error("Report changed during PDF export.");
+    }
+  };
 
   const finalizeExport = () => {
     if (exportFinalized) return;
@@ -5477,7 +5558,7 @@ async function exportDashboardPdf() {
     }
     document.body.classList.remove("exporting-dashboard-pdf");
     if (exportButton) {
-      exportButton.disabled = false;
+      exportButton.disabled = previousButtonDisabled;
       exportButton.textContent = previousButtonText;
     }
     if (profileChart) profileChart.resize();
@@ -5499,10 +5580,12 @@ async function exportDashboardPdf() {
 
     document.body.classList.add("exporting-dashboard-pdf");
     await sleep(120);
+    assertReportUnchanged();
 
     if (profileChart) profileChart.resize();
     cleanupSnapshots = snapshotChartsForExport();
     await sleep(80);
+    assertReportUnchanged();
 
     const exportTargets = getDashboardPdfExportTargets();
     if (!exportTargets.length) {
@@ -5526,11 +5609,13 @@ async function exportDashboardPdf() {
       targetCount: exportTargets.length,
     });
     for (let index = 0; index < exportTargets.length; index += 1) {
+      assertReportUnchanged();
       const targetNode = exportTargets[index];
       const canvas = await captureDashboardExportCanvas(targetNode, {
         index,
         html2canvasFn,
       });
+      assertReportUnchanged();
       appendCanvasToPdf({
         pdf,
         canvas,
@@ -5540,6 +5625,7 @@ async function exportDashboardPdf() {
       });
     }
 
+    assertReportUnchanged();
     if (exportButton) {
       exportButton.textContent = "Downloading PDF...";
     }
@@ -5553,7 +5639,9 @@ async function exportDashboardPdf() {
     console.log("[report-export] Dashboard export failed", error);
     finalizeExport();
     alert(
-      "Unable to download your dashboard PDF right now. Please refresh the page and try Export PDF again.",
+      reportChangedDuringExport
+        ? "The report changed while the PDF was being built. Wait for the selected report to finish loading, then try Export PDF again."
+        : "Unable to download your dashboard PDF right now. Please refresh the page and try Export PDF again.",
     );
   }
 }
@@ -6093,32 +6181,87 @@ function decorateInterfaceIcons() {
   }
 }
 
+let searchReturnFocus = null;
+
+function syncReportDialogState() {
+  const menuOpen = document.getElementById('mobileMenu')?.classList.contains('open');
+  const searchOpen = isSearchPopoutOpen();
+  const modalOpen = Boolean(menuOpen || searchOpen);
+  document.body.style.overflow = modalOpen ? 'hidden' : '';
+  const page = document.querySelector('.page');
+  const toolbar = document.getElementById('mobileToolbar');
+  if (page) page.inert = modalOpen;
+  if (toolbar) toolbar.inert = modalOpen;
+  console.log('[mobile-navigation] dialog state', {
+    menuOpen, searchOpen,
+    selectionKey: document.body.dataset.reportSelectionKey,
+  });
+}
+
+function trapReportDialogFocus(event) {
+  if (event.key !== 'Tab') return;
+  const drawer = document.getElementById('mobileMenu');
+  const dialog = isSearchPopoutOpen()
+    ? document.getElementById('searchPopoutPanel')
+    : drawer?.classList.contains('open') ? drawer : null;
+  if (!dialog) return;
+  const focusable = [...dialog.querySelectorAll('button, a[href], input, select, textarea, [tabindex="0"]')]
+    .filter(element => !element.disabled && element.getClientRects().length > 0);
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (!first) return;
+  if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 function showSec(id) {
   const requestedSectionId = id === "test" && !hasAdminAccess(currentSignedInUser?.email) ? "overview" : id;
-  document.querySelectorAll('.sec').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav button,.mobile-menu-item').forEach(b => b.classList.remove('active'));
   const targetSection = document.getElementById('sec-' + requestedSectionId);
   if (!targetSection) {
     console.log('[nav] section not found', requestedSectionId);
     return;
   }
+  document.querySelectorAll('.sec').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav button,.mobile-menu-item').forEach(b => {
+    b.classList.remove('active');
+    b.removeAttribute('aria-current');
+  });
   targetSection.classList.add('active');
   const navButton = document.querySelector(`.nav button[data-sec="${requestedSectionId}"]`);
   const mobileButton = document.querySelector(`.mobile-menu-item[data-sec="${requestedSectionId}"]`);
   if (navButton) navButton.classList.add('active');
   if (mobileButton) mobileButton.classList.add('active');
-  console.log('[nav] switched section', requestedSectionId);
+  if (navButton) navButton.setAttribute('aria-current', 'page');
+  if (mobileButton) mobileButton.setAttribute('aria-current', 'page');
+  const label = document.getElementById('mobileSectionLabel');
+  if (label) label.textContent = (mobileButton || navButton)?.textContent.trim() || 'Report sections';
+  if (window.matchMedia('(max-width: 760px)').matches) {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+  console.log('[nav] switched section', requestedSectionId, {
+    selectionKey: document.body.dataset.reportSelectionKey,
+  });
 }
 
 function toggleSearchPopout(open) {
   const overlay = document.getElementById('searchPopoutOverlay');
   if (!overlay) return;
+  if (open && !isSearchPopoutOpen()) searchReturnFocus = document.activeElement;
   overlay.classList.toggle('open', open);
   overlay.setAttribute('aria-hidden', open ? 'false' : 'true');
+  syncReportDialogState();
+  if (!open && searchReturnFocus?.isConnected && !searchReturnFocus.closest('[inert]')) {
+    searchReturnFocus.focus({ preventScroll: true });
+  }
   if (open) {
     window.requestAnimationFrame(() => {
       const input = document.getElementById('searchEverywhereInput');
-      if (input) input.focus();
+      if (input && isSearchPopoutOpen()) input.focus({ preventScroll: true });
     });
   }
 }
@@ -6143,6 +6286,15 @@ function setupSearchPopoutHandlers() {
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && isSearchPopoutOpen()) {
       toggleSearchPopout(false);
+    } else if (event.key === 'Escape' && document.getElementById('mobileMenu')?.classList.contains('open')) {
+      toggleMobileMenu(false);
+    }
+    trapReportDialogFocus(event);
+  });
+
+  window.matchMedia('(max-width: 760px)').addEventListener('change', event => {
+    if (!event.matches && document.getElementById('mobileMenu')?.classList.contains('open')) {
+      toggleMobileMenu(false);
     }
   });
 
@@ -6167,8 +6319,19 @@ function toggleMobileMenu(open) {
 
   drawer.classList.toggle('open', open);
   overlay.classList.toggle('show', open);
+  drawer.inert = !open;
+  const toggle = document.getElementById('mobileMenuToggle');
+  if (toggle) toggle.setAttribute('aria-expanded', String(open));
+  syncReportDialogState();
+  if (!open && !isSearchPopoutOpen()) {
+    const returnTarget = window.matchMedia('(max-width: 760px)').matches
+      ? toggle : document.querySelector('.nav button.active');
+    returnTarget?.focus({ preventScroll: true });
+  }
   drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
-  document.body.style.overflow = open ? 'hidden' : '';
+  if (open) {
+    drawer.querySelector('.mobile-menu-close')?.focus({ preventScroll: true });
+  }
 }
 
 function tokenize(text) {
@@ -6177,6 +6340,19 @@ function tokenize(text) {
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
     .filter(token => token.length > 2);
+}
+
+function getReportModuleSourceText(node) {
+  if (node.nodeType === 3) return node.nodeValue || '';
+  if (node.nodeType !== 1) return '';
+  const tag = node.tagName.toUpperCase();
+  if (tag === 'SCRIPT' || tag === 'STYLE') return '';
+  if (tag === 'BR') return ' ';
+  const text = Array.from(node.childNodes, getReportModuleSourceText).join('');
+  // Read source text while loading hides the report. Preserve paragraph, row,
+  // and list boundaries without splitting words styled with inline elements.
+  return /^(?:ADDRESS|ARTICLE|ASIDE|BLOCKQUOTE|DIV|DL|DT|DD|FIGCAPTION|FIGURE|FOOTER|H[1-6]|HEADER|HR|LI|MAIN|NAV|OL|P|PRE|SECTION|TABLE|TD|TH|TR|UL)$/.test(tag)
+    ? ` ${text} ` : text;
 }
 
 function buildReportModuleIndex() {
@@ -6203,7 +6379,7 @@ function buildReportModuleIndex() {
     section.querySelectorAll('.card').forEach((card, index) => {
       const titleNode = card.querySelector('.ct');
       const title = (titleNode ? titleNode.textContent : `Module ${index + 1}`).trim();
-      const rawText = card.innerText.replace(title, '').replace(/\s+/g, ' ').trim();
+      const rawText = getReportModuleSourceText(card).replace(title, '').replace(/\s+/g, ' ').trim();
       if (!rawText) return;
 
       modules.push({
@@ -6219,7 +6395,11 @@ function buildReportModuleIndex() {
   });
 
   REPORT_MODULES = modules;
-  console.log('[focus] built report module index', { count: REPORT_MODULES.length });
+  console.log('[focus] built report module index', {
+    count: REPORT_MODULES.length,
+    selectionKey: document.body.dataset.reportSelectionKey,
+    sectionIds: [...new Set(REPORT_MODULES.map(module => module.sectionId))],
+  });
 }
 
 function cloneCardForFocus(card) {
@@ -6697,10 +6877,12 @@ function normalizeDashboardHtmlCopy(value) {
   return template.innerHTML;
 }
 
-function setHtml(id, value) {
+function setHtml(id, value, options = {}) {
   const node = document.getElementById(id);
   if (!node) return;
-  node.innerHTML = normalizeDashboardHtmlCopy(value);
+  node.innerHTML = options.preserveSourceCopy
+    ? String(value == null ? "" : value)
+    : normalizeDashboardHtmlCopy(value);
 }
 
 function formatScoreObject(labelMap, scores) {
@@ -7431,16 +7613,30 @@ function buildAdaptiveSectionCopy(report) {
   };
 }
 
+function normalizeCriticalDevelopmentExerciseText(value) {
+  if (typeof value !== "string") return "";
+  // Keep source words and abbreviation case intact. Broad OCR cleanup can turn
+  // "alive" into "a live" or treat "vs." as the end of a sentence.
+  const text = value.normalize("NFKC")
+    .replace(/\bCopyright\b[\s\S]*$/i, "")
+    .replace(/\u0004?\*\+4-\$"#\/[\s\S]*$/, "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\balivevs\./gi, "alive vs.")
+    .replace(/\s+/g, " ").trim();
+  if (!text || /not detected|\.\.\.|…/i.test(text)) return "";
+  return text.replace(/^[a-z]/, (letter) => letter.toUpperCase());
+}
+
 function buildDevExercisePathHtml(paths) {
   const safePaths = Array.isArray(paths) ? paths.filter(Boolean) : [];
   if (!safePaths.length) return "";
   return safePaths
     .map((path, index) => {
       const title = formatOptionalText(path?.title, `Growth Path ${index + 1}`);
-      const text = ensureSentenceStartsCapitalized(sanitizeSnippet(formatOptionalText(path?.text, "Not detected in assigned PDF."), "Not detected in assigned PDF."));
+      const text = normalizeCriticalDevelopmentExerciseText(path?.text) || "Not detected in assigned PDF.";
       const bulletRows = text
-        .split(/(?:\s*[•▪◦]\s*|\s*\n+\s*|(?<=[.!?])\s+(?=[A-Z0-9]))/g)
-        .map((row) => ensureSentenceStartsCapitalized(String(row || "").trim()))
+        .split(/(?:\s*[•●▪◦]\s*|(?<=[.!?])\s+(?=[A-Z0-9]))/g)
+        .map((row) => row.trim())
         .filter(Boolean);
       const textMarkup = bulletRows.length >= 2
         ? `<ul class="dev-item-list">${bulletRows.map((row) => `<li>${escapeHtml(row)}</li>`).join("")}</ul>`
@@ -7459,11 +7655,11 @@ function normalizeDevelopmentExerciseGridItems(exercises, maxItems = 20) {
   const max = Number.isFinite(Number(maxItems)) ? Math.max(1, Number(maxItems)) : 20;
 
   for (const entry of safeExercises) {
-    const rawText = ensureSentenceStartsCapitalized(
-      cleanPdfExtractedValue(String(entry?.text ?? entry ?? "")),
+    const rawText = normalizeCriticalDevelopmentExerciseText(
+      typeof entry === "string" ? entry : entry?.text ?? entry?.guidance ?? entry?.description,
     );
     if (!rawText || isMissingExtractedText(rawText)) continue;
-    const key = normalizeExtractedText(rawText).toLowerCase();
+    const key = rawText.toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push({
@@ -7533,8 +7729,9 @@ function selectCriticalDevelopmentExercises(report) {
     .filter((word) => !["their", "there", "these", "those", "others", "yourself", "about", "which", "would", "could", "should", "rather", "practise", "practice"].includes(word)));
   const contextWords = words(context);
   const candidates = [
-    ...(Array.isArray(report?.developmentExercises) ? report.developmentExercises : []),
+    // Source candidates retain wording that legacy cleanup may have changed.
     ...(Array.isArray(report?.developmentExerciseCandidates) ? report.developmentExerciseCandidates : []),
+    ...(Array.isArray(report?.developmentExercises) ? report.developmentExercises : []),
   ];
   const normalizedCandidates = normalizeDevelopmentExerciseGridItems(candidates, Math.max(1, candidates.length));
   const ranked = normalizedCandidates
@@ -7766,6 +7963,140 @@ function normalizeNarrativeBulletRows(rows, maxItems = 16) {
     .map((row) => cleanPdfExtractedValue(row))
     .filter(Boolean)
     .slice(0, limit);
+}
+
+function normalizeCriticalConflictRows(rows) {
+  const seen = new Set();
+  const advice = /^(?:(?:you (?:can|could|should|must|are encouraged to|need to (?:learn|practi[cs]e|let go|become)))\s+|(?:practi[cs]e|practice|try|learn|develop|consider|remember|reflect|review|notice|pause|explore|work on|be aware|become aware|pay attention|make sure|acknowledge|recognise|recognize|accept|allow|listen|build|focus on)\b)/i;
+  const heading = /^(?:(?:the )?ennea(?:gram)?\s*\d\s*)?(?:response to conflict|conflict responses?|what you do when triggered|what triggers you|development goals?)\s*[:.!]?$/i;
+  const candidates = (Array.isArray(rows) ? rows : []).flatMap((entry) => {
+    if (typeof entry !== "string") return [];
+    // Line breaks inside PDF bullets are layout wrapping, not new statements.
+    return entry.split(/[•●▪◦·]+/).flatMap((part) => {
+      // Keep readable source words intact; generic OCR segmentation can split
+      // words such as "behave". Normalize PDF ligatures and whitespace only.
+      const text = normalizeExtractedText(part.normalize("NFKC"));
+      // PDF extraction sometimes joins bullets without punctuation. Preserve
+      // conditional clauses ("When vulnerable, you…") as part of their statement.
+      return text.split(/(?<=[.!?])\s+(?=[A-Z])|\s+(?=(?:You|Your|Strong feelings of|When (?:vulnerable|connected to your anger))\b)/);
+    });
+  });
+  return candidates.map((row) => normalizeExtractedText(row))
+    .filter((row) => row && !isMissingExtractedText(row) && !heading.test(row)
+      && !/^(?:When conflict erupts|Your preferred conflict processing strategy)\b/i.test(row)
+      && !advice.test(row) && !/(?:\.{3}|…)/.test(row) && row.split(/\s+/).length >= 6)
+    .filter((row) => {
+      const key = row.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function resolveConflictPatternsFromSource(parsedProfile) {
+  const responses = normalizeCriticalConflictRows([
+    extractInstructionTextFromReportContent(parsedProfile, {
+      ...ASSIGNED_PDF_INSTRUCTION_RULES.responseToConflict,
+      endAnchors: ["What you do when triggered", "Development goals"],
+    }, { raw: true, includeStartAnchor: false }),
+  ]);
+  const triggered = normalizeCriticalConflictRows([
+    extractInstructionTextFromReportContent(parsedProfile, {
+      ...ASSIGNED_PDF_INSTRUCTION_RULES.whatYouDoWhenTriggered,
+      endAnchors: ["Development goals", "Centered Decisions"],
+    }, { raw: true, includeStartAnchor: false }),
+  ]);
+  console.log("[conflict-patterns] complete source statements resolved", {
+    responseCount: responses.length,
+    triggeredCount: triggered.length,
+  });
+  return {
+    ...(responses.length ? { conflictResponseCopy: responses.join(" • ") } : {}),
+    ...(triggered.length ? {
+      conflictTriggeredCopy: triggered.join(" • "),
+      conflictTriggeredBullets: triggered,
+    } : {}),
+  };
+}
+
+function selectCriticalConflictPatterns(report) {
+  // Rank the report's own statements using the Harmonic Groups and Wake-up
+  // Calls in the canonical copy source (printed pages 64–68 and 80).
+  // These patterns select existing copy; they never supply generic type claims.
+  const typeThemes = {
+    1: [/critic|standard|perfect|mistake/i, /anger|resent|repress|irritat/i, /rigid|control|obligation|fix/i],
+    2: [/own needs|neglect|self[- ]sacrific/i, /appreciat|approval|win.*over|rejection/i, /disappoint|anger|resent/i],
+    3: [/perform|image|status|failure|achiev/i, /suppress|feelings|emotion/i, /efficien|task|work|competi/i],
+    4: [/emotio|intensif|over[- ]identif|dwell/i, /withdraw|retreat|quiet|isolat/i, /abandon|support|understand|misunderstood/i],
+    5: [/withdraw|detach|isolat/i, /analy|intellect|concept|logic/i, /space|resource|privacy|overwhelm|intrus/i],
+    6: [/doubt|threat|fear|anx|worst/i, /defens|react|challeng|accus/i, /support|guidance|reassur|authorit|trust/i],
+    7: [/refram|positiv|distract|optimis/i, /escape|avoid|pain/i, /frustrat|limit|impatien|restrict/i],
+    8: [/anger|instinctive|physical response|explosive/i, /vulnerab|withdraw|support|trust/i, /intimid|aggress|control|dominat|dismissive|take it or leave|weakness/i],
+    9: [/avoid|accommodat|harmony|agree/i, /anger|resent|suppress|stubborn/i, /disengag|inertia|numb|withdraw|shut down/i],
+  };
+  const type = Number(report?.typeNumber);
+  const themes = typeThemes[type] || [];
+  const harmonicThemes = [2, 7, 9].includes(type)
+    ? [/positiv|optimis|refram|bright side/i, /avoid|pain|negativ|problem/i, /needs|harmony|accommodat/i]
+    : [1, 3, 5].includes(type)
+      ? [/logic|objectiv|compet|ration|solv/i, /feelings|emotion/i, /rules|system|structur/i]
+      : [4, 6, 8].includes(type)
+        ? [/emotion|feelings|explosive|react/i, /support|understand|trust|reassur/i, /before|first|vent/i]
+        : [];
+  const focuses = report?.spreadsheetFocuses || {};
+  const responses = normalizeCriticalConflictRows([focuses.conflictResponseCopy]);
+  const triggered = normalizeCriticalConflictRows([
+    ...(Array.isArray(focuses.conflictTriggeredBullets) ? focuses.conflictTriggeredBullets : []),
+    focuses.conflictTriggeredCopy,
+  ]);
+  const tokens = (text) => new Set((text.toLowerCase().match(/[a-z]{4,}/g) || [])
+    .filter((word) => !["your", "yourself", "likely", "quite", "others", "with", "from", "that", "this", "when", "have", "will", "tend", "some", "even", "their"].includes(word)));
+  const samePattern = (a, b) => {
+    const left = tokens(a);
+    const right = tokens(b);
+    const overlap = [...left].filter((word) => right.has(word)).length;
+    return overlap / Math.max(1, Math.min(left.size, right.size)) >= 0.8;
+  };
+  const pick = (rows, limit, responseRows = false, excluded = []) => {
+    const priorityThemes = responseRows ? harmonicThemes : themes;
+    let remaining = rows.filter((text) => !excluded.some((other) => samePattern(text, other)))
+      .map((text, index) => {
+        const matches = priorityThemes.flatMap((pattern, theme) => pattern.test(text) ? [theme] : []);
+        // Favor concrete reactions and relational impact over broad descriptions.
+        const concrete = /anger.*action|intimidat|aggress|when vulnerable|over[- ]identif|suppress|shut down/i.test(text);
+        return { text, index, matches, score: (matches.length ? 60 : 20) + (concrete ? 10 : 0) };
+      });
+    if (remaining.some((row) => row.matches.length)) remaining = remaining.filter((row) => row.matches.length);
+    const selected = [];
+    const usedThemes = new Set();
+    while (remaining.length && selected.length < limit) {
+      const score = (row) => row.score - (row.matches.length && row.matches.every((theme) => usedThemes.has(theme)) ? 80 : 0);
+      remaining.sort((a, b) => score(b) - score(a) || a.index - b.index);
+      const next = remaining.shift();
+      if (score(next) < 0) break;
+      selected.push(next.text);
+      next.matches.forEach((theme) => usedThemes.add(theme));
+      remaining = remaining.filter((row) => !samePattern(row.text, next.text));
+    }
+    return selected;
+  };
+  const selectedResponses = pick(responses, 2, true);
+  return { responses: selectedResponses, triggered: pick(triggered, 3, false, selectedResponses) };
+}
+
+function renderCriticalConflictPatterns(report) {
+  const selected = selectCriticalConflictPatterns(report);
+  const renderRows = (rows, testId) => rows.length
+    ? `<div class="tlist" data-testid="${testId}">${rows.map((text) => `<div class="ti"><div class="tic neu">•</div><div class="tt">${escapeHtml(text)}</div></div>`).join("")}</div>`
+    : `<p data-testid="${testId}-empty">No complete patterns were found in this report. Refresh the report or contact your administrator to check the source PDF.</p>`;
+  setHtml('conflictResponseCopy', renderRows(selected.responses, "critical-conflict-responses"), { preserveSourceCopy: true });
+  setHtml('conflictTriggeredCopy', renderRows(selected.triggered, "critical-triggered-patterns"), { preserveSourceCopy: true });
+  console.log("[conflict-patterns] critical report patterns rendered", {
+    typeNumber: report?.typeNumber,
+    selectionKey: typeof activeReportSelectionState === "object" ? activeReportSelectionState.selectionKey : null,
+    responses: selected.responses,
+    triggered: selected.triggered,
+  });
 }
 
 function renderNarrativeBullets(text, options = {}) {
@@ -8670,7 +9001,10 @@ function summarizeOverallStrainText(rawText, options = {}) {
 
 function consolidateOverallStrainSummary(rawText) {
   if (typeof rawText !== "string") return null;
-  const text = rawText.replace(/\s+/g, " ").trim();
+  const text = rawText
+    .replace(/\brightnow\b/gi, "right now")
+    .replace(/\bstrainin\b/gi, "strain in")
+    .replace(/\s+/g, " ").trim();
   if (!text || /^not detected\b/i.test(text)) return null;
 
   const sentences = Array.from(
@@ -10140,19 +10474,25 @@ function extractDevelopmentExercisesFromTargetedSections(parsedProfile) {
     "strategic_leadership",
   ];
   const out = [];
+  let groupsHydrated = 0;
   groups.forEach((group) => {
-    const rows = normalizeTargetedSectionRows(development?.[group], { maxItems: 8, maxLength: 420 });
+    const values = Array.isArray(development[group]) ? development[group] : [development[group]];
+    // Preserve complete and later source exercises before choosing the three
+    // priorities. A display snippet cap must not discard or clip candidates.
+    const rows = normalizeDevelopmentExerciseGridItems(values, Math.max(1, values.length))
+      .filter((row) => !isMissingExtractedText(row.text));
+    if (rows.length) groupsHydrated += 1;
     rows.forEach((row) => {
       out.push({
         title: `Exercise ${out.length + 1}`,
-        text: row,
+        text: row.text,
       });
     });
   });
 
   console.log("[development-exercises] targeted-section extraction", {
     rows: out.length,
-    groupsHydrated: groups.filter((group) => normalizeTargetedSectionRows(development?.[group], { maxItems: 1 }).length).length,
+    groupsHydrated,
   });
   return out;
 }
@@ -10248,7 +10588,7 @@ function extractSpreadsheetSectionFocusesFromTargetedSections(parsedProfile) {
     conflictTriggeredBullets: conflictRows,
     centeredDecisionCopy: compactTargetedSectionText(decision.dominant_center_impact, { maxItems: 6, maxLength: 420 }),
     decisionImpactCopy: compactTargetedSectionText(decisionImpactRows, { maxItems: 8, maxLength: 420 }),
-    decisionStrainCopy: compactTargetedSectionText(decision.strain_impact, { maxItems: 6, maxLength: 420 }),
+    decisionStrainCopy: normalizeDecisionStrainCopy(decision.strain_impact),
     strategicLeadershipCopy: compactTargetedSectionText(strategicRows, { maxItems: 10, maxLength: 420 }),
     teamImpactCopy: compactTargetedSectionText(teamImpactRows, { maxItems: 8, maxLength: 420 }),
     interdependenceCopy: compactTargetedSectionText(team.interdependence_and_role, { maxItems: 3, maxLength: 420 }),
@@ -10360,6 +10700,120 @@ function extractSpreadsheetFocusSourceText(parsedProfile, options = {}) {
 
   const pageText = getPageAnchoredText(parsedProfile, pageAnchors);
   return normalizeExtractedText(`${sectionText} ${pageText}`);
+}
+
+function normalizeDecisionStrainCopy(value) {
+  const rows = Array.isArray(value)
+    ? value.map((row) => typeof row === "string" ? row : row?.text).filter((row) => typeof row === "string" && row.trim())
+    : [];
+  const source = Array.isArray(value)
+    ? (rows.length > 1 ? `● ${rows.join(" ● ")}` : rows[0])
+    : (typeof value === "string" ? value : "");
+  // This field is extractive. Generic OCR word segmentation can corrupt already
+  // readable words (for example, "thereby impacting"). Repair only observed PDF
+  // joins and remove the copyright footer, including its embedded-font encoding.
+  const cleaned = String(source || "")
+    .replace(/\bCopyright\b[\s\S]*$/i, "")
+    .replace(/\u0004?\*\+4-\$"#\/[\s\S]*$/, "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\bdecision\s*makingin\b/gi, "decision making in")
+    .replace(/\bdecisionmaking\b/gi, "decision making")
+    .replace(/\bin-depthanalysis\b/gi, "in-depth analysis")
+    .replace(/\s+/g, " ").trim();
+  if (!cleaned || isMissingExtractedText(cleaned)) return null;
+  if (cleaned.split(/\s+/).length < 6 || /(?:\.\.\.|…)(?=\s*(?:[●•▪◦]|$))/.test(cleaned)) return null;
+  if (/\b(?:you are experiencing at present|in the following ways|and|or|to|with|of|your|because)\s*[:.!?]?\s*$/i.test(cleaned)) return null;
+  // A general strain rating or introductory fragment is not decision guidance.
+  if (!/decisi|priorit|consult|deadline|reactiv|complacen|analys|procrastin|risk|commit|judg/i.test(cleaned)) return null;
+  return cleaned;
+}
+
+function extractDecisionStrainCopyFromText(rawText) {
+  if (typeof rawText !== "string" || !rawText.trim()) return null;
+  const text = rawText.replace(/\r\n?/g, "\n").replace(/\bdecision\s*makingin\b/gi, "decision making in");
+  // Require a decision-specific heading/intro. A bare "Strain" match also hits
+  // the overview and the introductory sentence on the decision-making page.
+  const start = /\b(?:low|moderate|medium|high)\s+strain\b(?=[\s\S]{0,240}?\bdecision[\s-]*making\b)|\b(?:impact|effects?)\s+of\s+strain\s+on\s+decision[\s-]*making\b/i.exec(text);
+  if (!start) return null;
+  let section = text.slice(start.index);
+  const end = /\bCopyright\b|\[\s*Page\s+\d+\s*\]|(?:^|\n)\s*(?:Leadership\s+and\s+Management|Strategic\s+Leadership|Team\s+Behavio[u]?r|Development\s+Exercises?)\s*(?:\n|$)/i.exec(section);
+  // Flattened PDF text loses line boundaries. Match printed headings in their
+  // title/all-caps form without treating lowercase phrases in advice as headings.
+  const flattenedEnd = /\b(?:Leadership\s+and\s+Management|LEADERSHIP\s+AND\s+MANAGEMENT|Strategic\s+Leadership|STRATEGIC\s+LEADERSHIP|Team\s+Behavio[u]?r|TEAM\s+BEHAVIO[U]?R|Development\s+Exercises?|DEVELOPMENT\s+EXERCISES?)\b/.exec(section);
+  const endIndex = Math.min(end?.index ?? section.length, flattenedEnd?.index ?? section.length);
+  section = section.slice(0, endIndex);
+  section = section.replace(/^(?:(?:low|moderate|medium|high)\s+strain|(?:impact|effects?)\s+of\s+strain\s+on\s+decision[\s-]*making)\s*[:\-]?\s*/i, "");
+  return normalizeDecisionStrainCopy(section);
+}
+
+function resolveDecisionStrainCopy(parsedProfile, pdfText = "") {
+  const pages = Array.isArray(parsedProfile?.reportContent?.pages) ? parsedProfile.reportContent.pages : [];
+  const sections = Array.isArray(parsedProfile?.reportContent?.sections) ? parsedProfile.reportContent.sections : [];
+  const withHeading = (heading, value) => {
+    const text = typeof value === "string" ? value.trim() : "";
+    const title = typeof heading === "string" ? heading.trim() : "";
+    return title && !text.toLowerCase().startsWith(title.toLowerCase()) ? `${title}\n${text}` : text;
+  };
+  const sourceTexts = [
+    ...pages.filter((page) => Number(page?.pageNumber) === 34),
+    ...pages.filter((page) => Number(page?.pageNumber) !== 34),
+  ].map((page) => ({ source: `page:${page.pageNumber}`, text: withHeading(page?.heading, page?.extractedText || page?.fullText || page?.text) }));
+  sourceTexts.push(...sections.map((section) => ({
+    source: "report_section",
+    text: withHeading(section?.sectionTitle || section?.title || section?.heading, section?.fullText || section?.extractedText || section?.text),
+  })), { source: "pdf_text", text: pdfText });
+  for (const candidate of sourceTexts) {
+    const copy = extractDecisionStrainCopyFromText(candidate.text);
+    if (!copy) continue;
+    console.log("[decision-strain] resolved complete source section", {
+      clientName: parsedProfile?.clientName || null,
+      source: candidate.source,
+      characters: copy.length,
+      bulletCount: (copy.match(/[●•▪◦]/g) || []).length,
+    });
+    return copy;
+  }
+  const targeted = getTargetedSections(parsedProfile);
+  const focuses = parseSpreadsheetFocusObjectCandidate(parsedProfile?.spreadsheetFocuses) || {};
+  const decision = parseSpreadsheetFocusObjectCandidate(focuses.decisionMaking)
+    || parseSpreadsheetFocusObjectCandidate(parsedProfile?.decision_making) || {};
+  const attachedDecision = parseSpreadsheetFocusObjectCandidate(parsedProfile?.attachedProfile?.decision_making) || {};
+  const candidates = [
+    ["targeted_sections", targeted?.decision_framework?.strain_impact],
+    ["parsed_profile", focuses.decisionStrainCopy],
+    ["decision_making", decision.impact_of_strain || decision.strain_impact],
+    ["attached_profile", attachedDecision.impact_of_strain || attachedDecision.strain_impact],
+  ];
+  for (const [source, value] of candidates) {
+    const copy = normalizeDecisionStrainCopy(value);
+    if (!copy) continue;
+    console.log("[decision-strain] resolved stored decision guidance", {
+      clientName: parsedProfile?.clientName || null,
+      source,
+      characters: copy.length,
+    });
+    return copy;
+  }
+  console.log("[decision-strain] no complete decision guidance available", {
+    clientName: parsedProfile?.clientName || null,
+    pageCount: pages.length,
+  });
+  return null;
+}
+
+function renderDecisionStrainCopy(value) {
+  const copy = normalizeDecisionStrainCopy(value);
+  if (!copy) {
+    return '<p data-testid="decision-strain-empty">Decision-making guidance under strain was not found in this report. Refresh the report or contact your administrator to check the source PDF.</p>';
+  }
+  const firstBullet = copy.search(/[●•▪◦]/);
+  const introduction = firstBullet >= 0 ? copy.slice(0, firstBullet).trim() : "";
+  const rows = firstBullet >= 0
+    ? copy.slice(firstBullet).split(/[●•▪◦]\s*/).map((row) => row.trim()).filter(Boolean)
+    : [copy];
+  const introHtml = introduction ? `<p data-testid="decision-strain-intro">${escapeHtml(introduction)}</p>` : "";
+  // Explicit source bullets preserve complete sentences, abbreviations, and every row.
+  return `${introHtml}<div data-testid="decision-strain-guidance">${rows.map((text, index) => `<div class="ti" data-testid="decision-strain-row-${index + 1}"><div class="tic neu">•</div><div class="tt">${escapeHtml(text)}</div></div>`).join("")}</div>`;
 }
 
 function extractSpreadsheetSnippetFromText(rawText, labels = [], maxLength = 420) {
@@ -10678,11 +11132,7 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
     ASSIGNED_PDF_INSTRUCTION_RULES.impactOfEnneaStyle,
     { includeStartAnchor: true },
   );
-  const decisionStrainInstructionText = extractInstructionTextFromReportContent(
-    parsedProfile,
-    ASSIGNED_PDF_INSTRUCTION_RULES.overallStrainSignal,
-    { includeStartAnchor: true },
-  );
+  const decisionStrainInstructionText = resolveDecisionStrainCopy(parsedProfile);
   const strategicLeadershipInstructionText = extractInstructionTextFromReportContent(
     parsedProfile,
     ASSIGNED_PDF_INSTRUCTION_RULES.strategicLeadershipCopy,
@@ -10837,11 +11287,7 @@ function extractSpreadsheetSectionFocusesFromReportContent(parsedProfile) {
       decisionImpactInstructionText || decisionText,
       ["Impact of your Ennea style", "Impact of your Enneagram style", "Impact of your style"],
     ),
-    decisionStrainCopy: extractSpreadsheetSnippetFromText(
-      decisionStrainInstructionText || decisionText,
-      ["Ben your perceived level of Overall strain", "Overall Strain", "decision strain", "Strain"],
-      2000,
-    ),
+    decisionStrainCopy: decisionStrainInstructionText,
     strategicLeadershipCopy: extractSpreadsheetSnippetFromText(
       strategicLeadershipInstructionText || leadershipText,
       ["Strategic Leadership", "Visioning", "Alignment", "Change Management"],
@@ -10943,7 +11389,7 @@ function extractSpreadsheetSectionFocusesFromPdfText(pdfText) {
       .filter((row) => !isMissingExtractedText(row)),
     centeredDecisionCopy: extractSpreadsheetSnippetFromText(normalized, ["Centered Decisions", "centered decisions"]),
     decisionImpactCopy: extractSpreadsheetSnippetFromText(normalized, ["Impact of your Ennea style", "Impact of your Enneagram style", "Impact of your style"]),
-    decisionStrainCopy: extractSpreadsheetSnippetFromText(normalized, ["Level strain", "decision strain", "Strain"], 2000),
+    decisionStrainCopy: extractDecisionStrainCopyFromText(pdfText),
     strategicLeadershipCopy: extractSpreadsheetSnippetFromText(normalized, ["Strategic Leadership", "Visioning", "Alignment", "Change Management"]),
     teamImpactCopy: extractSpreadsheetSnippetFromText(normalized, ["Your Impact on Team", "Impact on Team"]),
     interdependenceCopy: extractSpreadsheetSnippetFromText(normalized, ["Interdependence and Team Role", "Intedependence and Team Role", "Interdependence", "Team Role"]),
@@ -11613,12 +12059,6 @@ function applyReport(typeId) {
     reflectionDeck = buildReflectionDeck(REPORT);
     console.log("[report-switch] applying", REPORT.typeNumber, REPORT.typeName);
     renderReportFromState(true);
-    setReportSwitchStatus({
-      state: "idle",
-      message: "",
-      selectionKey: activeReportSelectionState.selectionKey,
-      reason: "apply-report-complete",
-    });
   } catch (error) {
     handleCriticalReportRenderError(error, {
       context: "applyReport",
@@ -11774,16 +12214,12 @@ function buildPdfOnlyReport(payload) {
                 .map((row) => sanitizeSnippet(row, null))
                 .filter(Boolean)
             : [],
-          conflictResponseCopy: sanitizeSnippet(payload.spreadsheetFocuses.conflictResponseCopy, "Not detected in assigned PDF."),
-          conflictTriggeredCopy: sanitizeSnippet(payload.spreadsheetFocuses.conflictTriggeredCopy, "Not detected in assigned PDF."),
-          conflictTriggeredBullets: Array.isArray(payload.spreadsheetFocuses.conflictTriggeredBullets)
-            ? payload.spreadsheetFocuses.conflictTriggeredBullets
-                .map((row) => sanitizeSnippet(row, null))
-                .filter(Boolean)
-            : [],
+          conflictResponseCopy: normalizeCriticalConflictRows([payload.spreadsheetFocuses.conflictResponseCopy]).join(" • "),
+          conflictTriggeredCopy: normalizeCriticalConflictRows([payload.spreadsheetFocuses.conflictTriggeredCopy]).join(" • "),
+          conflictTriggeredBullets: normalizeCriticalConflictRows(payload.spreadsheetFocuses.conflictTriggeredBullets),
           centeredDecisionCopy: sanitizeSnippet(payload.spreadsheetFocuses.centeredDecisionCopy, "Not detected in assigned PDF."),
           decisionImpactCopy: sanitizeSnippet(payload.spreadsheetFocuses.decisionImpactCopy, "Not detected in assigned PDF."),
-          decisionStrainCopy: sanitizeSnippet(payload.spreadsheetFocuses.decisionStrainCopy, "Not detected in assigned PDF."),
+          decisionStrainCopy: normalizeDecisionStrainCopy(payload.spreadsheetFocuses.decisionStrainCopy) || "Not detected in assigned PDF.",
           strategicLeadershipCopy: sanitizeSnippet(payload.spreadsheetFocuses.strategicLeadershipCopy, "Not detected in assigned PDF."),
           teamImpactCopy: sanitizeSnippet(payload.spreadsheetFocuses.teamImpactCopy, "Not detected in assigned PDF."),
           interdependenceCopy: sanitizeSnippet(payload.spreadsheetFocuses.interdependenceCopy, "Not detected in assigned PDF."),
@@ -12080,6 +12516,7 @@ function renderReportFromState(isExampleMode) {
   setHtml(
     'devExercisePaths',
     renderDevelopmentExerciseGridItems(devExerciseComponentData.paths),
+    { preserveSourceCopy: true },
   );
   console.log("[development-exercises] critical priorities rendered", {
     selectionKey: activeSelectionKey,
@@ -12251,45 +12688,20 @@ function renderReportFromState(isExampleMode) {
     ),
   );
   renderDominantInstinctGoalBorder(REPORT.instinct);
-  setHtml(
-    'conflictResponseCopy',
-    renderNarrativeBullets(
-      resolveSpreadsheetFocusText(
+  renderCriticalConflictPatterns({
+    ...REPORT,
+    spreadsheetFocuses: {
+      ...spreadsheetFocusesFromReport,
+      conflictResponseCopy: resolveSpreadsheetFocusText(
         spreadsheetFocusesFromReport.conflictResponseCopy,
         spreadsheetFocusFallbacks.conflictResponseCopy,
       ),
-      { maxItems: 8 },
-    ),
-  );
-  const conflictTriggeredRows = normalizeNarrativeBulletRows(
-    Array.isArray(spreadsheetFocusesFromReport.conflictTriggeredBullets)
-      ? spreadsheetFocusesFromReport.conflictTriggeredBullets
-      : [],
-    16,
-  ).filter((row) => !isMissingExtractedText(row));
-  const conflictTriggeredFallbackRows = extractNarrativeBulletItems(
-    resolveSpreadsheetFocusText(
-      spreadsheetFocusesFromReport.conflictTriggeredCopy,
-      spreadsheetFocusFallbacks.conflictTriggeredCopy,
-    ),
-    16,
-  )
-    .map((row) => cleanPdfExtractedValue(row))
-    .filter(Boolean)
-    .filter((row) => !isMissingExtractedText(row));
-  const conflictTriggeredItems = conflictTriggeredRows.length
-    ? conflictTriggeredRows
-    : (conflictTriggeredFallbackRows.length ? conflictTriggeredFallbackRows : [missingAssignedPdfText]);
-  setHtml(
-    'conflictTriggeredCopy',
-    buildAdaptiveListHtml(
-      conflictTriggeredItems.map((text) => ({
-        tone: "neu",
-        symbol: "•",
-        text,
-      })),
-    ),
-  );
+      conflictTriggeredCopy: resolveSpreadsheetFocusText(
+        spreadsheetFocusesFromReport.conflictTriggeredCopy,
+        spreadsheetFocusFallbacks.conflictTriggeredCopy,
+      ),
+    },
+  });
   setHtml(
     'centeredDecisionCopy',
     renderNarrativeBullets(
@@ -12312,14 +12724,16 @@ function renderReportFromState(isExampleMode) {
   );
   setHtml(
     'decisionStrainCopy',
-    renderNarrativeBullets(
-      resolveSpreadsheetFocusText(
-        spreadsheetFocusesFromReport.decisionStrainCopy,
-        spreadsheetFocusFallbacks.decisionStrainCopy,
-      ),
-      { maxItems: 8 },
-    ),
+    renderDecisionStrainCopy(spreadsheetFocusesFromReport.decisionStrainCopy),
+    { preserveSourceCopy: true },
   );
+  console.log("[decision-strain] rendered source guidance", {
+    selectionKey: activeSelectionKey,
+    reportId: activeSelectionSnapshot.reportId,
+    clientReportId: activeSelectionSnapshot.clientReportId,
+    text: spreadsheetFocusesFromReport.decisionStrainCopy || null,
+    available: Boolean(normalizeDecisionStrainCopy(spreadsheetFocusesFromReport.decisionStrainCopy)),
+  });
   setHtml(
     'strategicLeadershipCopy',
     renderNarrativeBullets(
@@ -12565,12 +12979,6 @@ function applyAssignedPdfReport(payload) {
     });
     reflectionDeck = buildReflectionDeck(REPORT);
     renderReportFromState(false);
-    setReportSwitchStatus({
-      state: "idle",
-      message: "",
-      selectionKey: activeReportSelectionState.selectionKey,
-      reason: "apply-assigned-pdf-report-complete",
-    });
   } catch (error) {
     handleCriticalReportRenderError(error, {
       context: "applyAssignedPdfReport",
@@ -12662,14 +13070,6 @@ async function onClientReportRefreshClick(event) {
   } finally {
     clientReportManualRefreshInFlight = false;
     setClientReportRefreshButtonLoadingState(false);
-    if (getReportSwitchStatusNode()?.dataset?.state === "loading") {
-      setReportSwitchStatus({
-        state: "idle",
-        message: "",
-        selectionKey: activeReportSelectionState.selectionKey,
-        reason: "client-report-manual-refresh-finalize",
-      });
-    }
   }
 }
 

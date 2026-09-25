@@ -1,0 +1,147 @@
+@reference "tailwindcss";
+
+/* Compile only these utilities: preserve the report's existing palette and fonts. */
+.report-shell { @apply h-dvh w-full overflow-hidden; }
+.report-frame { @apply block h-full w-full border-0; }
+html:has(.report-shell), body:has(.report-shell) { @apply h-dvh min-h-0 overflow-hidden; }
+.mobile-toolbar { @apply hidden; }
+.mobile-menu[inert] { @apply invisible; }
+.mobile-menu.open { @apply visible; }
+.report-content { @apply relative; }
+.report-loading {
+  @apply absolute inset-0 z-10 flex flex-col items-center gap-3 rounded-2xl
+    bg-[var(--surface)] pt-20 text-sm font-medium text-[var(--text2)];
+}
+.report-loading[hidden] { @apply hidden; }
+.report-loading-spinner {
+  @apply size-8 animate-spin rounded-full border-2 border-solid border-[var(--border)] border-t-[var(--blue)];
+}
+body:is([data-report-state="loading"], [data-report-state="error"]) :is(.body-grid, #headerSubtitle, #typeBadge) {
+  /* Keep chart dimensions stable while hiding and disabling stale report content. */
+  @apply invisible pointer-events-none;
+}
+:where(button, a, select, input, textarea):focus-visible {
+  @apply outline-2 outline-offset-4 outline-[var(--blue)];
+}
+
+@media screen and (min-width: 761px) and (max-width: 1000px) {
+  .g2, .g3 { @apply grid-cols-1; }
+  .page { @apply px-5; }
+  .profile-wheel-wrap { @apply mx-auto max-w-[360px]; }
+}
+
+@media screen and (min-width: 761px) and (max-width: 1100px) and (pointer: coarse) {
+  .nav button, .auth-btn, .auth-menu-item, .reflection-launcher { @apply min-h-11; }
+  .report-switch-select, .search-input { @apply min-h-11 text-base; }
+  .report-switch-refresh, .search-popout-close { @apply size-11; }
+}
+
+@media screen and (max-width: 760px) {
+  :root { @apply [--fs-body:14px] [--fs-meta:12px] [--fs-label:11px]; }
+  html { @apply scroll-pt-20; }
+  .page {
+    @apply pt-4 pb-[calc(96px+env(safe-area-inset-bottom))]
+      pl-[max(12px,env(safe-area-inset-left))] pr-[max(12px,env(safe-area-inset-right))];
+  }
+  .mobile-toolbar {
+    @apply sticky top-0 z-[120] flex items-center justify-between gap-3
+      border-b border-[var(--border)] bg-[var(--surface)]
+      pt-[env(safe-area-inset-top)] pl-[max(12px,env(safe-area-inset-left))]
+      pr-[max(12px,env(safe-area-inset-right))];
+  }
+  .mobile-toolbar .mobile-menu-toggle {
+    @apply static z-auto flex h-16 w-auto min-w-0 flex-1 justify-start gap-3
+      rounded-none border-0 bg-transparent text-left text-[var(--text2)];
+    @apply [font-family:var(--font-sans)];
+  }
+  .mobile-menu-toggle svg { @apply shrink-0; }
+  .mobile-toolbar-copy { @apply flex min-w-0 flex-col gap-1; }
+  .mobile-toolbar-eyebrow { @apply text-[10px] leading-none font-semibold uppercase tracking-[.08em] text-[var(--text3)]; }
+  .mobile-section-label { @apply truncate text-sm leading-tight font-semibold [font-family:var(--font-sans)]; }
+  .mobile-search-button {
+    @apply flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-xl
+      border border-solid border-[var(--border)] bg-[var(--surface2)] text-[var(--text2)];
+  }
+  .header { @apply mb-4 rounded-2xl p-4; }
+  .header-top { @apply flex-row items-center gap-3; }
+  .eyebrow { @apply w-auto min-w-0; }
+  .e8-circle { @apply shrink-0; }
+  .eyebrow-text { @apply text-[11px] leading-relaxed tracking-[.035em] [overflow-wrap:anywhere]; }
+  .header-auth { @apply w-auto shrink-0 justify-end; }
+  .header-top:has(.report-active-chip[style*="inline-flex"]) .header-auth { @apply max-w-[110px] flex-wrap gap-2; }
+  .auth-btn { @apply min-h-11 px-3 text-xs; }
+  .auth-btn.avatar { @apply size-11 p-1; }
+  .auth-avatar-img, .auth-avatar-fallback { @apply size-9; }
+  .auth-menu { @apply top-[calc(100%+8px)] w-52 max-w-[calc(100vw-40px)]; }
+  .auth-menu-item { @apply min-h-11 text-sm; }
+  .header-controls { @apply mt-4 grid w-full grid-cols-1 gap-3 p-0; }
+  .header-controls:not(:has(.report-switch[style*="flex"])):has(.report-switch-status:empty) { @apply hidden; }
+  .report-switch { @apply grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2; }
+  .report-switch[style*="flex"] { @apply grid!; }
+  .report-switch-label { @apply col-span-full text-[10px]; }
+  .report-switch-select { @apply col-start-1 min-h-11 w-full min-w-0 max-w-full text-base; }
+  .report-switch-refresh { @apply col-start-2 size-11; }
+  .report-switch-status { @apply text-xs [overflow-wrap:anywhere]; }
+  .report-switch-status:empty { @apply hidden; }
+  .card { @apply min-w-0 px-4 py-5; }
+  .g2, .g3, .core-copy-stack, .strain-cards-grid, .team-stage-grid { @apply grid-cols-1 gap-4; }
+  .g2 > *, .g3 > *, .kv-grid > *, .ti > *, .search-result > * { @apply min-w-0; }
+  .mb24, .mb32 { @apply mb-4; }
+  .ct { @apply mb-4 text-[11px] leading-relaxed tracking-[.075em]; }
+  .kv-grid { @apply grid-cols-[repeat(2,minmax(0,1fr))] gap-x-4 gap-y-5; }
+  .kvv, .tt, .core-copy-item-body { @apply [overflow-wrap:anywhere]; }
+  .ti { @apply gap-2.5; }
+  .tt { @apply flex-1; }
+  .devbox { @apply p-4; }
+  .dev-grid, .tg-grid { @apply grid-cols-1; }
+  .dev-item p, .dev-item-list li, .tg-desc, .insight-box p, .ibox p, .strain-detail-row-text, .sb-tip {
+    @apply text-sm leading-[1.7];
+  }
+  .brow { @apply flex-wrap gap-x-3 gap-y-1.5; }
+  .blbl { @apply min-w-0 flex-1; }
+  .strain-breakdown-card { @apply h-auto!; }
+  .strain-breakdown-scroll { @apply overflow-visible [scrollbar-gutter:auto]; }
+  .profile-wheel-wrap { @apply mx-auto max-w-[300px] [--profile-wheel-size:268px]; }
+  .profile-wheel { @apply max-w-[284px]; }
+  .mobile-menu {
+    @apply h-dvh w-[min(88vw,360px)] overflow-y-auto overscroll-contain
+      pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)];
+  }
+  .mobile-menu-head { @apply sticky top-0 z-10 bg-[var(--surface)] px-4 py-3; }
+  .mobile-menu-close, .search-popout-close { @apply flex size-11 shrink-0 items-center justify-center rounded-lg; }
+  .mobile-menu-list { @apply gap-1 p-3; }
+  .mobile-menu-item { @apply min-h-12 px-4 py-3 text-sm leading-relaxed; }
+  .search-popout-overlay { @apply items-start px-3 py-[max(12px,env(safe-area-inset-top))]; }
+  .search-popout-panel { @apply flex w-full max-w-xl max-h-[calc(100dvh-48px)] flex-col overflow-hidden p-4; }
+  .search-popout-head { @apply mb-3 shrink-0; }
+  .search-wrap { @apply min-h-0 overflow-y-auto overscroll-contain; }
+  .search-row { @apply grid grid-cols-[minmax(0,1fr)_auto] gap-2; }
+  .search-input, .focus-input, .focus-textarea { @apply min-h-11 min-w-0 w-full text-base; }
+  .search-btn, .search-jump, .focus-submit, .focus-ghost, .focus-jump, .report-render-error-button { @apply min-h-11; }
+  .search-result { @apply gap-2; }
+  .search-result-title, .search-result-meta { @apply [overflow-wrap:anywhere]; }
+  .focus-actions { @apply flex-wrap; }
+  .focus-note { @apply w-full; }
+  .sidebar-col {
+    @apply right-[max(12px,env(safe-area-inset-right))] bottom-[max(12px,env(safe-area-inset-bottom))]
+      w-[calc(100%-24px)] max-h-[calc(100dvh-96px)] overflow-y-auto overscroll-contain;
+  }
+  .reflection-launcher {
+    @apply right-[max(12px,env(safe-area-inset-right))] bottom-[max(12px,env(safe-area-inset-bottom))]
+      min-h-11 px-4 text-xs;
+  }
+  .sb-header { @apply sticky top-0 z-10 bg-[var(--surface)] py-2; }
+  .sb-refresh, .sb-min { @apply size-11 justify-center; }
+  .sb-cat { @apply min-h-11 text-xs; }
+  .site-footer { @apply mt-6 text-[10px] leading-relaxed; }
+  .site-footer a { @apply inline-flex min-h-11 items-center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .report-loading-spinner { @apply animate-none; }
+  .mobile-menu, .nav button, .search-hit { @apply transition-none; }
+}
+
+@media print {
+  .mobile-toolbar { @apply hidden!; }
+}

@@ -19,6 +19,10 @@ npm test
 npm run build
 ```
 
+Mobile styles live in `styles/mobile.css` and use Tailwind utilities with the existing report colors and fonts. `npm run dev` and `npm run build` compile them to `public/mobile.css`; after editing the styles during a running preview, run `npm run build:styles`.
+
+With the dev server running, use `npm run test:mobile` for browser checks at phone, tablet, and desktop widths, including navigation, search, keyboard focus, and switching between two locally available client reports. Install the test browser with `npx playwright install chromium` if Chrome is unavailable. Screenshots and report-switch diagnostics are saved to `/tmp/enneagram-mobile-check` by default.
+
 ## Project Structure
 
 - `app/` — Next.js routes, layouts, and route handlers.
